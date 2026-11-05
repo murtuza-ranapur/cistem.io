@@ -17,6 +17,28 @@ npm test         # schema + migration tests
 
 Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`.
 
+## Backend
+
+`backend/` is a Spring Boot 4.1 / Java 25 API that stores diagrams in Postgres (`jsonb`), deployed on Railway from this repo. The frontend works offline (browser storage) until you connect it: the cog in the top bar takes the API URL and key. Once connected, diagrams autosave, open via `?d=<id>`, and can be shared read-only via `?s=<token>`. Concurrent edits are detected with `If-Match` and surfaced as a conflict banner rather than silently overwritten.
+
+```sh
+cd backend
+./gradlew test       # needs a Postgres on localhost:5432 (user/db/password: cistem)
+./gradlew bootRun    # http://localhost:8080, CISTEM_API_KEY unset = open
+```
+
+| Endpoint | |
+|---|---|
+| `GET /api/diagrams` | list (no bodies) |
+| `POST /api/diagrams` | `{ "document": <file> }` → 201 + `ETag: "<version>"` |
+| `GET /api/diagrams/{id}` | full diagram |
+| `PUT /api/diagrams/{id}` | replace; send `If-Match`; 409 with current body on conflict |
+| `DELETE /api/diagrams/{id}` | |
+| `POST / DELETE /api/diagrams/{id}/share` | create or revoke a share token |
+| `GET /api/share/{token}` | public, read-only |
+
+Auth is one shared key (`X-Api-Key` or `Authorization: Bearer`) from `CISTEM_API_KEY`; `/api/share/**` and `/actuator/health` are public.
+
 ## File format
 
 Diagrams are plain JSON, described by [`schema/cistem.schema.json`](schema/cistem.schema.json):
@@ -56,7 +78,10 @@ src/state.ts       shared app state, persistence, render pub/sub
 src/canvas.ts      SVG rendering, pan/zoom/drag/connect/marquee
 src/layout.ts      auto-organise (layered)
 src/sheet.ts       inspector (capacity + schema editors)
+src/api.ts         API client
+src/cloud.ts       diagram drawer, autosave, conflicts, share, settings
 src/main.ts        toolbar, keyboard, JSON dialog, boot
+backend/           Spring Boot API (see above)
 test/              node:assert tests run with tsx
 ```
 
