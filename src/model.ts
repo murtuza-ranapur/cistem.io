@@ -63,16 +63,16 @@ export function adopt(d: unknown): Doc {
 export function exampleDoc(): Doc {
   uid = 1;
   const clients = makeNode('entry', 20, 200, { name: 'Checkout clients' });
-  const lb = makeNode('lb', 250, 200, { name: 'ALB' });
-  const api = makeNode('service', 480, 200, {
-    name: 'checkout-api', rpsPerInstance: 600, instances: 6, latency: 25, endpoints: [
+  const lb = makeNode('lb', 330, 200, { name: 'ALB' });
+  const api = makeNode('service', 640, 200, {
+    name: 'checkout-api', rpsPerInstance: 600, instances: 10, latency: 25, endpoints: [
       { method: 'POST', path: '/v1/payments', headers: [{ k: 'Authorization', v: 'Bearer <token>' }, { k: 'Idempotency-Key', v: '<uuid>' }],
         req: '{\n  "amount": 1299,\n  "currency": "GBP",\n  "card_token": "tok_..."\n}',
         res: '{\n  "id": "pay_01H...",\n  "status": "AUTHORISED"\n}' },
       { method: 'GET', path: '/v1/payments/{id}', headers: [{ k: 'Authorization', v: 'Bearer <token>' }], req: '', res: '{\n  "id": "pay_01H...",\n  "status": "CAPTURED"\n}' },
     ] });
-  const cache = makeNode('cache', 740, 90, { name: 'session-cache', hitRatio: 0.85 });
-  const db = makeNode('db', 740, 290, {
+  const cache = makeNode('cache', 960, 60, { name: 'session-cache', hitRatio: 0.85 });
+  const db = makeNode('db', 960, 260, {
     name: 'payments-db', maxQps: 4000, replicas: 2, readShare: 0.85, latency: 6, tables: [
       { name: 'payments', columns: [
         { name: 'id', type: 'uuid', pk: true, nullable: false }, { name: 'merchant_id', type: 'uuid', pk: false, nullable: false },
@@ -82,10 +82,10 @@ export function exampleDoc(): Doc {
         { name: 'id', type: 'uuid', pk: true, nullable: false }, { name: 'payment_id', type: 'uuid', pk: false, nullable: false },
         { name: 'amount_minor', type: 'bigint', pk: false, nullable: false } ] },
     ] });
-  const q = makeNode('queue', 740, 460, {
+  const q = makeNode('queue', 960, 460, {
     name: 'events', topics: [{ name: 'payments.authorised', partitions: 12,
       schema: '{\n  "type": "record",\n  "name": "PaymentAuthorised",\n  "namespace": "com.example.payments",\n  "fields": [\n    {"name": "paymentId", "type": "string"},\n    {"name": "amountMinor", "type": "long"},\n    {"name": "currency", "type": "string"}\n  ]\n}' }] });
-  const worker = makeNode('service', 990, 460, { name: 'ledger-worker', rpsPerInstance: 400, instances: 4, latency: 40 });
+  const worker = makeNode('service', 1280, 460, { name: 'ledger-worker', rpsPerInstance: 400, instances: 8, latency: 40 });
   const doc: Doc = {
     targetRps: 5000, nodes: [clients, lb, api, cache, db, q, worker], edges: [
       { id: 'e1', from: clients.id, to: lb.id, calls: 1 },

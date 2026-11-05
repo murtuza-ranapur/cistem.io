@@ -1,7 +1,7 @@
 import { KINDS, NODE_H, type Doc } from './model';
 
-const COL_GAP = 60;   // horizontal space between columns (beyond node width)
-const ROW_GAP = 28;   // vertical space between nodes in a column
+const COL_GAP = 120;   // horizontal space between columns (beyond node width)
+const ROW_GAP = 40;   // vertical space between nodes in a column
 const ORIGIN = { x: 40, y: 40 };
 
 export type Positions = Record<string, { x: number; y: number }>;

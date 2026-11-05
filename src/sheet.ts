@@ -1,7 +1,9 @@
 import { KINDS, METHODS, PG_TYPES, EVICTIONS, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode } from './model';
-import { state, fmt, esc, current, on, renderCanvas, renderAll } from './state';
+import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select } from './state';
+import * as history from './history';
 
-const sheet = document.getElementById('sheet') as HTMLElement;
+const inspector = document.getElementById('inspector') as HTMLElement;
+let tab: 'capacity' | 'schema' = 'capacity';
 const body = document.getElementById('sheetBody') as HTMLElement;
 
 const icon = (kind: string) => `<svg style="stroke:var(--c-${kind});fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><use href="#ic-${kind}"/></svg>`;
@@ -15,23 +17,36 @@ const ta = (path: string, label: string, val: string, validate = '') =>
 const addBtn = (action: string, label: string) => `<button class="small" data-action="${action}">+ ${label}</button>`;
 const xBtn = (action: string) => `<button class="x" data-action="${action}" aria-label="Remove">×</button>`;
 
-function nodeSheet(n: Node): string {
-  const r = state.results.nodes[n.id];
-  const tall = sheet.classList.contains('tall');
-  let h = `<div class="head"><span class="k" style="color:var(--c-${n.kind})">${icon(n.kind)}${KINDS[n.kind].label}</span><strong>${esc(n.name)}</strong><span class="spacer"></span><button class="small ghost" id="tallBtn">${tall ? 'Shrink' : 'Expand'}</button></div>`;
-  h += '<div class="props">' + inp('name', 'name', n.name);
-  KINDS[n.kind].fields.forEach(([key, lbl]) => { h += inp(key, lbl, (n as any)[key], 'number'); });
-  if (n.kind === 'cache') h += selIn('eviction', 'eviction policy', n.eviction, EVICTIONS);
-  h += '</div>';
+function hasSchema(n: Node) { return n.kind === 'service' || n.kind === 'db' || n.kind === 'queue'; }
+const schemaLabel = (n: Node) => n.kind === 'service' ? 'Endpoints' : n.kind === 'db' ? 'Tables' : 'Topics';
 
+function capacityTab(n: Node): string {
+  const r = state.results.nodes[n.id];
+  let h = '<div class="tab"><div class="props">' + inp('name', 'name', n.name).replace('<label>', '<label class="wide">');
+  KINDS[n.kind].fields.forEach(([key, lbl]) => { h += inp(key, lbl, (n as any)[key], 'number'); });
+  if (n.kind === 'cache') h += selIn('eviction', 'eviction policy', n.eviction, EVICTIONS).replace('<label>', '<label class="wide">');
   if (n.kind === 'entry') {
     const ps = (n as EntryNode).platforms || [];
-    h += `<div class="props" style="margin-top:8px"><label>platforms<div class="chips">${['web', 'app'].map(p => `<button data-platform="${p}" class="${ps.includes(p) ? 'on' : ''}">${p === 'web' ? 'Web' : 'App'}</button>`).join('')}</div></label></div>`;
-    h += `<div class="result">Entry point. Target load is set in the top bar.</div>`;
-  } else {
-    h += `<div class="result"><span>load <b>${fmt(r.load)} rps</b></span><span>capacity <b>${fmt(r.cap)} rps</b></span><span>utilisation <b>${isFinite(r.util) ? Math.round(r.util * 100) + '%' : '∞'}</b></span><span>headroom <b>${isFinite(r.cap) ? fmt(Math.max(0, r.cap - r.load)) : '∞'} rps</b></span><span>eff. latency <b>${r.lat.toFixed(1)} ms</b></span></div>`;
+    h += `<label class="wide">platforms<div class="chips">${['web', 'app'].map(p => `<button data-platform="${p}" class="${ps.includes(p) ? 'on' : ''}">${p === 'web' ? 'Web' : 'App'}</button>`).join('')}</div></label>`;
   }
+  h += '</div>';
+  if (n.kind === 'entry') h += `<p class="note">Entry point. Every request starts here; set the target in the top bar.</p>`;
+  else {
+    const pct = isFinite(r.util) ? Math.round(r.util * 100) : 100;
+    h += `<div class="stats">
+      <div class="stat-tile"><div class="l">load</div><div class="v">${fmt(r.load)} <small>rps</small></div></div>
+      <div class="stat-tile"><div class="l">capacity</div><div class="v">${fmt(r.cap)} <small>rps</small></div></div>
+      <div class="stat-tile ${r.status}"><div class="l">utilisation</div><div class="v">${isFinite(r.util) ? pct + '%' : '∞'}</div></div>
+      <div class="stat-tile"><div class="l">eff. latency</div><div class="v">${r.lat.toFixed(1)} <small>ms</small></div></div>
+      <div class="meter ${r.status}"><i style="width:${Math.min(100, pct)}%"></i></div>
+    </div>`;
+    h += `<p class="note">Headroom ${isFinite(r.cap) ? fmt(Math.max(0, r.cap - r.load)) + ' rps' : 'unlimited'}. Latency inflates as utilisation climbs (M/M/1 approximation).</p>`;
+  }
+  return h + '</div>';
+}
 
+function schemaTab(n: Node): string {
+  let h = '<div class="tab">';
   if (n.kind === 'service') {
     const eps = (n as ServiceNode).endpoints || [];
     h += `<section class="list"><h3>Endpoints <span class="spacer"></span>${addBtn('add-endpoint', 'endpoint')}</h3>`;
@@ -39,7 +54,7 @@ function nodeSheet(n: Node): string {
       h += `<div class="item"><div class="row ep">${selIn(`endpoints.${i}.method`, 'method', ep.method, METHODS, 'method')}${inp(`endpoints.${i}.path`, 'path', ep.path, 'text', 'placeholder="/v1/resource/{id}"')}${xBtn(`rm-endpoint:${i}`)}</div>`;
       h += `<div class="sub">Headers <span class="spacer"></span>${addBtn(`add-header:${i}`, 'header')}</div>`;
       (ep.headers || []).forEach((hd, j) => { h += `<div class="row hdr">${inp(`endpoints.${i}.headers.${j}.k`, 'name', hd.k)}${inp(`endpoints.${i}.headers.${j}.v`, 'value', hd.v)}${xBtn(`rm-header:${i}:${j}`)}</div>`; });
-      h += `<div class="row">${ta(`endpoints.${i}.req`, 'request body (JSON)', ep.req, 'json')}${ta(`endpoints.${i}.res`, 'response body (JSON)', ep.res, 'json')}</div></div>`;
+      h += `<div class="row stack">${ta(`endpoints.${i}.req`, 'request body (JSON)', ep.req, 'json')}${ta(`endpoints.${i}.res`, 'response body (JSON)', ep.res, 'json')}</div></div>`;
     });
     if (!eps.length) h += '<p class="empty">No endpoints yet.</p>';
     h += '</section>';
@@ -48,7 +63,7 @@ function nodeSheet(n: Node): string {
     const ts = (n as DbNode).tables || [];
     h += `<section class="list"><h3>Tables <span class="spacer"></span>${addBtn('add-table', 'table')}</h3>`;
     ts.forEach((t, i) => {
-      h += `<div class="item"><div class="row" style="grid-template-columns:1fr auto">${inp(`tables.${i}.name`, 'table', t.name)}${xBtn(`rm-table:${i}`)}</div>`;
+      h += `<div class="item"><div class="row one">${inp(`tables.${i}.name`, 'table', t.name)}${xBtn(`rm-table:${i}`)}</div>`;
       h += `<div class="sub">Columns <span class="spacer"></span>${addBtn(`add-column:${i}`, 'column')}</div>`;
       (t.columns || []).forEach((c, j) => {
         const types = PG_TYPES.includes(c.type) ? PG_TYPES : [c.type, ...PG_TYPES];
@@ -64,21 +79,30 @@ function nodeSheet(n: Node): string {
     h += `<section class="list"><h3>Topics <span class="spacer"></span>${addBtn('add-topic', 'topic')}</h3>`;
     ts.forEach((t, i) => {
       h += `<div class="item"><div class="row topic">${inp(`topics.${i}.name`, 'topic', t.name, 'text', 'placeholder="domain.event"')}${inp(`topics.${i}.partitions`, 'partitions', t.partitions, 'number')}${xBtn(`rm-topic:${i}`)}</div>`;
-      h += `<div class="row">${ta(`topics.${i}.schema`, 'Avro schema (JSON)', t.schema, 'avro')}</div></div>`;
+      h += `<div class="row stack">${ta(`topics.${i}.schema`, 'Avro schema (JSON)', t.schema, 'avro')}</div></div>`;
     });
     if (!ts.length) h += '<p class="empty">No topics yet.</p>';
     h += '</section>';
   }
+  return h + '</div>';
+}
+
+function nodeSheet(n: Node): string {
+  let h = `<div class="head"><span class="k" style="color:var(--c-${n.kind})">${icon(n.kind)}${KINDS[n.kind].label}</span><strong>${esc(n.name)}</strong><span class="spacer"></span>${n.kind !== 'entry' ? `<button class="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button>` : ''}</div>`;
+  if (hasSchema(n)) {
+    h += `<div class="tabs"><button data-tab="capacity" class="${tab === 'capacity' ? 'on' : ''}">Capacity</button><button data-tab="schema" class="${tab === 'schema' ? 'on' : ''}">${schemaLabel(n)}</button></div>`;
+    h += tab === 'schema' ? schemaTab(n) : capacityTab(n);
+  } else h += capacityTab(n);
   return h;
 }
 
 function edgeSheet(e: Edge): string {
   const a = state.doc.nodes.find(n => n.id === e.from)!, b = state.doc.nodes.find(n => n.id === e.to)!;
-  let h = `<div class="head"><span class="k">Edge</span><strong>${esc(a.name)} → ${esc(b.name)}</strong></div><div class="props">${inp('calls', 'calls per incoming request', e.calls, 'number', 'min="0"')}`;
+  let h = `<div class="head"><span class="k">Edge</span><strong>${esc(a.name)} → ${esc(b.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-edge" title="Delete" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div><div class="tab"><div class="props">${inp('calls', 'calls per incoming request', e.calls, 'number', 'min="0"').replace('<label>', '<label class="wide">')}`;
   if (b.kind === 'service' && (b.endpoints || []).length) {
-    h += `<label>endpoint called<select data-path="endpoint" data-int="1"><option value="">(unspecified)</option>${b.endpoints.map((ep, i) => `<option value="${i}" ${e.endpoint === i ? 'selected' : ''}>${esc(ep.method + ' ' + ep.path)}</option>`).join('')}</select></label>`;
+    h += `<label class="wide">endpoint called<select data-path="endpoint" data-int="1"><option value="">(unspecified)</option>${b.endpoints.map((ep, i) => `<option value="${i}" ${e.endpoint === i ? 'selected' : ''}>${esc(ep.method + ' ' + ep.path)}</option>`).join('')}</select></label>`;
   }
-  h += `</div><div class="result"><span>carries <b>${fmt(state.results.edges[e.id] || 0)} rps</b></span>${a.kind === 'cache' ? '<span>after cache hits are removed</span>' : ''}${a.kind === 'lb' ? '<span>load balancer splits evenly across its outgoing edges</span>' : ''}</div>`;
+  h += `</div><div class="stats"><div class="stat-tile"><div class="l">carries</div><div class="v">${fmt(state.results.edges[e.id] || 0)} <small>rps</small></div></div></div>${a.kind === 'cache' ? '<p class="note">Only cache misses travel down this edge.</p>' : ''}${a.kind === 'lb' ? '<p class="note">The load balancer splits its traffic evenly across outgoing edges.</p>' : ''}</div>`;
   return h;
 }
 
@@ -99,16 +123,17 @@ function validateJson(t: HTMLTextAreaElement) {
 
 export function drawSheet() {
   const t = current();
-  if (!t) {
-    state.sel = null;
-    body.innerHTML = '<p class="empty">Tap a node or edge to edit it. Drag nodes to move, drag empty space to pan, pinch or scroll to zoom.</p>';
-    return;
-  }
+  if (!t) { state.sel = null; inspector.classList.add('closed'); return; }
+  inspector.classList.remove('closed');
   body.innerHTML = state.sel!.type === 'node' ? nodeSheet(t as Node) : edgeSheet(t as Edge);
   body.querySelectorAll<HTMLTextAreaElement>('textarea[data-validate]').forEach(validateJson);
-  const tb = document.getElementById('tallBtn');
-  if (tb) tb.onclick = () => { sheet.classList.toggle('tall'); tb.textContent = sheet.classList.contains('tall') ? 'Shrink' : 'Expand'; };
+  body.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab as typeof tab; drawSheet(); });
 }
+
+// Snapshot once per focus session so typing a value is one undo step.
+let editing: HTMLElement | null = null;
+body.addEventListener('focusin', ev => { const f = ev.target as HTMLElement; if ((f as any).dataset?.path && f !== editing) { editing = f; history.snapshot(state.doc); } });
+body.addEventListener('focusout', () => { editing = null; });
 
 body.addEventListener('input', ev => {
   const f = ev.target as HTMLInputElement;
@@ -125,6 +150,9 @@ body.addEventListener('click', ev => {
   const b = (ev.target as Element).closest('[data-action],[data-platform]') as HTMLElement | null;
   if (!b) return;
   const n = current() as any; if (!n) return;
+  if (b.dataset.action === 'delete-node') { mutate(() => { state.doc.nodes = state.doc.nodes.filter(x => x.id !== n.id); state.doc.edges = state.doc.edges.filter(e => e.from !== n.id && e.to !== n.id); }); select(null); renderAll(); return; }
+  if (b.dataset.action === 'delete-edge') { mutate(() => { state.doc.edges = state.doc.edges.filter(e => e.id !== n.id); }); select(null); renderAll(); return; }
+  history.snapshot(state.doc);
   if (b.dataset.platform) {
     const p = b.dataset.platform;
     n.platforms = n.platforms || [];
