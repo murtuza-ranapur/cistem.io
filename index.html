@@ -21,15 +21,20 @@
   <symbol id="ic-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
   <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
   <symbol id="ic-save" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></symbol>
+  <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+  <symbol id="ic-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/></symbol>
+  <symbol id="ic-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
   <symbol id="ic-example" viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></symbol>
 </svg>
 
 <div id="app">
   <header id="top">
+    <button class="icon" id="drawerBtn" title="Diagrams" aria-label="Diagrams"><svg><use href="#ic-menu"/></svg></button>
     <div class="brand"><span class="logo"></span>cistem<span class="tld">.io</span></div>
     <input id="title" class="title" type="text" aria-label="Diagram title" placeholder="Untitled system">
     <label class="target">Target <input id="rps" type="number" min="1" step="100" value="5000" aria-label="Target requests per second"><span class="unit">rps</span></label>
     <input id="rpsRange" type="range" min="100" max="50000" step="100" value="5000" aria-label="Target requests per second slider">
+    <span class="sync" id="sync" title="Not connected to the API"><span class="sdot"></span><span id="syncText">offline</span></span>
     <div class="verdict" id="verdictWrap"><span class="dot"></span><span id="verdict">—</span><span id="lat" class="lat"></span></div>
     <div class="actions">
       <button class="icon" id="undoBtn" title="Undo (⌘Z)" aria-label="Undo"><svg><use href="#ic-undo"/></svg></button>
@@ -38,7 +43,9 @@
       <button class="icon" id="layoutBtn" title="Auto-organise (O)" aria-label="Auto-organise"><svg><use href="#ic-organise"/></svg></button>
       <button class="icon" id="zfit" title="Fit to view (⌘0)" aria-label="Fit to view"><svg><use href="#ic-fit"/></svg></button>
       <span class="sep"></span>
-      <button class="icon" id="ioBtn" title="Save / load JSON" aria-label="Save or load"><svg><use href="#ic-save"/></svg></button>
+      <button class="icon" id="shareBtn" title="Share link" aria-label="Share"><svg><use href="#ic-share"/></svg></button>
+      <button class="icon" id="ioBtn" title="Export / import JSON" aria-label="Export or import"><svg><use href="#ic-save"/></svg></button>
+      <button class="icon" id="settingsBtn" title="API connection" aria-label="API connection"><svg><use href="#ic-cog"/></svg></button>
       <button class="icon" id="resetBtn" title="Load example" aria-label="Load example"><svg><use href="#ic-example"/></svg></button>
     </div>
   </header>
@@ -75,7 +82,30 @@
     <div id="sheetBody"></div>
   </aside>
 
-  <div id="io" hidden>
+  <aside id="drawer" hidden aria-label="Diagrams">
+    <div class="dhead"><strong>Diagrams</strong><span class="spacer"></span><button class="small primary" id="newDiagram">+ New</button><button class="icon" id="drawerClose" aria-label="Close">×</button></div>
+    <div id="drawerList"></div>
+    <div class="dfoot"><button class="small" id="saveAsNew">Save current as new</button></div>
+  </aside>
+
+  <div id="conflict" class="banner" hidden>
+    <span>This diagram was changed elsewhere.</span>
+    <button class="small" id="conflictTheirs">Load theirs</button>
+    <button class="small primary" id="conflictMine">Keep mine</button>
+  </div>
+  <div id="toast" class="banner" hidden></div>
+
+  <div id="settings" class="modal" hidden>
+    <div class="io-card">
+      <div class="io-head"><strong>API connection</strong><button class="icon" id="settingsClose" aria-label="Close">×</button></div>
+      <p class="note">Diagrams are saved to the cistem API when connected. Leave the URL empty to work offline in this browser only.</p>
+      <label class="field">API URL<input id="apiUrl" type="url" placeholder="https://api-production-xxxx.up.railway.app" spellcheck="false"></label>
+      <label class="field">API key<input id="apiKey" type="password" autocomplete="off" spellcheck="false"></label>
+      <div class="io-row"><button id="settingsSave" class="primary">Connect</button><span class="muted" id="settingsMsg"></span></div>
+    </div>
+  </div>
+
+  <div id="io" class="modal" hidden>
     <div class="io-card">
       <div class="io-head"><strong>Diagram JSON</strong><button class="icon" id="ioClose" aria-label="Close">×</button></div>
       <textarea id="json" aria-label="Diagram JSON" spellcheck="false"></textarea>

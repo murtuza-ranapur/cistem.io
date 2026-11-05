@@ -65,5 +65,7 @@ export function loadExample() { replaceDoc(exampleDoc(), { title: 'Checkout exam
 type Listener = () => void;
 const listeners: Record<'canvas' | 'sheet', Listener[]> = { canvas: [], sheet: [] };
 export function on(evt: 'canvas' | 'sheet', fn: Listener) { listeners[evt].push(fn); }
-export function renderCanvas() { recompute(); listeners.canvas.forEach(f => f()); persist(); }
+const afterRender: Listener[] = [];
+export function onAfterRender(fn: Listener) { afterRender.push(fn); }
+export function renderCanvas() { recompute(); listeners.canvas.forEach(f => f()); persist(); afterRender.forEach(f => f()); }
 export function renderAll() { renderCanvas(); listeners.sheet.forEach(f => f()); }

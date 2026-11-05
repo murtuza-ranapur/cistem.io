@@ -5,6 +5,8 @@ import { fit, zoomAt, hint, addNode, nudge } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import './sheet';
+import { cloud, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, toggleShare, openSettings, onSyncStatus, bootCloud } from './cloud';
+import { onAfterRender } from './state';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const svg = $<HTMLElement>('svg');
@@ -139,11 +141,39 @@ $('loadJson').onclick = () => {
   catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); }
 };
 
+// ---------- cloud ----------
+onAfterRender(scheduleSave);
+const syncEl = $('sync'), syncText = $('syncText'), conflictEl = $('conflict'), toastEl = $('toast');
+let toastTimer = 0;
+function toast(t: string, ms = 2200) { toastEl.textContent = t; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = window.setTimeout(() => (toastEl.hidden = true), ms); }
+onSyncStatus((s, detail) => {
+  syncEl.className = 'sync ' + s;
+  syncText.textContent = { offline: 'offline', saved: 'saved', saving: 'saving…', dirty: 'unsaved', conflict: 'conflict', error: 'error', readonly: 'read-only' }[s];
+  syncEl.title = detail || { offline: 'Working in this browser only. Click to connect.', saved: 'All changes saved to the API', saving: 'Saving…', dirty: 'Changes pending', conflict: 'Changed elsewhere', error: 'Save failed', readonly: 'Shared link: changes stay local' }[s];
+  conflictEl.hidden = s !== 'conflict';
+  if (s === 'error' && detail) toast(detail, 4000);
+  titleInput.readOnly = s === 'readonly';
+});
+syncEl.onclick = () => { if (cloud.status === 'offline') { cloud.id ? saveNow() : saveAsNew(); } else if (cloud.status === 'dirty' || cloud.status === 'error') saveNow(); };
+$('conflictTheirs').onclick = () => resolveConflict('theirs');
+$('conflictMine').onclick = () => resolveConflict('mine');
+$('drawerBtn').onclick = openDrawer; $('drawerClose').onclick = closeDrawer;
+$('newDiagram').onclick = newDiagram; $('saveAsNew').onclick = () => { saveAsNew(); closeDrawer(); };
+$('settingsBtn').onclick = openSettings;
+$('shareBtn').onclick = async () => {
+  if (!cloud.id) { toast('Save to the API first to share'); return; }
+  try {
+    const url = await toggleShare();
+    if (!url) { toast('Share link removed'); return; }
+    try { await navigator.clipboard.writeText(url); toast('Share link copied'); } catch { prompt('Share link', url); }
+  } catch (e) { toast((e as Error).message, 4000); }
+};
+document.addEventListener('cistem:opened', () => { setRps(state.doc.targetRps); syncTitle(); refreshHistory(); });
+document.addEventListener('keydown', ev => { if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); cloud.id ? saveNow() : saveAsNew(); } });
+
 // ---------- boot ----------
-if (!restore()) state.doc = (loadExample(), state.doc);
-history.reset();
-setRps(state.doc.targetRps);
-syncTitle();
-refreshHistory();
-requestAnimationFrame(() => fit(false));
+(async () => {
+  const fromCloud = await bootCloud();
+  if (!fromCloud) { if (!restore()) loadExample(); history.reset(); setRps(state.doc.targetRps); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false)); }
+})();
 void current;
