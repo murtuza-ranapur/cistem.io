@@ -1,0 +1,26 @@
+{
+  "name": "cistem",
+  "version": "0.1.0",
+  "description": "Loadmap: system-design sketches with capacity modelling",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Murtuza-ranapur/cistem.io.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Murtuza-ranapur/cistem.io/issues"
+  },
+  "homepage": "https://github.com/Murtuza-ranapur/cistem.io#readme",
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  },
+  "private": true
+}
