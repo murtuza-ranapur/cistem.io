@@ -1,4 +1,5 @@
-import { adopt, exampleDoc, type Doc, type Node, type Edge } from './model';
+import { exampleDoc, type Doc, type Node, type Edge } from './model';
+import { toFile, fromFile, type DiagramFile } from './document';
 import { compute, type Results } from './engine';
 import * as history from './history';
 
@@ -11,6 +12,7 @@ export const state = {
   /** extra node ids selected alongside `sel` (multi-select) */
   multi: new Set<string>(),
   results: {} as Results,
+  meta: { title: 'Untitled system', created: new Date().toISOString(), updated: new Date().toISOString() } as DiagramFile['meta'],
 };
 
 export const fmt = (v: number) =>
@@ -40,17 +42,25 @@ export function mutate(fn: () => void) { history.snapshot(state.doc); fn(); }
 export function undo() { const d = history.undo(state.doc); if (d) { state.doc = d; state.sel = null; state.multi.clear(); renderAll(); } }
 export function redo() { const d = history.redo(state.doc); if (d) { state.doc = d; state.sel = null; state.multi.clear(); renderAll(); } }
 
-const KEY = 'loadmap.doc';
-export function persist() { try { localStorage.setItem(KEY, JSON.stringify(state.doc)); } catch { /* storage unavailable */ } }
+const KEY = 'cistem.doc';
+const LEGACY_KEY = 'loadmap.doc';
+export function serialize(): string { return JSON.stringify(toFile(state.doc, state.meta), null, 2); }
+export function persist() { try { localStorage.setItem(KEY, JSON.stringify(toFile(state.doc, state.meta))); } catch { /* storage unavailable */ } }
 export function restore(): boolean {
   try {
-    const s = localStorage.getItem(KEY);
-    if (s) { const d = JSON.parse(s); if (d && Array.isArray(d.nodes) && d.nodes.length) { state.doc = adopt(d); return true; } }
+    const s = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
+    if (s) { const { doc, meta } = fromFile(JSON.parse(s)); if (doc.nodes.length) { state.doc = doc; state.meta = meta; return true; } }
   } catch { /* ignore */ }
   return false;
 }
-export function replaceDoc(d: Doc) { history.snapshot(state.doc); state.doc = d; state.sel = null; state.multi.clear(); }
-export function loadExample() { replaceDoc(exampleDoc()); }
+export function replaceDoc(d: Doc, meta?: DiagramFile['meta']) {
+  history.snapshot(state.doc); state.doc = d; state.sel = null; state.multi.clear();
+  const now = new Date().toISOString();
+  state.meta = meta ?? { title: 'Untitled system', created: now, updated: now };
+}
+/** Load any supported file version (migrating as needed). */
+export function loadFile(input: unknown) { const { doc, meta } = fromFile(input); replaceDoc(doc, meta); }
+export function loadExample() { replaceDoc(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() }); }
 
 type Listener = () => void;
 const listeners: Record<'canvas' | 'sheet', Listener[]> = { canvas: [], sheet: [] };
