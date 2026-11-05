@@ -1,0 +1,21 @@
+spring:
+  application.name: cistem-api
+  threads.virtual.enabled: true
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/cistem}
+    username: ${PGUSER:cistem}
+    password: ${PGPASSWORD:cistem}
+  flyway.enabled: true
+  jackson.default-property-inclusion: non_null
+
+server:
+  port: ${PORT:8080}
+  compression.enabled: true
+
+cistem:
+  api-key: ${CISTEM_API_KEY:}          # empty = no auth (local dev only)
+  allowed-origins: ${CISTEM_ALLOWED_ORIGINS:http://localhost:5173,https://murtuza-ranapur.github.io}
+
+management:
+  endpoints.web.exposure.include: health
+  endpoint.health.probes.enabled: true
