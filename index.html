@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Loadmap</title>
+<title>cistem.io</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 </head>
 <body>
@@ -26,7 +26,8 @@
 
 <div id="app">
   <header id="top">
-    <div class="brand"><span class="logo"></span>Loadmap</div>
+    <div class="brand"><span class="logo"></span>cistem<span class="tld">.io</span></div>
+    <input id="title" class="title" type="text" aria-label="Diagram title" placeholder="Untitled system">
     <label class="target">Target <input id="rps" type="number" min="1" step="100" value="5000" aria-label="Target requests per second"><span class="unit">rps</span></label>
     <input id="rpsRange" type="range" min="100" max="50000" step="100" value="5000" aria-label="Target requests per second slider">
     <div class="verdict" id="verdictWrap"><span class="dot"></span><span id="verdict">—</span><span id="lat" class="lat"></span></div>

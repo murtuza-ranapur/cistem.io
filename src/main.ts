@@ -1,6 +1,6 @@
 import './style.css';
-import { adopt, type Kind } from './model';
-import { state, current, restore, loadExample, replaceDoc, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
+import { type Kind } from './model';
+import { state, current, restore, loadExample, loadFile, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
 import { fit, zoomAt, hint, addNode, nudge } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
@@ -19,6 +19,12 @@ const onRps = (v: number) => { if (!rpsSnapshotted) { history.snapshot(state.doc
 rpsInput.addEventListener('input', () => onRps(+rpsInput.value || 0));
 rpsRange.addEventListener('input', () => onRps(+rpsRange.value));
 [rpsInput, rpsRange].forEach(e => e.addEventListener('change', () => (rpsSnapshotted = false)));
+
+// ---------- title ----------
+const titleInput = $<HTMLInputElement>('title');
+const syncTitle = () => { titleInput.value = state.meta.title; document.title = `${state.meta.title} · cistem.io`; };
+titleInput.addEventListener('focus', () => history.snapshot(state.doc));
+titleInput.addEventListener('input', () => { state.meta.title = titleInput.value || 'Untitled system'; document.title = `${state.meta.title} · cistem.io`; renderCanvas(); });
 
 // ---------- undo / redo ----------
 const undoBtn = $<HTMLButtonElement>('undoBtn'), redoBtn = $<HTMLButtonElement>('redoBtn');
@@ -84,7 +90,7 @@ $('layoutBtn').onclick = organise;
 $('zin').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
 $('zout').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
 $('zfit').onclick = () => fit();
-$('resetBtn').onclick = () => { loadExample(); setRps(state.doc.targetRps); fit(); };
+$('resetBtn').onclick = () => { loadExample(); setRps(state.doc.targetRps); syncTitle(); fit(); };
 
 // ---------- keyboard ----------
 document.addEventListener('keydown', ev => {
@@ -117,26 +123,27 @@ document.addEventListener('keydown', ev => {
 // ---------- save / load ----------
 const io = $('io'), jta = $<HTMLTextAreaElement>('json');
 const msg = (t: string) => { const m = $('ioMsg'); m.textContent = t; setTimeout(() => { m.textContent = ''; }, 1800); };
-const openIo = () => { io.hidden = false; jta.value = JSON.stringify(state.doc, null, 1); jta.focus(); };
+const openIo = () => { io.hidden = false; jta.value = serialize(); jta.focus(); };
 const closeIo = () => { io.hidden = true; };
 $('ioBtn').onclick = openIo;
 $('ioClose').onclick = closeIo;
 io.addEventListener('click', ev => { if (ev.target === io) closeIo(); });
 io.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeIo(); });
 $('copyJson').onclick = () => {
-  jta.value = JSON.stringify(state.doc, null, 1);
+  jta.value = serialize();
   const fb = () => { jta.select(); msg('Select and copy manually'); };
   try { navigator.clipboard.writeText(jta.value).then(() => msg('Copied'), fb); } catch { fb(); }
 };
 $('loadJson').onclick = () => {
-  try { replaceDoc(adopt(JSON.parse(jta.value))); setRps(state.doc.targetRps); fit(); closeIo(); }
-  catch { msg('Not valid Loadmap JSON'); }
+  try { loadFile(JSON.parse(jta.value)); setRps(state.doc.targetRps); syncTitle(); fit(); closeIo(); }
+  catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); }
 };
 
 // ---------- boot ----------
 if (!restore()) state.doc = (loadExample(), state.doc);
 history.reset();
 setRps(state.doc.targetRps);
+syncTitle();
 refreshHistory();
 requestAnimationFrame(() => fit(false));
 void current;

@@ -1,4 +1,4 @@
-/* Loadmap — desktop-first three-pane shell; stacks on narrow screens. */
+/* cistem.io — desktop-first three-pane shell; stacks on narrow screens. */
 :root{
   --bg:#f5f6f7; --panel:#ffffff; --panel-2:#fafbfb; --fg:#1b1f24; --muted:#687079; --line:#e1e4e8; --line-2:#eef0f2; --grid:#cfd4d9;
   --accent:#b86a12; --node:#ffffff; --node-line:#c9ced4; --edge:#9aa3ad; --sel:#2b6cb0; --sel-soft:rgba(43,108,176,.14);
@@ -48,7 +48,11 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 #app{height:100%;display:grid;grid-template-rows:48px 1fr;grid-template-columns:64px 1fr auto;grid-template-areas:"top top top" "rail stage inspector"}
 #top{grid-area:top;display:flex;align-items:center;gap:14px;padding:0 14px 0 16px;background:var(--panel);border-bottom:1px solid var(--line);position:relative;z-index:5}
 .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;letter-spacing:.01em;margin-right:6px}
+.brand .tld{color:var(--muted);font-weight:400}
 .logo{width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,var(--c-service),var(--c-entry))}
+.title{border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 8px;font-weight:500;font-size:13px;width:200px;min-width:0;transition:border-color var(--t) var(--ease),background var(--t) var(--ease)}
+.title:hover{border-color:var(--line)}
+.title:focus{border-color:var(--sel);background:var(--bg);outline:none}
 .target{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
 .target input{width:84px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-family:var(--mono);font-size:13px;color:var(--fg)}
 .target .unit{font-family:var(--mono)}
@@ -191,6 +195,7 @@ section.list h3 .spacer{flex:1}
 @media (max-width:900px){
   #app{grid-template-rows:auto auto 1fr auto;grid-template-columns:1fr;grid-template-areas:"top" "rail" "stage" "inspector"}
   #top{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
+  .title{width:120px}
   #rpsRange{display:none}
   #rail{flex-direction:row;border-right:none;border-bottom:1px solid var(--line);padding:6px 8px;overflow-x:auto;gap:2px}
   #rail .comp{width:48px;height:44px}

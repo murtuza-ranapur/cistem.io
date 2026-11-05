@@ -50,7 +50,7 @@ export function makeNode(kind: Kind, x: number, y: number, props: Record<string,
 /** Fill in any fields a loaded document is missing (older saves, hand-edited JSON). */
 export function adopt(d: unknown): Doc {
   const doc = d as Doc;
-  if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a Loadmap document');
+  if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a cistem.io document');
   doc.nodes.forEach(n => {
     if (!KINDS[n.kind]) throw new Error('unknown kind ' + n.kind);
     const defs = KINDS[n.kind].defaults;
