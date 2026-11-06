@@ -113,7 +113,7 @@ document.addEventListener('keydown', ev => {
   const t = (ev.target as Element).tagName;
   const mod = ev.metaKey || ev.ctrlKey;
   if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') {
-    if (mod && ev.key.toLowerCase() === 'z' && t !== 'TEXTAREA' && (ev.target as HTMLInputElement).type !== 'text') { /* let native undo work in fields */ }
+    if (ev.key === 'Escape') (ev.target as HTMLElement).blur(); // leave the field; a second Escape clears the selection
     return;
   }
   if (mod && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); refreshHistory(); return; }
