@@ -11,15 +11,26 @@ import static org.junit.jupiter.api.Assertions.*;
 /** The Java engine and layout must produce exactly what src/engine.ts and src/layout.ts produce. */
 class ParityTest {
 
-    static JsonNode fixture() throws Exception {
-        try (InputStream in = ParityTest.class.getResourceAsStream("/parity.json")) {
+    static JsonNode fixture() throws Exception { return fixture("/parity.json"); }
+    static JsonNode fixture(String name) throws Exception {
+        try (InputStream in = ParityTest.class.getResourceAsStream(name)) {
             return new ObjectMapper().readTree(in);
         }
     }
 
     @Test
-    void engineMatchesTypeScript() throws Exception {
-        JsonNode f = fixture();
+    void engineMatchesTypeScript() throws Exception { engineMatches(fixture()); }
+
+    /** A service that publishes to Kafka and consumes its own topic: must converge, not loop. */
+    @Test
+    void selfConsumingLoopMatchesTypeScript() throws Exception {
+        JsonNode f = fixture("/parity-loop.json");
+        engineMatches(f);
+        assertTrue(Engine.compute(f.path("file").path("model")).verdict().converged());
+        layoutMatches(f);
+    }
+
+    void engineMatches(JsonNode f) {
         Engine.Results r = Engine.compute(f.path("file").path("model"));
         JsonNode exp = f.path("expected");
 
@@ -52,8 +63,9 @@ class ParityTest {
     }
 
     @Test
-    void layoutMatchesTypeScript() throws Exception {
-        JsonNode f = fixture();
+    void layoutMatchesTypeScript() throws Exception { layoutMatches(fixture()); }
+
+    void layoutMatches(JsonNode f) {
         var got = Layout.layered(f.path("file").path("model"));
         JsonNode exp = f.path("expected").path("layout");
         assertEquals(exp.size(), got.positions().size());

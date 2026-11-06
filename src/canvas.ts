@@ -1,4 +1,4 @@
-import { KINDS, NODE_H, ICON, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
+import { KINDS, NODE_H, ICON, nodeWidth, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
 import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
 
 const stage = document.getElementById('stage') as HTMLElement;
@@ -23,6 +23,7 @@ function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, 
 }
 const set = (e: Element, attrs: Record<string, string | number>) => { for (const k in attrs) e.setAttribute(k, String(attrs[k])); };
 const trunc = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
+const textWidth = (t: SVGTextElement) => { try { return t.getComputedTextLength(); } catch { return (t.textContent?.length ?? 0) * 7; } };
 const snap = (v: number) => Math.round(v / 8) * 8;
 export const fmtMs = (ms: number) => ms >= 100 ? Math.round(ms) + 'ms' : ms >= 10 ? ms.toFixed(0) + 'ms' : ms.toFixed(1) + 'ms';
 
@@ -42,13 +43,13 @@ function toScreen(x: number, y: number) {
 // ---------- geometry ----------
 type Side = 'n' | 'e' | 's' | 'w';
 function port(n: Node, side: Side) {
-  const w = KINDS[n.kind].w;
+  const w = nodeWidth(n);
   return side === 'e' ? { x: n.x + w, y: n.y + NODE_H / 2 } : side === 'w' ? { x: n.x, y: n.y + NODE_H / 2 }
     : side === 'n' ? { x: n.x + w / 2, y: n.y } : { x: n.x + w / 2, y: n.y + NODE_H };
 }
 /** Choose sides so the edge leaves/enters along the dominant direction. */
 function routeSides(a: Node, b: Node): [Side, Side] {
-  const ac = { x: a.x + KINDS[a.kind].w / 2, y: a.y + NODE_H / 2 }, bc = { x: b.x + KINDS[b.kind].w / 2, y: b.y + NODE_H / 2 };
+  const ac = { x: a.x + nodeWidth(a) / 2, y: a.y + NODE_H / 2 }, bc = { x: b.x + nodeWidth(b) / 2, y: b.y + NODE_H / 2 };
   const dx = bc.x - ac.x, dy = bc.y - ac.y;
   if (Math.abs(dx) * 1.2 >= Math.abs(dy)) return dx >= 0 ? ['e', 'w'] : ['w', 'e'];
   return dy >= 0 ? ['s', 'n'] : ['n', 's'];
@@ -84,7 +85,7 @@ export function computeFrames(): Record<string, Frame> {
   const order = [...doc.containers].sort((a, b) => depth(b.id) - depth(a.id)); // deepest first
   for (const c of order) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + KINDS[n.kind].w); y1 = Math.max(y1, n.y + NODE_H); }
+    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + nodeWidth(n)); y1 = Math.max(y1, n.y + NODE_H); }
     for (const k of doc.containers) if ((k.parent ?? null) === c.id && out[k.id]) { const f = out[k.id]; x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); }
     if (x0 === Infinity) { const st = doc.frames[c.id]; out[c.id] = st ? { ...st } : { x: 40, y: 40, w: 260, h: 140 }; continue; }
     out[c.id] = { x: x0 - FRAME_PAD, y: y0 - FRAME_PAD - FRAME_HEAD, w: x1 - x0 + FRAME_PAD * 2, h: y1 - y0 + FRAME_PAD * 2 + FRAME_HEAD };
@@ -124,9 +125,16 @@ function updateFrame(g: SVGGElement, c: Container, f: Frame) {
   set(g.querySelector('.fbody')!, { x: f.x, y: f.y, width: f.w, height: f.h });
   set(g.querySelector('.fhead')!, { x: f.x, y: f.y, width: f.w, rx: 12 });
   set(g.querySelector('.ficon')!, { x: f.x + 12, y: f.y + 8 });
-  const t = g.querySelector('.ftitle')!; set(t, { x: f.x + 32, y: f.y + 20 }); t.textContent = c.name;
-  const k = g.querySelector('.fkind')!; set(k, { x: f.x + 32 + c.name.length * 7.6 + 8, y: f.y + 20 }); k.textContent = CONTAINER_KINDS[c.kind].label.toLowerCase() + (c.provider ? ` · ${c.provider}` : '');
-  const m = g.querySelector('.fmeta')!; set(m, { x: f.x + f.w - 12, y: f.y + 20 }); m.textContent = c.owner ?? '';
+  const avail = f.w - 44;
+  const t = g.querySelector('.ftitle') as SVGTextElement; set(t, { x: f.x + 32, y: f.y + 20 });
+  t.textContent = c.name; let tw = textWidth(t); if (tw > avail) { t.textContent = trunc(c.name, Math.max(3, Math.floor(c.name.length * avail / tw))); tw = textWidth(t); }
+  const k = g.querySelector('.fkind') as SVGTextElement; set(k, { x: f.x + 32 + tw + 8, y: f.y + 20 });
+  k.textContent = CONTAINER_KINDS[c.kind].label.toLowerCase() + (c.provider ? ` · ${c.provider}` : '');
+  const kw = textWidth(k);
+  if (tw + 8 + kw > avail) k.textContent = '';
+  const m = g.querySelector('.fmeta') as SVGTextElement; set(m, { x: f.x + f.w - 12, y: f.y + 20 }); m.textContent = c.owner ?? '';
+  // owner sits at the right edge; drop it if it would run into the title/kind
+  if (m.textContent && textWidth(m) + 16 > f.w - (32 + tw + 8 + (k.textContent ? kw + 12 : 0))) m.textContent = '';
 }
 
 // ---------- keyed rendering ----------
@@ -136,7 +144,7 @@ const labelEls = new Map<string, SVGGElement>();
 let firstDraw = true;
 
 function buildNode(n: Node): SVGGElement {
-  const w = KINDS[n.kind].w;
+  const w = nodeWidth(n);
   const g = el('g', { class: 'node', 'data-node': n.id });
   g.appendChild(el('rect', { class: 'body', width: w, height: NODE_H, rx: 9 }));
   g.appendChild(el('rect', { class: 'accent', x: 0, y: 0, width: 3, height: NODE_H, rx: 1.5 }));
@@ -158,7 +166,10 @@ function buildNode(n: Node): SVGGElement {
   return g;
 }
 function updateNode(g: SVGGElement, n: Node) {
-  const r = state.results.nodes[n.id], w = KINDS[n.kind].w;
+  const r = state.results.nodes[n.id], w = nodeWidth(n);
+  set(g.querySelector('rect.body')!, { width: w });
+  if (n.kind !== 'entry') { set(g.querySelector('rect.bar')!, { width: w - 24 }); set(g.querySelector('.pct')!, { x: w - 12 }); }
+  (['e', 'n', 's'] as Side[]).forEach(sd => { const p = port({ ...n, x: 0, y: 0 } as Node, sd); set(g.querySelector(`[data-handle="${sd}"]`)!, { cx: p.x, cy: p.y }); });
   const isSel = (state.sel?.type === 'node' && state.sel.id === n.id) || state.multi.has(n.id);
   g.setAttribute('class', 'node k-' + n.kind + (isSel ? ' sel' : '') + (r.status === 'crit' ? ' crit' : '') + (g.classList.contains('enter') ? ' enter' : '') + (g.classList.contains('dragging') ? ' dragging' : ''));
   g.setAttribute('transform', `translate(${n.x} ${n.y})`);
@@ -413,7 +424,7 @@ svg.addEventListener('pointermove', ev => {
       const x = Math.min(drag.x0, w.x), y = Math.min(drag.y0, w.y), wd = Math.abs(w.x - drag.x0), ht = Math.abs(w.y - drag.y0);
       set(drag.rect, { x, y, width: wd, height: ht });
       state.multi.clear(); if (!drag.additive) state.sel = null;
-      state.doc.nodes.forEach(n => { const nw = KINDS[n.kind].w; if (n.x < x + wd && n.x + nw > x && n.y < y + ht && n.y + NODE_H > y) state.multi.add(n.id); });
+      state.doc.nodes.forEach(n => { const nw = nodeWidth(n); if (n.x < x + wd && n.x + nw > x && n.y < y + ht && n.y + NODE_H > y) state.multi.add(n.id); });
       renderCanvas(); break;
     }
   }
@@ -433,7 +444,7 @@ function up(ev: PointerEvent) {
         // re-home each dropped node by its centre; use the pointer for the primary node
         d.ids.forEach(id => {
           const n = state.doc.nodes.find(x => x.id === id)!;
-          const cx = n.x + KINDS[n.kind].w / 2, cy = n.y + NODE_H / 2;
+          const cx = n.x + nodeWidth(n) / 2, cy = n.y + NODE_H / 2;
           const into = containerAt(cx, cy);
           if ((n.container ?? null) !== into) n.container = into;
         });
@@ -482,7 +493,7 @@ svg.addEventListener('dblclick', ev => {
   const s = toScreen(n.x + 12 + ICON + 9, n.y + 26);
   const r = stage.getBoundingClientRect();
   renameBox.style.left = (s.x - r.left) + 'px'; renameBox.style.top = (s.y - r.top - 12) + 'px';
-  renameBox.style.width = Math.max(120, (KINDS[n.kind].w - 60) * state.view.k) + 'px';
+  renameBox.style.width = Math.max(120, (nodeWidth(n) - 60) * state.view.k) + 'px';
   renameBox.value = n.name; renameBox.hidden = false; renameBox.focus(); renameBox.select();
   const commit = () => { if (renameBox.hidden) return; renameBox.hidden = true; if (renameBox.value !== n.name) { mutate(() => (n.name = renameBox.value)); renderAll(); } };
   renameBox.onblur = commit;
@@ -509,7 +520,7 @@ export function fit(animated = true) {
   if (!doc.nodes.length && !doc.containers.length) return;
   const r = svg.getBoundingClientRect();
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  doc.nodes.forEach(n => { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + KINDS[n.kind].w); y1 = Math.max(y1, n.y + NODE_H); });
+  doc.nodes.forEach(n => { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + nodeWidth(n)); y1 = Math.max(y1, n.y + NODE_H); });
   Object.values(computeFrames()).forEach(f => { x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); });
   const pad = 48;
   const k = Math.min(1.5, Math.max(0.25, Math.min((r.width - pad * 2) / (x1 - x0), (r.height - pad * 2) / (y1 - y0))));
@@ -532,7 +543,7 @@ export function addNode(kind: Kind, x?: number, y?: number) {
     x = c.x - KINDS[kind].w / 2; y = c.y - NODE_H / 2;
   }
   const n = makeNode(kind, snap(x), snap(y));
-  n.container = containerAt(n.x + KINDS[kind].w / 2, n.y + NODE_H / 2);
+  n.container = containerAt(n.x + nodeWidth(n) / 2, n.y + NODE_H / 2);
   mutate(() => state.doc.nodes.push(n));
   select({ type: 'node', id: n.id });
   renderAll();

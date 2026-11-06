@@ -1,4 +1,4 @@
-import { KINDS, NODE_H, FRAME_PAD, FRAME_HEAD, ancestry, type Doc, type Frame } from './model';
+import { NODE_H, FRAME_PAD, FRAME_HEAD, nodeWidth, ancestry, type Doc, type Frame } from './model';
 
 const COL_GAP = 120;   // horizontal space between columns (beyond node width)
 const ROW_GAP = 40;    // vertical space between nodes in a column
@@ -51,7 +51,7 @@ function layoutLevel(doc: Doc, container: string | null, positions: Positions, f
     return i > 0 ? chain[i - 1] : null;
   };
   const items: Item[] = [
-    ...nodes.map(n => ({ id: n.id, w: KINDS[n.kind].w, h: NODE_H })),
+    ...nodes.map(n => ({ id: n.id, w: nodeWidth(n), h: NODE_H })),
     ...children.map(c => ({ id: c.id, w: blocks.get(c.id)!.w, h: blocks.get(c.id)!.h })),
   ];
   const itemIds = new Set(items.map(i => i.id));
