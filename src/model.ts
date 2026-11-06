@@ -54,6 +54,12 @@ export const KINDS: Record<Kind, KindDef> = {
 };
 
 export const NODE_H = 92;
+/** Node width follows the name so long names aren't clipped; deterministic (no font metrics) so Java agrees. */
+export function nodeWidth(n: { kind: Kind; name?: string }): number {
+  const base = KINDS[n.kind].w;
+  const need = 56 + (n.name?.length ?? 0) * 7.8 + 16;
+  return Math.min(320, Math.max(base, Math.round(need / 8) * 8));
+}
 export const ICON = 26;
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 export const PG_TYPES = ['uuid', 'text', 'varchar(255)', 'integer', 'bigint', 'numeric(18,2)', 'boolean', 'timestamptz', 'date', 'jsonb'];

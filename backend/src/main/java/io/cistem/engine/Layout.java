@@ -21,6 +21,13 @@ public final class Layout {
 
     private Layout() {}
 
+    /** Mirror of model.ts nodeWidth: deterministic, no font metrics. */
+    public static int nodeWidth(JsonNode n) {
+        int base = WIDTHS.getOrDefault(n.path("kind").asText(), 200);
+        double need = 56 + n.path("name").asText("").length() * 7.8 + 16;
+        return Math.min(320, Math.max(base, (int) Math.round(need / 8) * 8));
+    }
+
     public static Result layered(JsonNode model) {
         var ctx = new Ctx(model);
         var root = ctx.level(null);
@@ -53,7 +60,7 @@ public final class Layout {
 
             List<String> itemIds = new ArrayList<>(own); itemIds.addAll(children);
             Map<String, double[]> size = new HashMap<>();
-            for (String id : own) size.put(id, new double[]{ WIDTHS.getOrDefault(nodes.get(id).path("kind").asText(), 200), NODE_H });
+            for (String id : own) size.put(id, new double[]{ nodeWidth(nodes.get(id)), NODE_H });
             for (String c : children) size.put(c, blocks.get(c));
 
             List<String[]> edges = new ArrayList<>();

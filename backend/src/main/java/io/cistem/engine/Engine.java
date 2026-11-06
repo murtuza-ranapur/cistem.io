@@ -100,25 +100,41 @@ public final class Engine {
         byId.keySet().forEach(id -> outs.put(id, 0));
         for (JsonNode e : edges) outs.computeIfPresent(e.path("from").asText(), (k, v) -> v + 1);
 
-        Map<String, Double> load = new HashMap<>(), cum = new HashMap<>();
-        byId.keySet().forEach(id -> { load.put(id, 0.0); cum.put(id, 0.0); });
+        // Load per node broken down by origin: "sync" or the queue it was consumed from.
+        // Load consumed from queue Q is never published back into Q (a service may consume its own topic).
+        Map<String, Map<String, Double>> bd = new HashMap<>();
+        Map<String, Double> cum = new HashMap<>();
+        byId.keySet().forEach(id -> { bd.put(id, new HashMap<>()); cum.put(id, 0.0); });
+        java.util.function.Function<String, Double> total = id -> bd.get(id).values().stream().mapToDouble(Double::doubleValue).sum();
 
         boolean converged = false;
         for (int iter = 0; iter < 60; iter++) {
-            Map<String, Double> next = new HashMap<>(), ncum = new HashMap<>();
-            for (var en : byId.entrySet()) { next.put(en.getKey(), "entry".equals(kind(en.getValue())) ? target : 0.0); ncum.put(en.getKey(), 0.0); }
+            Map<String, Map<String, Double>> next = new HashMap<>(); Map<String, Double> ncum = new HashMap<>();
+            for (var en : byId.entrySet()) {
+                Map<String, Double> m = new HashMap<>();
+                if ("entry".equals(kind(en.getValue()))) m.put("sync", target);
+                next.put(en.getKey(), m); ncum.put(en.getKey(), 0.0);
+            }
             for (JsonNode e : edges) {
                 String from = e.path("from").asText(), to = e.path("to").asText();
-                JsonNode s = byId.get(from);
-                if (s == null || !byId.containsKey(to)) continue;
-                next.merge(to, load.get(from) * outFactor(s, outs.get(from)) * num(e, "calls"), Double::sum);
-                ncum.merge(to, cum.get(from) + effLatency(s, load.get(from)) + crossingLatency(model, containerOf(s), containerOf(byId.get(to))), Math::max);
+                JsonNode s = byId.get(from), t = byId.get(to);
+                if (s == null || t == null) continue;
+                double factor = outFactor(s, outs.get(from)) * num(e, "calls");
+                boolean toQueue = "queue".equals(kind(t)), fromQueue = "queue".equals(kind(s));
+                for (var o : bd.get(from).entrySet()) {
+                    if (toQueue && o.getKey().equals(to)) continue;
+                    String tag = fromQueue ? from : o.getKey();
+                    next.get(to).merge(tag, o.getValue() * factor, Double::sum);
+                }
+                ncum.merge(to, cum.get(from) + effLatency(s, total.apply(from)) + crossingLatency(model, containerOf(s), containerOf(t)), Math::max);
             }
             double delta = 0;
-            for (String id : byId.keySet()) delta += Math.abs(next.get(id) - load.get(id));
-            load.putAll(next); cum.putAll(ncum);
+            for (String id : byId.keySet()) delta += Math.abs(next.get(id).values().stream().mapToDouble(Double::doubleValue).sum() - total.apply(id));
+            bd.putAll(next); cum.putAll(ncum);
             if (delta < 0.01) { converged = true; break; }
         }
+        Map<String, Double> load = new HashMap<>();
+        byId.keySet().forEach(id -> load.put(id, total.apply(id)));
 
         Map<String, NodeResult> results = new LinkedHashMap<>();
         Status worst = Status.ok; String worstNode = null; double maxLat = 0;
@@ -137,7 +153,9 @@ public final class Engine {
         for (JsonNode e : edges) {
             String from = e.path("from").asText(), to = e.path("to").asText(); JsonNode s = byId.get(from), t = byId.get(to);
             if (s == null || t == null) continue;
-            edgeLoad.put(e.path("id").asText(), load.get(from) * outFactor(s, outs.get(from)) * num(e, "calls"));
+            boolean toQueue = "queue".equals(kind(t));
+            double eligible = bd.get(from).entrySet().stream().filter(o -> !(toQueue && o.getKey().equals(to))).mapToDouble(Map.Entry::getValue).sum();
+            edgeLoad.put(e.path("id").asText(), eligible * outFactor(s, outs.get(from)) * num(e, "calls"));
             crossings.put(e.path("id").asText(), crossingLatency(model, containerOf(s), containerOf(t)));
         }
         return new Results(results, edgeLoad, crossings, new Verdict(worst, worstNode, maxLat, converged));

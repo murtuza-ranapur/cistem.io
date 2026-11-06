@@ -47,24 +47,39 @@ export function compute(doc: Doc): Results {
   doc.nodes.forEach(n => (outs[n.id] = 0));
   doc.edges.forEach(e => { if (outs[e.from] !== undefined) outs[e.from]++; });
 
-  const load: Record<string, number> = {}, cum: Record<string, number> = {};
-  doc.nodes.forEach(n => { load[n.id] = 0; cum[n.id] = 0; });
+  // Load per node, broken down by origin: 'sync' (request-driven) or the id of the queue it was
+  // consumed from. Load consumed from queue Q is never published back into Q, so a service can
+  // consume its own topic without the model looping forever.
+  type Breakdown = Record<string, number>;
+  const bd: Record<string, Breakdown> = {}, cum: Record<string, number> = {};
+  doc.nodes.forEach(n => { bd[n.id] = {}; cum[n.id] = 0; });
+  const total = (id: string) => Object.values(bd[id]).reduce((a, b) => a + b, 0);
 
   let converged = false;
   for (let iter = 0; iter < 60; iter++) {
-    const next: Record<string, number> = {}, ncum: Record<string, number> = {};
-    doc.nodes.forEach(n => { next[n.id] = n.kind === 'entry' ? num(doc.targetRps) : 0; ncum[n.id] = 0; });
+    const next: Record<string, Breakdown> = {}, ncum: Record<string, number> = {};
+    doc.nodes.forEach(n => { next[n.id] = n.kind === 'entry' ? { sync: num(doc.targetRps) } : {}; ncum[n.id] = 0; });
     doc.edges.forEach(e => {
-      const s = byId[e.from];
-      if (!s || !byId[e.to]) return;
-      next[e.to] += load[s.id] * outFactor(s, outs[s.id]) * num(e.calls);
-      ncum[e.to] = Math.max(ncum[e.to], cum[s.id] + effLatency(s, load[s.id]) + crossingLatency(doc, s.container, byId[e.to].container));
+      const s = byId[e.from], t = byId[e.to];
+      if (!s || !t) return;
+      const factor = outFactor(s, outs[s.id]) * num(e.calls);
+      const srcTotal = total(s.id);
+      for (const origin in bd[s.id]) {
+        if (t.kind === 'queue' && origin === t.id) continue;          // don't republish what we consumed from t
+        const amount = bd[s.id][origin] * factor;
+        const tag = s.kind === 'queue' ? s.id : origin;                 // consuming from a queue tags the load with it
+        next[t.id][tag] = (next[t.id][tag] ?? 0) + amount;
+      }
+      ncum[t.id] = Math.max(ncum[t.id], cum[s.id] + effLatency(s, srcTotal) + crossingLatency(doc, s.container, t.container));
     });
     let delta = 0;
-    doc.nodes.forEach(n => { delta += Math.abs(next[n.id] - load[n.id]); });
-    Object.assign(load, next); Object.assign(cum, ncum);
+    doc.nodes.forEach(n => { delta += Math.abs(Object.values(next[n.id]).reduce((a, b) => a + b, 0) - total(n.id)); });
+    doc.nodes.forEach(n => { bd[n.id] = next[n.id]; });
+    Object.assign(cum, ncum);
     if (delta < 0.01) { converged = true; break; }
   }
+  const load: Record<string, number> = {};
+  doc.nodes.forEach(n => (load[n.id] = total(n.id)));
 
   const nodes: Record<string, NodeResult> = {};
   let worst: Status = 'ok', worstNode: Node | null = null, maxLat = 0;
@@ -82,7 +97,8 @@ export function compute(doc: Doc): Results {
   const edges: Record<string, number> = {}, crossings: Record<string, number> = {};
   doc.edges.forEach(e => {
     const s = byId[e.from], t = byId[e.to]; if (!s || !t) return;
-    edges[e.id] = load[s.id] * outFactor(s, outs[s.id]) * num(e.calls);
+    const eligible = Object.entries(bd[s.id]).filter(([o]) => !(t.kind === 'queue' && o === t.id)).reduce((a, [, v]) => a + v, 0);
+    edges[e.id] = eligible * outFactor(s, outs[s.id]) * num(e.calls);
     crossings[e.id] = crossingLatency(doc, s.container, t.container);
   });
 
