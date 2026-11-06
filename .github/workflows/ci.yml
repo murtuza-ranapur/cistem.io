@@ -13,6 +13,15 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: |
+          npx vite preview --port 4173 &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+          E2E_OUT=e2e-shots npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: e2e-screenshots, path: e2e-shots, if-no-files-found: ignore }
   api:
     runs-on: ubuntu-latest
     services:
