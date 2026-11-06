@@ -5,7 +5,7 @@ import { fit, zoomAt, hint, addNode, nudge } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import './sheet';
-import { cloud, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
+import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
 import { onAfterRender } from './state';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -180,6 +180,7 @@ $('shareBtn').onclick = async () => {
   } catch (e) { toast((e as Error).message, 4000); }
 };
 document.addEventListener('cistem:opened', () => { setRps(state.doc.targetRps); syncTitle(); refreshHistory(); });
+document.addEventListener('cistem:external-update', () => { setRps(state.doc.targetRps); syncTitle(); toast('Updated from another session'); });
 document.addEventListener('keydown', ev => { if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); cloud.id ? saveNow() : saveAsNew(); } });
 
 // ---------- boot ----------
@@ -188,5 +189,6 @@ document.addEventListener('keydown', ev => { if ((ev.metaKey || ev.ctrlKey) && e
   if (!hasLocal) loadExample();
   history.reset(); setRps(state.doc.targetRps); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false));
   await bootCloud(hasLocal);   // may replace the doc with a cloud one; fires cistem:opened if so
+  startPolling();
 })();
 void current;
