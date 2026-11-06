@@ -1,3 +1,6 @@
 import { defineConfig } from 'vite';
-// base is set for GitHub Pages project sites (https://<user>.github.io/cistem.io/)
-export default defineConfig({ base: '/cistem.io/' });
+// Dev: Vite on :5173 proxies API + OAuth to Spring on :8080, so cookies stay same-origin.
+export default defineConfig({
+  base: '/',
+  server: { proxy: { '/api': 'http://localhost:8080', '/oauth2': 'http://localhost:8080', '/login': 'http://localhost:8080' } },
+});

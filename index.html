@@ -34,7 +34,7 @@
     <input id="title" class="title" type="text" aria-label="Diagram title" placeholder="Untitled system">
     <label class="target">Target <input id="rps" type="number" min="1" step="100" value="5000" aria-label="Target requests per second"><span class="unit">rps</span></label>
     <input id="rpsRange" type="range" min="100" max="50000" step="100" value="5000" aria-label="Target requests per second slider">
-    <span class="sync" id="sync" title="Not connected to the API"><span class="sdot"></span><span id="syncText">offline</span></span>
+    <button class="sync" id="sync" title=""><span class="sdot"></span><span id="syncText">local</span></button>
     <div class="verdict" id="verdictWrap"><span class="dot"></span><span id="verdict">—</span><span id="lat" class="lat"></span></div>
     <div class="actions">
       <button class="icon" id="undoBtn" title="Undo (⌘Z)" aria-label="Undo"><svg><use href="#ic-undo"/></svg></button>
@@ -45,7 +45,10 @@
       <span class="sep"></span>
       <button class="icon" id="shareBtn" title="Share link" aria-label="Share"><svg><use href="#ic-share"/></svg></button>
       <button class="icon" id="ioBtn" title="Export / import JSON" aria-label="Export or import"><svg><use href="#ic-save"/></svg></button>
-      <button class="icon" id="settingsBtn" title="API connection" aria-label="API connection"><svg><use href="#ic-cog"/></svg></button>
+      <span class="sep"></span>
+      <button id="signInBtn" class="signin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.5 2 2 6.6 2 12.3c0 4.5 2.9 8.4 6.8 9.7.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5.1 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 4-2.4 4.8-4.6 5.1.4.3.7 1 .7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 22 12.3C22 6.6 17.5 2 12 2z"/></svg>Sign in with GitHub</button>
+      <button id="accountBtn" class="account" hidden aria-label="Account"><img id="avatar" alt="" width="24" height="24"><span id="login"></span></button>
+      <div id="accountMenu" class="menu" hidden><div class="menu-head" id="accountName"></div><button id="signOutBtn" class="menu-item">Sign out</button></div>
       <button class="icon" id="resetBtn" title="Load example" aria-label="Load example"><svg><use href="#ic-example"/></svg></button>
     </div>
   </header>
@@ -95,15 +98,6 @@
   </div>
   <div id="toast" class="banner" hidden></div>
 
-  <div id="settings" class="modal" hidden>
-    <div class="io-card">
-      <div class="io-head"><strong>API connection</strong><button class="icon" id="settingsClose" aria-label="Close">×</button></div>
-      <p class="note">Diagrams are saved to the cistem API when connected. Leave the URL empty to work offline in this browser only.</p>
-      <label class="field">API URL<input id="apiUrl" type="url" placeholder="https://api-production-xxxx.up.railway.app" spellcheck="false"></label>
-      <label class="field">API key<input id="apiKey" type="password" autocomplete="off" spellcheck="false"></label>
-      <div class="io-row"><button id="settingsSave" class="primary">Connect</button><span class="muted" id="settingsMsg"></span></div>
-    </div>
-  </div>
 
   <div id="io" class="modal" hidden>
     <div class="io-card">

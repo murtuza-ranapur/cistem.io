@@ -7,14 +7,33 @@ spring:
     password: ${PGPASSWORD:cistem}
   flyway.enabled: true
   jackson.default-property-inclusion: non_null
+  session:
+    jdbc.initialize-schema: never   # Flyway creates the tables
+    timeout: 30d
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID:}
+            client-secret: ${GITHUB_CLIENT_SECRET:}
+            scope: read:user
+  web.resources.cache.cachecontrol.max-age: 1h
 
 server:
   port: ${PORT:8080}
   compression.enabled: true
+  forward-headers-strategy: framework   # Railway terminates TLS; trust X-Forwarded-*
+  servlet.session.cookie:
+    name: cistem_session
+    http-only: true
+    same-site: lax
+    secure: ${COOKIE_SECURE:true}
 
 cistem:
-  api-key: ${CISTEM_API_KEY:}          # empty = no auth (local dev only)
-  allowed-origins: ${CISTEM_ALLOWED_ORIGINS:http://localhost:5173,https://murtuza-ranapur.github.io}
+  public-url: ${CISTEM_PUBLIC_URL:http://localhost:8080}
+  api-key: ${CISTEM_API_KEY:}
+  allowed-origins: ${CISTEM_ALLOWED_ORIGINS:http://localhost:5173}
 
 management:
   endpoints.web.exposure.include: health

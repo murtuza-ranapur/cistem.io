@@ -1,11 +1,23 @@
 # syntax=docker/dockerfile:1
+# Build context is the repo root (railway.json sets it); this file lives in backend/.
+
+FROM node:22-alpine AS web
+WORKDIR /web
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY index.html vite.config.ts tsconfig.json ./
+COPY src src
+COPY schema schema
+RUN npm run build
+
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /src
-COPY gradlew gradlew
-COPY gradle gradle
-COPY settings.gradle.kts build.gradle.kts ./
+COPY backend/gradlew gradlew
+COPY backend/gradle gradle
+COPY backend/settings.gradle.kts backend/build.gradle.kts ./
 RUN chmod +x gradlew && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
-COPY src src
+COPY backend/src src
+COPY --from=web /web/dist src/main/resources/static
 RUN ./gradlew --no-daemon bootJar -x test
 
 FROM eclipse-temurin:25-jre

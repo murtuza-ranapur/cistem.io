@@ -8,28 +8,40 @@ Other kinds (flow, sequence, state, ER) will share the same shell and file envel
 
 ## Running it
 
-```sh
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-check + production build into dist/
-npm test         # schema + migration tests
-```
-
-Pushes to `main` deploy to GitHub Pages via `.github/workflows/pages.yml`.
-
-## Backend
-
-`backend/` is a Spring Boot 4.1 / Java 25 API that stores diagrams in Postgres (`jsonb`), deployed on Railway from this repo. The frontend works offline (browser storage) until you connect it: the cog in the top bar takes the API URL and key. Once connected, diagrams autosave, open via `?d=<id>`, and can be shared read-only via `?s=<token>`. Concurrent edits are detected with `If-Match` and surfaced as a conflict banner rather than silently overwritten.
+One deployable: Spring Boot serves the API and the built frontend from the same origin, so there is nothing to configure in the browser.
 
 ```sh
-cd backend
-./gradlew test       # needs a Postgres on localhost:5432 (user/db/password: cistem)
-./gradlew bootRun    # http://localhost:8080, CISTEM_API_KEY unset = open
+# frontend with hot reload (proxies /api and /oauth2 to :8080)
+npm install && npm run dev            # http://localhost:5173
+
+# backend (needs Postgres on localhost:5432, user/db/password: cistem)
+cd backend && COOKIE_SECURE=false ./gradlew bootRun
+
+npm test                               # schema + migration tests
+(cd backend && ./gradlew test)         # API tests against Postgres
 ```
+
+Pushes to `main` run CI and redeploy the Railway service, which builds `backend/Dockerfile` from the repo root (frontend, then the jar).
+
+## Accounts and storage
+
+Sign in with GitHub (Spring Security OAuth2 client). Sessions are cookies stored in Postgres (Spring Session JDBC), so a redeploy doesn't sign anyone out. Spring never sees a password; GitHub supplies `id`, `login`, `name` and `avatar_url`, which are upserted into `users` on each login. Diagrams belong to a user and are stored as `jsonb` in the cistem.io file format. Signed out, the editor still works and keeps the diagram in the browser; the first save after signing in creates it in the account.
+
+Environment variables on the service:
+
+| Variable | |
+|---|---|
+| `DATABASE_URL`, `PGUSER`, `PGPASSWORD` | JDBC URL + credentials |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | OAuth app; callback is `<public url>/login/oauth2/code/github` |
+| `CISTEM_PUBLIC_URL` | where to send the browser after login |
+| `CISTEM_API_KEY` (optional) | a shared key for scripts/MCP; acts as `CISTEM_API_KEY_LOGIN` or the first account |
+| `CISTEM_ALLOWED_ORIGINS` (optional) | CORS, only needed for a separately hosted frontend |
 
 | Endpoint | |
 |---|---|
-| `GET /api/diagrams` | list (no bodies) |
+| `GET /api/me` | profile, or 401 |
+| `GET /oauth2/authorization/github` → `POST /api/logout` | sign in / out |
+| `GET /api/diagrams` | your diagrams (no bodies) |
 | `POST /api/diagrams` | `{ "document": <file> }` → 201 + `ETag: "<version>"` |
 | `GET /api/diagrams/{id}` | full diagram |
 | `PUT /api/diagrams/{id}` | replace; send `If-Match`; 409 with current body on conflict |
@@ -37,7 +49,7 @@ cd backend
 | `POST / DELETE /api/diagrams/{id}/share` | create or revoke a share token |
 | `GET /api/share/{token}` | public, read-only |
 
-Auth is one shared key (`X-Api-Key` or `Authorization: Bearer`) from `CISTEM_API_KEY`; `/api/share/**` and `/actuator/health` are public.
+Cookie sessions carry CSRF protection (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header); API-key calls don't need it.
 
 ## File format
 
@@ -79,7 +91,7 @@ src/canvas.ts      SVG rendering, pan/zoom/drag/connect/marquee
 src/layout.ts      auto-organise (layered)
 src/sheet.ts       inspector (capacity + schema editors)
 src/api.ts         API client
-src/cloud.ts       diagram drawer, autosave, conflicts, share, settings
+src/cloud.ts       sign-in state, diagram drawer, autosave, conflicts, share
 src/main.ts        toolbar, keyboard, JSON dialog, boot
 backend/           Spring Boot API (see above)
 test/              node:assert tests run with tsx

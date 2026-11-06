@@ -4,6 +4,7 @@ import tools.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -18,9 +19,19 @@ public class DiagramController {
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private final DiagramRepository repo;
+    private final UserRepository users;
 
-    public DiagramController(DiagramRepository repo) {
+    public DiagramController(DiagramRepository repo, UserRepository users) {
         this.repo = repo;
+        this.users = users;
+    }
+
+    /** Who am I: 200 with the profile, or 401 (handled by security) when signed out. */
+    @GetMapping("/me")
+    public ResponseEntity<User.Profile> me(@AuthenticationPrincipal Object principal) {
+        if (principal == null || "anonymousUser".equals(principal)) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return users.find(SecurityConfig.userId(principal)).map(u -> ResponseEntity.ok(u.profile()))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
     /** Request body for create/update: the full diagram file. Title and kind are read from it. */
@@ -42,21 +53,21 @@ public class DiagramController {
     }
 
     @GetMapping("/diagrams")
-    public List<Diagram.Summary> list() {
-        return repo.list();
+    public List<Diagram.Summary> list(@AuthenticationPrincipal Object p) {
+        return repo.list(SecurityConfig.userId(p));
     }
 
     @PostMapping("/diagrams")
     @ResponseStatus(HttpStatus.CREATED)
-    public ResponseEntity<Diagram> create(@RequestBody DiagramBody body) {
+    public ResponseEntity<Diagram> create(@AuthenticationPrincipal Object p, @RequestBody DiagramBody body) {
         body.validate();
-        Diagram d = repo.insert(body.title(), body.kind(), body.document());
+        Diagram d = repo.insert(SecurityConfig.userId(p), body.title(), body.kind(), body.document());
         return ResponseEntity.status(HttpStatus.CREATED).eTag(etag(d)).body(d);
     }
 
     @GetMapping("/diagrams/{id}")
-    public ResponseEntity<Diagram> get(@PathVariable UUID id) {
-        Diagram d = repo.find(id).orElseThrow(DiagramController::notFound);
+    public ResponseEntity<Diagram> get(@AuthenticationPrincipal Object p, @PathVariable UUID id) {
+        Diagram d = repo.find(SecurityConfig.userId(p), id).orElseThrow(DiagramController::notFound);
         return ResponseEntity.ok().eTag(etag(d)).body(d);
     }
 
@@ -65,43 +76,47 @@ public class DiagramController {
      * a stale version gets 409 with the current diagram so the client can merge.
      */
     @PutMapping("/diagrams/{id}")
-    public ResponseEntity<Diagram> update(@PathVariable UUID id,
+    public ResponseEntity<Diagram> update(@AuthenticationPrincipal Object p, @PathVariable UUID id,
                                           @RequestHeader(value = "If-Match", required = false) String ifMatch,
                                           @RequestBody DiagramBody body) {
         body.validate();
-        Diagram current = repo.find(id).orElseThrow(DiagramController::notFound);
+        UUID owner = SecurityConfig.userId(p);
+        Diagram current = repo.find(owner, id).orElseThrow(DiagramController::notFound);
         int expected = ifMatch == null ? current.version() : parseVersion(ifMatch);
-        return repo.update(id, expected, body.title(), body.document())
+        return repo.update(owner, id, expected, body.title(), body.document())
                 .map(d -> ResponseEntity.ok().eTag(etag(d)).body(d))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.CONFLICT).eTag(etag(current)).body(current));
     }
 
     @DeleteMapping("/diagrams/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID id) {
-        if (!repo.delete(id)) throw notFound();
+    public void delete(@AuthenticationPrincipal Object p, @PathVariable UUID id) {
+        if (!repo.delete(SecurityConfig.userId(p), id)) throw notFound();
     }
 
     /** Create (or rotate) a read-only share link. */
     @PostMapping("/diagrams/{id}/share")
-    public Diagram.Summary share(@PathVariable UUID id) {
-        repo.find(id).orElseThrow(DiagramController::notFound);
+    public Diagram share(@AuthenticationPrincipal Object p, @PathVariable UUID id) {
+        UUID owner = SecurityConfig.userId(p);
+        repo.find(owner, id).orElseThrow(DiagramController::notFound);
         byte[] b = new byte[18];
         RANDOM.nextBytes(b);
-        return repo.setShareToken(id, Base64.getUrlEncoder().withoutPadding().encodeToString(b)).orElseThrow().summary();
+        return repo.setShareToken(owner, id, Base64.getUrlEncoder().withoutPadding().encodeToString(b)).orElseThrow();
     }
 
     @DeleteMapping("/diagrams/{id}/share")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void unshare(@PathVariable UUID id) {
-        repo.find(id).orElseThrow(DiagramController::notFound);
-        repo.setShareToken(id, null);
+    public void unshare(@AuthenticationPrincipal Object p, @PathVariable UUID id) {
+        UUID owner = SecurityConfig.userId(p);
+        repo.find(owner, id).orElseThrow(DiagramController::notFound);
+        repo.setShareToken(owner, id, null);
     }
 
-    /** Public, read-only. Not behind the API key (see {@link ApiKeyFilter}). */
+    /** Public, read-only (permitted in {@link SecurityConfig}). The share token is stripped from the response. */
     @GetMapping("/share/{token}")
     public Diagram shared(@PathVariable String token) {
-        return repo.findByShareToken(token).orElseThrow(DiagramController::notFound);
+        Diagram d = repo.findByShareToken(token).orElseThrow(DiagramController::notFound);
+        return new Diagram(d.id(), d.title(), d.kind(), d.document(), d.version(), null, d.createdAt(), d.updatedAt());
     }
 
     private static String etag(Diagram d) {
