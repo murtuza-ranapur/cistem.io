@@ -1,7 +1,7 @@
 import './style.css';
 import { type Kind } from './model';
 import { state, current, restore, loadExample, loadFile, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
-import { fit, zoomAt, hint, addNode, addContainer, nudge, toggleDetail, setAllDetail } from './canvas';
+import { fit, zoomAt, hint, addNode, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import './sheet';
@@ -37,7 +37,7 @@ redoBtn.onclick = () => { redo(); refreshHistory(); };
 
 // ---------- delete / duplicate ----------
 function deleteSelection() {
-  const ids = selectedNodeIds().filter(id => state.doc.nodes.find(n => n.id === id)?.kind !== 'entry');
+  const ids = selectedNodeIds();
   if (state.sel?.type === 'container') {
     const id = state.sel.id;
     mutate(() => {
@@ -56,12 +56,11 @@ function deleteSelection() {
       state.doc.nodes = state.doc.nodes.filter(n => !ids.includes(n.id));
       state.doc.edges = state.doc.edges.filter(e => !ids.includes(e.from) && !ids.includes(e.to));
     });
-  } else if (state.sel) { hint('The entry point stays', 1200); return; }
-  else return;
+  } else return;
   select(null); renderAll();
 }
 function duplicateSelection() {
-  const ids = selectedNodeIds().filter(id => state.doc.nodes.find(n => n.id === id)?.kind !== 'entry');
+  const ids = selectedNodeIds();
   if (!ids.length) return;
   const map: Record<string, string> = {};
   mutate(() => {
@@ -157,6 +156,12 @@ $('loadJson').onclick = () => {
   try { loadFile(JSON.parse(jta.value)); setRps(state.doc.targetRps); syncTitle(); fit(); closeIo(); }
   catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); }
 };
+
+// keep whatever was selected out from under the inspector once it has slid in
+const inspectorEl = $('inspector');
+inspectorEl.addEventListener('transitionend', ev => { if (ev.propertyName === 'width' && !inspectorEl.classList.contains('closed')) revealSelection(); });
+let lastSelKey = '';
+onAfterRender(() => { const k = state.sel ? state.sel.type + ':' + state.sel.id : ''; if (k && k !== lastSelKey && !inspectorEl.classList.contains('closed')) setTimeout(revealSelection, 230); lastSelKey = k; });
 
 // ---------- cloud ----------
 onAfterRender(scheduleSave);

@@ -84,14 +84,18 @@ function summary(n: Node): string {
  * Frames always fit their members (nodes + child frames) with padding; a stored frame is used
  * only for an empty container, so it has somewhere to be. Computed per render, cheap at this scale.
  */
+/** Nodes currently being dragged, with the positions they had when the drag started. While a drag is
+ *  in progress frames fit the *start* positions, so a frame doesn't chase the node you're pulling out of it. */
+let dragging: Record<string, { x: number; y: number }> | null = null;
 export function computeFrames(): Record<string, Frame> {
   const { doc } = state;
   const out: Record<string, Frame> = {};
+  const px = (n: Node) => dragging?.[n.id]?.x ?? n.x, py = (n: Node) => dragging?.[n.id]?.y ?? n.y;
   const depth = (id: string) => ancestry(doc, id).length;
   const order = [...doc.containers].sort((a, b) => depth(b.id) - depth(a.id)); // deepest first
   for (const c of order) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + W(n)); y1 = Math.max(y1, n.y + H(n)); }
+    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, px(n)); y0 = Math.min(y0, py(n)); x1 = Math.max(x1, px(n) + W(n)); y1 = Math.max(y1, py(n) + H(n)); }
     for (const k of doc.containers) if ((k.parent ?? null) === c.id && out[k.id]) { const f = out[k.id]; x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); }
     if (x0 === Infinity) { const st = doc.frames[c.id]; out[c.id] = st ? { ...st } : { x: 40, y: 40, w: 260, h: 140 }; continue; }
     out[c.id] = { x: x0 - FRAME_PAD, y: y0 - FRAME_PAD - FRAME_HEAD, w: x1 - x0 + FRAME_PAD * 2, h: y1 - y0 + FRAME_PAD * 2 + FRAME_HEAD };
@@ -393,10 +397,22 @@ type Drag =
   | { type: 'frame'; id: string; nodeIds: string[]; start: Record<string, { x: number; y: number }>; frameStart: Record<string, Frame>; ox: number; oy: number; moved: boolean; target: string | null };
 const pointers = new Map<number, { x: number; y: number }>();
 let drag: Drag | null = null;
+let lastClick: { id: string; t: number; x: number; y: number } | null = null;
 let pinch: { d: number; k: number; cx: number; cy: number; vx: number; vy: number } | null = null;
 
 svg.addEventListener('pointerdown', ev => {
   if (ev.button === 2) return;
+  // Own double-click detection: selecting a node re-appends it (to bring it on top), which stops
+  // the browser from pairing the two clicks into a dblclick event.
+  {
+    const nEl = (ev.target as Element).closest('[data-node]') as SVGGElement | null;
+    const onControl = !!(ev.target as Element).closest('[data-handle],[data-toggle]');
+    if (nEl && !onControl && lastClick && lastClick.id === nEl.dataset.node && performance.now() - lastClick.t < 400 && Math.hypot(ev.clientX - lastClick.x, ev.clientY - lastClick.y) < 6) {
+      lastClick = null; startRename(ev as unknown as MouseEvent); return;
+    }
+    lastClick = nEl && !onControl ? { id: nEl.dataset.node!, t: performance.now(), x: ev.clientX, y: ev.clientY } : null;
+  }
+  if (!renameBox.hidden) { renameBox.onblur?.(new FocusEvent('blur')); }
   renameBox.hidden = true;
   svg.setPointerCapture(ev.pointerId);
   pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -476,6 +492,7 @@ svg.addEventListener('pointermove', ev => {
       const dx = w.x - drag.ox, dy = w.y - drag.oy;
       if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) {
         drag.moved = true; mutate(() => {});
+        dragging = drag.start;
         drag.ids.forEach(id => nodeEls.get(id)?.classList.add('dragging'));
       }
       if (!drag.moved) return;
@@ -489,7 +506,7 @@ svg.addEventListener('pointermove', ev => {
     }
     case 'frame': {
       const dx = w.x - drag.ox, dy = w.y - drag.oy;
-      if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) { drag.moved = true; mutate(() => {}); }
+      if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) { drag.moved = true; mutate(() => {}); dragging = drag.start; }
       if (!drag.moved) return;
       const d = drag;
       d.nodeIds.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; n.x = snap(d.start[id].x + dx); n.y = snap(d.start[id].y + dy); });
@@ -535,18 +552,18 @@ function up(ev: PointerEvent) {
       d.ids.forEach(id => nodeEls.get(id)?.classList.remove('dragging'));
       frameEls.forEach(g => g.classList.remove('target'));
       if (d.moved) {
-        // re-home each dropped node by its centre; use the pointer for the primary node
-        d.ids.forEach(id => {
-          const n = state.doc.nodes.find(x => x.id === id)!;
-          const cx = n.x + W(n) / 2, cy = n.y + NODE_H / 2;
-          const into = containerAt(cx, cy);
-          if ((n.container ?? null) !== into) n.container = into;
-        });
+        // decide the new home with frames fitted to the *other* nodes, by where the pointer let go
+        frames = computeFrames();
+        const w = toWorld(ev.clientX, ev.clientY);
+        const into = containerAt(w.x, w.y);
+        d.ids.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; if ((n.container ?? null) !== into) n.container = into; });
       }
+      dragging = null;
       renderAll(); break;
     }
     case 'frame': {
       frameEls.forEach(g => g.classList.remove('target'));
+      dragging = null;
       if (d.moved && d.target !== null) {
         const c = state.doc.containers.find(x => x.id === d.id)!;
         c.parent = d.target;
@@ -580,7 +597,8 @@ svg.addEventListener('pointercancel', up);
 svg.addEventListener('contextmenu', ev => ev.preventDefault());
 
 // double-click to rename
-svg.addEventListener('dblclick', ev => {
+svg.addEventListener('dblclick', ev => startRename(ev));
+function startRename(ev: MouseEvent) {
   const nodeEl = (ev.target as Element).closest('[data-node]') as SVGGElement | null;
   if (!nodeEl) return;
   const n = state.doc.nodes.find(x => x.id === nodeEl.dataset.node)!;
@@ -588,11 +606,12 @@ svg.addEventListener('dblclick', ev => {
   const r = stage.getBoundingClientRect();
   renameBox.style.left = (s.x - r.left) + 'px'; renameBox.style.top = (s.y - r.top - 12) + 'px';
   renameBox.style.width = Math.max(120, (W(n) - 60) * state.view.k) + 'px';
-  renameBox.value = n.name; renameBox.hidden = false; renameBox.focus(); renameBox.select();
+  renameBox.value = n.name; renameBox.hidden = false;
+  renameBox.onblur = null;   // (re)armed below, after focus has settled
+  setTimeout(() => { renameBox.focus(); renameBox.select(); renameBox.onblur = commit; }, 0);
   const commit = () => { if (renameBox.hidden) return; renameBox.hidden = true; if (renameBox.value !== n.name) { mutate(() => (n.name = renameBox.value)); renderAll(); } };
-  renameBox.onblur = commit;
   renameBox.onkeydown = e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { renameBox.hidden = true; } e.stopPropagation(); };
-});
+}
 
 // zoom
 export function zoomAt(cx: number, cy: number, f: number) {
@@ -625,6 +644,30 @@ export function fit(animated = true) {
     const t = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - t, 3);
     state.view.k = from.k + (target.k - from.k) * e; state.view.x = from.x + (target.x - from.x) * e; state.view.y = from.y + (target.y - from.y) * e;
     applyView(); if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/** After the inspector opens, make sure the selected node/frame isn't hidden under it. */
+export function revealSelection() {
+  const s = state.sel; if (!s || s.type === 'edge') return;
+  if (drag) return; // never move the view under a pointer that's mid-gesture
+  let box: { x: number; y: number; w: number; h: number } | null = null;
+  if (s.type === 'node') { const n = state.doc.nodes.find(x => x.id === s.id); if (n) box = { x: n.x, y: n.y, w: W(n), h: H(n) }; }
+  else { const f = frames[s.id]; if (f) box = { x: f.x, y: f.y, w: Math.min(f.w, 360), h: Math.min(f.h, 60) }; }
+  if (!box) return;
+  const r = svg.getBoundingClientRect(); const pad = 24;
+  const sx0 = box.x * state.view.k + state.view.x, sy0 = box.y * state.view.k + state.view.y;
+  const sx1 = sx0 + box.w * state.view.k, sy1 = sy0 + box.h * state.view.k;
+  let dx = 0, dy = 0;
+  if (sx1 > r.width - pad) dx = r.width - pad - sx1; else if (sx0 < pad) dx = pad - sx0;
+  if (sy1 > r.height - pad) dy = r.height - pad - sy1; else if (sy0 < pad) dy = pad - sy0;
+  if (!dx && !dy) return;
+  const from = { x: state.view.x, y: state.view.y }, t0 = performance.now(), dur = reduceMotion() ? 0 : 200;
+  const tick = (now: number) => {
+    const t = dur ? Math.min(1, (now - t0) / dur) : 1, e = 1 - Math.pow(1 - t, 3);
+    state.view.x = from.x + dx * e; state.view.y = from.y + dy * e; applyView();
+    if (t < 1) requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
 }
