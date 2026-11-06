@@ -15,7 +15,41 @@ public final class Engine {
 
     public record NodeResult(double load, double cap, double util, Status status, double lat, double cum) {}
     public record Verdict(Status status, String nodeId, double lat, boolean converged) {}
-    public record Results(Map<String, NodeResult> nodes, Map<String, Double> edges, Verdict verdict) {}
+    public record Results(Map<String, NodeResult> nodes, Map<String, Double> edges, Map<String, Double> crossings, Verdict verdict) {}
+
+    // ---- containers / crossing latency (port of model.ts crossingLatency) ----
+    static final double SIBLINGS_MS = 1, DIFFERENT_ROOTS_MS = 10;
+
+    public static List<String> ancestry(JsonNode model, String containerId) {
+        List<String> out = new ArrayList<>();
+        Map<String, JsonNode> byId = new HashMap<>();
+        for (JsonNode c : model.path("containers")) byId.put(c.path("id").asText(), c);
+        String cur = containerId; int guard = 0;
+        while (cur != null && !cur.isEmpty() && guard++ < 32) {
+            out.add(cur);
+            JsonNode c = byId.get(cur);
+            cur = c == null || c.path("parent").isNull() || c.path("parent").isMissingNode() ? null : c.path("parent").asText();
+        }
+        return out;
+    }
+
+    public static String containerOf(JsonNode n) {
+        JsonNode c = n.path("container");
+        return c.isTextual() && !c.asText().isEmpty() ? c.asText() : null;
+    }
+
+    public static double crossingLatency(JsonNode model, String a, String b) {
+        if (Objects.equals(a, b)) return 0;
+        List<String> pa = ancestry(model, a), pb = ancestry(model, b);
+        List<String> xa = pa.isEmpty() ? List.of("") : pa, xb = pb.isEmpty() ? List.of("") : pb;
+        for (String x : xa) for (String y : xb)
+            for (JsonNode l : model.path("links")) {
+                String f = l.path("from").asText(), t = l.path("to").asText();
+                if ((f.equals(x) && t.equals(y)) || (f.equals(y) && t.equals(x))) return num(l, "latencyMs");
+            }
+        if (a == null || b == null) return SIBLINGS_MS;
+        return pa.get(pa.size() - 1).equals(pb.get(pb.size() - 1)) ? SIBLINGS_MS : DIFFERENT_ROOTS_MS;
+    }
 
     private Engine() {}
 
@@ -78,7 +112,7 @@ public final class Engine {
                 JsonNode s = byId.get(from);
                 if (s == null || !byId.containsKey(to)) continue;
                 next.merge(to, load.get(from) * outFactor(s, outs.get(from)) * num(e, "calls"), Double::sum);
-                ncum.merge(to, cum.get(from) + effLatency(s, load.get(from)), Math::max);
+                ncum.merge(to, cum.get(from) + effLatency(s, load.get(from)) + crossingLatency(model, containerOf(s), containerOf(byId.get(to))), Math::max);
             }
             double delta = 0;
             for (String id : byId.keySet()) delta += Math.abs(next.get(id) - load.get(id));
@@ -99,20 +133,23 @@ public final class Engine {
             if (status == Status.crit && worst != Status.crit) { worst = Status.crit; worstNode = id; }
             else if (status == Status.warn && worst == Status.ok) { worst = Status.warn; worstNode = id; }
         }
-        Map<String, Double> edgeLoad = new LinkedHashMap<>();
+        Map<String, Double> edgeLoad = new LinkedHashMap<>(), crossings = new LinkedHashMap<>();
         for (JsonNode e : edges) {
-            String from = e.path("from").asText(); JsonNode s = byId.get(from);
-            if (s != null) edgeLoad.put(e.path("id").asText(), load.get(from) * outFactor(s, outs.get(from)) * num(e, "calls"));
+            String from = e.path("from").asText(), to = e.path("to").asText(); JsonNode s = byId.get(from), t = byId.get(to);
+            if (s == null || t == null) continue;
+            edgeLoad.put(e.path("id").asText(), load.get(from) * outFactor(s, outs.get(from)) * num(e, "calls"));
+            crossings.put(e.path("id").asText(), crossingLatency(model, containerOf(s), containerOf(t)));
         }
-        return new Results(results, edgeLoad, new Verdict(worst, worstNode, maxLat, converged));
+        return new Results(results, edgeLoad, crossings, new Verdict(worst, worstNode, maxLat, converged));
     }
 
     /** Human-readable report for an agent: compact, every number rounded sensibly. */
     public static ObjectNode report(JsonNode file, Results r, tools.jackson.databind.ObjectMapper om) {
         ObjectNode out = om.createObjectNode();
         JsonNode model = file.path("model");
-        Map<String, String> names = new HashMap<>();
-        for (JsonNode n : model.path("nodes")) names.put(n.path("id").asText(), n.path("name").asText());
+        Map<String, String> names = new HashMap<>(), cnames = new HashMap<>(), nodeContainer = new HashMap<>();
+        for (JsonNode c : model.path("containers")) cnames.put(c.path("id").asText(), c.path("name").asText());
+        for (JsonNode n : model.path("nodes")) { names.put(n.path("id").asText(), n.path("name").asText()); if (containerOf(n) != null) nodeContainer.put(n.path("id").asText(), cnames.getOrDefault(containerOf(n), containerOf(n))); }
         out.put("targetRps", num(model, "targetRps"));
         out.put("verdict", switch (r.verdict().status()) { case ok -> "handles it"; case warn -> "near limit"; case crit -> "breaks"; });
         if (r.verdict().nodeId() != null) { out.put("bottleneck", names.get(r.verdict().nodeId())); out.put("bottleneckId", r.verdict().nodeId()); }
@@ -123,10 +160,21 @@ public final class Engine {
             NodeResult nr = en.getValue();
             ObjectNode c = arr.addObject();
             c.put("id", en.getKey()); c.put("name", names.get(en.getKey()));
+            if (nodeContainer.containsKey(en.getKey())) c.put("in", nodeContainer.get(en.getKey()));
             c.put("loadRps", Math.round(nr.load()));
             if (!Double.isInfinite(nr.cap())) { c.put("capacityRps", Math.round(nr.cap())); c.put("utilisationPct", Double.isInfinite(nr.util()) ? 9999 : Math.round(nr.util() * 100)); c.put("headroomRps", Math.round(Math.max(0, nr.cap() - nr.load()))); }
             c.put("status", nr.status().name());
             c.put("effectiveLatencyMs", Math.round(nr.lat() * 10) / 10.0);
+        }
+        var cross = out.putArray("boundaryCrossings");
+        for (JsonNode e : model.path("edges")) {
+            Double ms = r.crossings().get(e.path("id").asText());
+            if (ms == null || ms == 0) continue;
+            ObjectNode x = cross.addObject();
+            x.put("edgeId", e.path("id").asText());
+            x.put("from", names.get(e.path("from").asText())); x.put("to", names.get(e.path("to").asText()));
+            x.put("addedLatencyMs", ms);
+            x.put("callsPerSec", Math.round(r.edges().getOrDefault(e.path("id").asText(), 0.0)));
         }
         return out;
     }

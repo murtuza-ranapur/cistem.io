@@ -6,7 +6,7 @@ export interface Column { name: string; type: string; pk: boolean; nullable: boo
 export interface Table { name: string; columns: Column[] }
 export interface Topic { name: string; partitions: number; schema: string }
 
-export interface NodeBase { id: string; kind: Kind; x: number; y: number; name: string; latency?: number }
+export interface NodeBase { id: string; kind: Kind; x: number; y: number; name: string; latency?: number; container?: string | null }
 export interface EntryNode extends NodeBase { kind: 'entry'; platforms: string[] }
 export interface LbNode extends NodeBase { kind: 'lb'; maxRps: number; latency: number }
 export interface ServiceNode extends NodeBase { kind: 'service'; rpsPerInstance: number; instances: number; latency: number; endpoints: Endpoint[] }
@@ -16,7 +16,31 @@ export interface QueueNode extends NodeBase { kind: 'queue'; maxThroughput: numb
 export type Node = EntryNode | LbNode | ServiceNode | CacheNode | DbNode | QueueNode;
 
 export interface Edge { id: string; from: string; to: string; calls: number; endpoint?: number | null }
-export interface Doc { targetRps: number; nodes: Node[]; edges: Edge[] }
+
+/** A boundary that components live in: a cloud, an account, a VPC... Nested via `parent`. */
+export type ContainerKind = 'cloud' | 'account' | 'vpc' | 'region' | 'datacentre' | 'team';
+export interface Container { id: string; kind: ContainerKind; name: string; parent: string | null; provider?: string; owner?: string; note?: string }
+/** How two containers talk; adds latency to every edge crossing between them (or their descendants). */
+export interface Link { id: string; from: string; to: string; type: string; latencyMs: number }
+/** Editor-side frame geometry for a container. */
+export interface Frame { x: number; y: number; w: number; h: number }
+
+export interface Doc { targetRps: number; nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame> }
+
+export const CONTAINER_KINDS: Record<ContainerKind, { label: string; hue: number }> = {
+  cloud:      { label: 'Cloud',       hue: 210 },
+  account:    { label: 'Account',     hue: 260 },
+  vpc:        { label: 'VPC',         hue: 160 },
+  region:     { label: 'Region',      hue: 30 },
+  datacentre: { label: 'Data centre', hue: 350 },
+  team:       { label: 'Team',        hue: 90 },
+};
+export const LINK_TYPES: Record<string, number> = {
+  'same-network': 0, 'vpc-peering': 1, 'privatelink': 2, 'transit-gateway': 3, 'vpn': 20, 'direct-connect': 10, 'public-internet': 40,
+};
+/** Default crossing latency when no link is declared, by how far apart the two containers are. */
+export const CROSSING_DEFAULT_MS = { sameContainer: 0, siblings: 1, differentRoots: 10 };
+export const FRAME_PAD = 28, FRAME_HEAD = 30;
 
 export interface KindDef { label: string; w: number; defaults: Record<string, unknown>; fields: [string, string][] }
 
@@ -40,8 +64,36 @@ export const clone = <T>(o: T): T => JSON.parse(JSON.stringify(o));
 let uid = 1;
 export const nextId = (prefix = 'n') => prefix + (uid++);
 export const bumpId = (doc: Doc) => {
-  uid = Math.max(2, ...doc.nodes.concat(doc.edges as unknown as Node[]).map(x => parseInt(String(x.id).replace(/\D/g, '')) || 0)) + 1;
+  const all: { id: string }[] = [...doc.nodes, ...doc.edges, ...(doc.containers ?? []), ...(doc.links ?? [])];
+  uid = Math.max(2, ...all.map(x => parseInt(String(x.id).replace(/\D/g, '')) || 0)) + 1;
 };
+
+export function makeContainer(kind: ContainerKind, name: string, parent: string | null = null): Container {
+  return { id: nextId('c'), kind, name, parent };
+}
+/** Root-ward chain of container ids for a node (nearest first). */
+export function ancestry(doc: Doc, containerId: string | null | undefined): string[] {
+  const out: string[] = []; const byId = new Map(doc.containers.map(c => [c.id, c]));
+  let cur = containerId ?? null; let guard = 0;
+  while (cur && guard++ < 32) { out.push(cur); cur = byId.get(cur)?.parent ?? null; }
+  return out;
+}
+/** Latency added to a call from container a to container b (either may be null = unplaced). */
+export function crossingLatency(doc: Doc, a: string | null | undefined, b: string | null | undefined): number {
+  if ((a ?? null) === (b ?? null)) return 0;
+  const pa = ancestry(doc, a), pb = ancestry(doc, b);
+  // explicit link between any ancestor pair wins (nearest first)
+  for (const x of pa.length ? pa : ['']) for (const y of pb.length ? pb : ['']) {
+    const l = doc.links.find(l => (l.from === x && l.to === y) || (l.from === y && l.to === x));
+    if (l) return l.latencyMs;
+  }
+  if (!a || !b) return CROSSING_DEFAULT_MS.siblings;
+  const rootA = pa[pa.length - 1], rootB = pb[pb.length - 1];
+  return rootA === rootB ? CROSSING_DEFAULT_MS.siblings : CROSSING_DEFAULT_MS.differentRoots;
+}
+export function containerDepth(doc: Doc, id: string): number { return ancestry(doc, id).length - 1; }
+/** Members of a container, including those in nested containers. */
+export function membersOf(doc: Doc, id: string): Node[] { return doc.nodes.filter(n => ancestry(doc, n.container).includes(id)); }
 
 export function makeNode(kind: Kind, x: number, y: number, props: Record<string, unknown> = {}): Node {
   return { id: nextId(), kind, x, y, ...clone(KINDS[kind].defaults), ...props } as Node;
@@ -55,7 +107,14 @@ export function adopt(d: unknown): Doc {
     if (!KINDS[n.kind]) throw new Error('unknown kind ' + n.kind);
     const defs = KINDS[n.kind].defaults;
     Object.keys(defs).forEach(k => { if ((n as any)[k] === undefined) (n as any)[k] = clone(defs[k]); });
+    if (n.container === undefined) n.container = null;
   });
+  doc.containers = doc.containers ?? []; doc.links = doc.links ?? []; doc.frames = doc.frames ?? {};
+  // drop dangling references rather than failing
+  const cids = new Set(doc.containers.map(c => c.id));
+  doc.nodes.forEach(n => { if (n.container && !cids.has(n.container)) n.container = null; });
+  doc.containers.forEach(c => { if (c.parent && !cids.has(c.parent)) c.parent = null; });
+  doc.links = doc.links.filter(l => cids.has(l.from) && cids.has(l.to));
   bumpId(doc);
   return doc;
 }
@@ -86,8 +145,15 @@ export function exampleDoc(): Doc {
     name: 'events', topics: [{ name: 'payments.authorised', partitions: 12,
       schema: '{\n  "type": "record",\n  "name": "PaymentAuthorised",\n  "namespace": "com.example.payments",\n  "fields": [\n    {"name": "paymentId", "type": "string"},\n    {"name": "amountMinor", "type": "long"},\n    {"name": "currency", "type": "string"}\n  ]\n}' }] });
   const worker = makeNode('service', 1280, 460, { name: 'ledger-worker', rpsPerInstance: 400, instances: 8, latency: 40 });
+  const aws = makeContainer('cloud', 'AWS'); aws.provider = 'aws';
+  const edge = makeContainer('account', 'acq-edge', aws.id);
+  const core = makeContainer('account', 'acq-core', aws.id);
+  lb.container = edge.id; api.container = edge.id;
+  cache.container = core.id; db.container = core.id; q.container = core.id; worker.container = core.id;
   const doc: Doc = {
-    targetRps: 5000, nodes: [clients, lb, api, cache, db, q, worker], edges: [
+    targetRps: 5000, containers: [aws, edge, core], frames: {},
+    links: [{ id: 'l1', from: edge.id, to: core.id, type: 'privatelink', latencyMs: 2 }],
+    nodes: [clients, lb, api, cache, db, q, worker], edges: [
       { id: 'e1', from: clients.id, to: lb.id, calls: 1 },
       { id: 'e2', from: lb.id, to: api.id, calls: 1, endpoint: 0 },
       { id: 'e3', from: api.id, to: cache.id, calls: 2 },

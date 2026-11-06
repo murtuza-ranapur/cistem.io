@@ -9,9 +9,9 @@
  *
  * JSON Schema: schema/cistem.schema.json
  */
-import { adopt, type Doc, type Node, type Edge } from './model';
+import { adopt, type Doc, type Node, type Edge, type Container, type Link, type Frame } from './model';
 
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 export type DiagramKind = 'system';
 
 export interface DiagramFile {
@@ -22,9 +22,12 @@ export interface DiagramFile {
     targetRps: number;
     nodes: Array<Omit<Node, 'x' | 'y'>>;
     edges: Edge[];
+    containers: Container[];
+    links: Link[];
   };
   layout: {
     positions: Record<string, { x: number; y: number }>;
+    frames: Record<string, Frame>;
   };
 }
 
@@ -36,8 +39,8 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
     version: FORMAT_VERSION,
     kind: 'system',
     meta: { title: meta?.title ?? 'Untitled system', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
-    model: { targetRps: doc.targetRps, nodes, edges: doc.edges },
-    layout: { positions },
+    model: { targetRps: doc.targetRps, nodes, edges: doc.edges, containers: doc.containers ?? [], links: doc.links ?? [] },
+    layout: { positions, frames: doc.frames ?? {} },
   };
 }
 
@@ -45,7 +48,7 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {
   const f = migrate(input);
   const nodes = f.model.nodes.map(n => ({ ...n, ...(f.layout.positions[n.id] ?? { x: 0, y: 0 }) })) as Node[];
-  const doc = adopt({ targetRps: f.model.targetRps, nodes, edges: f.model.edges });
+  const doc = adopt({ targetRps: f.model.targetRps, nodes, edges: f.model.edges, containers: f.model.containers, links: f.model.links, frames: f.layout.frames });
   return { doc, meta: f.meta };
 }
 
@@ -58,6 +61,8 @@ const migrations: Record<number, Migration> = {
     const nodes = (d.nodes ?? []).map((n: any) => { const { x = 0, y = 0, ...rest } = n; positions[n.id] = { x, y }; return rest; });
     return { version: 2, kind: 'system', meta: { title: 'Untitled system', created: now, updated: now }, model: { targetRps: d.targetRps ?? 1000, nodes, edges: d.edges ?? [] }, layout: { positions } };
   },
+  // v2 → v3: containers (environments) and links between them. Nothing is placed in a container.
+  2: (d) => ({ ...d, version: 3, model: { ...d.model, containers: [], links: [] }, layout: { ...d.layout, frames: {} } }),
 };
 
 export function detectVersion(d: any): number {
@@ -74,6 +79,8 @@ export function migrate(input: unknown): DiagramFile {
   if (!d.model || !Array.isArray(d.model.nodes) || !Array.isArray(d.model.edges)) throw new Error('Malformed model');
   d.layout = d.layout ?? { positions: {} };
   d.layout.positions = d.layout.positions ?? {};
+  d.layout.frames = d.layout.frames ?? {};
+  d.model.containers = d.model.containers ?? []; d.model.links = d.model.links ?? [];
   return d as DiagramFile;
 }
 

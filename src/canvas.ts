@@ -1,4 +1,4 @@
-import { KINDS, NODE_H, ICON, nextId, makeNode, type Node, type Edge, type Kind } from './model';
+import { KINDS, NODE_H, ICON, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
 import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
 
 const stage = document.getElementById('stage') as HTMLElement;
@@ -6,6 +6,7 @@ const svg = document.getElementById('svg') as unknown as SVGSVGElement;
 const world = document.getElementById('world') as unknown as SVGGElement;
 const gN = document.getElementById('nodes') as unknown as SVGGElement;
 const gE = document.getElementById('edges') as unknown as SVGGElement;
+const gF = document.getElementById('frames') as unknown as SVGGElement;
 const gO = document.getElementById('overlay') as unknown as SVGGElement;
 const gL = document.getElementById('labels') as unknown as SVGGElement;
 const hintEl = document.getElementById('hint') as HTMLElement;
@@ -71,6 +72,63 @@ function summary(n: Node): string {
   }
 }
 
+// ---------- container frames ----------
+/**
+ * Frames always fit their members (nodes + child frames) with padding; a stored frame is used
+ * only for an empty container, so it has somewhere to be. Computed per render, cheap at this scale.
+ */
+export function computeFrames(): Record<string, Frame> {
+  const { doc } = state;
+  const out: Record<string, Frame> = {};
+  const depth = (id: string) => ancestry(doc, id).length;
+  const order = [...doc.containers].sort((a, b) => depth(b.id) - depth(a.id)); // deepest first
+  for (const c of order) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + KINDS[n.kind].w); y1 = Math.max(y1, n.y + NODE_H); }
+    for (const k of doc.containers) if ((k.parent ?? null) === c.id && out[k.id]) { const f = out[k.id]; x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); }
+    if (x0 === Infinity) { const st = doc.frames[c.id]; out[c.id] = st ? { ...st } : { x: 40, y: 40, w: 260, h: 140 }; continue; }
+    out[c.id] = { x: x0 - FRAME_PAD, y: y0 - FRAME_PAD - FRAME_HEAD, w: x1 - x0 + FRAME_PAD * 2, h: y1 - y0 + FRAME_PAD * 2 + FRAME_HEAD };
+  }
+  return out;
+}
+let frames: Record<string, Frame> = {};
+export const currentFrames = () => frames;
+/** Deepest container whose frame contains the point, excluding `skip` and its descendants. */
+export function containerAt(x: number, y: number, skip: string | null = null): string | null {
+  const { doc } = state;
+  let best: string | null = null, bestDepth = -1;
+  for (const c of doc.containers) {
+    if (skip && ancestry(doc, c.id).includes(skip)) continue;
+    const f = frames[c.id]; if (!f) continue;
+    if (x >= f.x && y >= f.y && x <= f.x + f.w && y <= f.y + f.h) { const d = ancestry(doc, c.id).length; if (d > bestDepth) { best = c.id; bestDepth = d; } }
+  }
+  return best;
+}
+const frameEls = new Map<string, SVGGElement>();
+function buildFrame(c: Container): SVGGElement {
+  const g = el('g', { class: 'frame', 'data-container': c.id });
+  g.appendChild(el('rect', { class: 'fbody', rx: 12 }));
+  g.appendChild(el('rect', { class: 'fhead', height: FRAME_HEAD }));
+  g.appendChild(el('use', { href: '#ic-container', class: 'ficon', width: 14, height: 14 }));
+  g.appendChild(el('text', { class: 'ftitle' }));
+  g.appendChild(el('text', { class: 'fkind' }));
+  g.appendChild(el('text', { class: 'fmeta', 'text-anchor': 'end' }));
+  return g;
+}
+function updateFrame(g: SVGGElement, c: Container, f: Frame) {
+  const isSel = state.sel?.type === 'container' && state.sel.id === c.id;
+  const d = ancestry(state.doc, c.id).length - 1;
+  g.setAttribute('class', 'frame k-' + c.kind + (isSel ? ' sel' : '') + (g.classList.contains('target') ? ' target' : ''));
+  g.style.setProperty('--h', String(CONTAINER_KINDS[c.kind].hue));
+  g.style.setProperty('--depth', String(d));
+  set(g.querySelector('.fbody')!, { x: f.x, y: f.y, width: f.w, height: f.h });
+  set(g.querySelector('.fhead')!, { x: f.x, y: f.y, width: f.w, rx: 12 });
+  set(g.querySelector('.ficon')!, { x: f.x + 12, y: f.y + 8 });
+  const t = g.querySelector('.ftitle')!; set(t, { x: f.x + 32, y: f.y + 20 }); t.textContent = c.name;
+  const k = g.querySelector('.fkind')!; set(k, { x: f.x + 32 + c.name.length * 7.6 + 8, y: f.y + 20 }); k.textContent = CONTAINER_KINDS[c.kind].label.toLowerCase() + (c.provider ? ` · ${c.provider}` : '');
+  const m = g.querySelector('.fmeta')!; set(m, { x: f.x + f.w - 12, y: f.y + 20 }); m.textContent = c.owner ?? '';
+}
+
 // ---------- keyed rendering ----------
 const nodeEls = new Map<string, SVGGElement>();
 const edgeEls = new Map<string, SVGGElement>();
@@ -133,7 +191,8 @@ function updateEdge(g: SVGGElement, e: Edge, a: Node, b: Node) {
   const d = pathBetween(p, q, s1, s2);
   const isSel = state.sel?.type === 'edge' && state.sel.id === e.id;
   const crit = state.results.nodes[e.to]?.status === 'crit';
-  g.setAttribute('class', 'edge' + (isSel ? ' sel' : '') + (crit ? ' crit' : '') + (g.classList.contains('enter') ? ' enter' : ''));
+  const cross = state.results.crossings?.[e.id] || 0;
+  g.setAttribute('class', 'edge' + (isSel ? ' sel' : '') + (crit ? ' crit' : '') + (cross ? ' cross' : '') + (g.classList.contains('enter') ? ' enter' : ''));
   const line = g.querySelector('.line') as SVGPathElement;
   set(g.querySelector('.hit')!, { d });
   set(line, { d, 'marker-end': isSel ? 'url(#arrowSel)' : crit ? 'url(#arrowCrit)' : 'url(#arrow)' });
@@ -141,7 +200,7 @@ function updateEdge(g: SVGGElement, e: Edge, a: Node, b: Node) {
   else { line.style.strokeDasharray = ''; }
   // label at the curve midpoint
   const mid = line.getTotalLength() ? line.getPointAtLength(line.getTotalLength() / 2) : { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-  const txt = `${e.calls}× · ${fmt(state.results.edges[e.id] || 0)} rps`;
+  const txt = `${e.calls}× · ${fmt(state.results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '');
   const tw = txt.length * 6.1 + 12;
   const l = labelEls.get(e.id)!;
   const tooShort = line.getTotalLength() < tw + 36 && !isSel;
@@ -155,6 +214,18 @@ export function draw() {
   applyView();
   const byId = Object.fromEntries(doc.nodes.map(n => [n.id, n]));
   const animate = !firstDraw && !reduceMotion();
+
+  // frames (parents drawn before children so children sit on top)
+  frames = computeFrames();
+  const liveC = new Set(doc.containers.map(c => c.id));
+  for (const [id, g] of frameEls) if (!liveC.has(id)) { frameEls.delete(id); g.remove(); }
+  const ordered = [...doc.containers].sort((a, b) => ancestry(doc, a.id).length - ancestry(doc, b.id).length);
+  for (const c of ordered) {
+    let g = frameEls.get(c.id);
+    if (!g) { g = buildFrame(c); frameEls.set(c.id, g); }
+    gF.appendChild(g); // re-append keeps parent-before-child order
+    updateFrame(g, c, frames[c.id]);
+  }
 
   // nodes
   const liveN = new Set(doc.nodes.map(n => n.id));
@@ -215,7 +286,8 @@ type Drag =
   | { type: 'node'; ids: string[]; start: Record<string, { x: number; y: number }>; ox: number; oy: number; moved: boolean; snapped: boolean }
   | { type: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean }
   | { type: 'connect'; from: string; side: Side; path: SVGPathElement; target: string | null }
-  | { type: 'marquee'; x0: number; y0: number; rect: SVGRectElement; additive: boolean };
+  | { type: 'marquee'; x0: number; y0: number; rect: SVGRectElement; additive: boolean }
+  | { type: 'frame'; id: string; nodeIds: string[]; start: Record<string, { x: number; y: number }>; frameStart: Record<string, Frame>; ox: number; oy: number; moved: boolean; target: string | null };
 const pointers = new Map<number, { x: number; y: number }>();
 let drag: Drag | null = null;
 let pinch: { d: number; k: number; cx: number; cy: number; vx: number; vy: number } | null = null;
@@ -257,6 +329,20 @@ svg.addEventListener('pointerdown', ev => {
     return;
   }
   if (edgeEl) { select({ type: 'edge', id: edgeEl.dataset.edge! }); renderAll(); return; }
+  const frameEl = target.closest('[data-container]') as SVGGElement | null;
+  if (frameEl && !additive && !ev.altKey) {
+    const id = frameEl.dataset.container!;
+    select({ type: 'container', id });
+    const w = toWorld(ev.clientX, ev.clientY);
+    const nodeIds = state.doc.nodes.filter(n => ancestry(state.doc, n.container).includes(id)).map(n => n.id);
+    const start: Record<string, { x: number; y: number }> = {};
+    nodeIds.forEach(i => { const n = state.doc.nodes.find(x => x.id === i)!; start[i] = { x: n.x, y: n.y }; });
+    const frameStart: Record<string, Frame> = {};
+    state.doc.containers.filter(c => ancestry(state.doc, c.id).includes(id)).forEach(c => { frameStart[c.id] = { ...(state.doc.frames[c.id] ?? frames[c.id]) }; });
+    drag = { type: 'frame', id, nodeIds, start, frameStart, ox: w.x, oy: w.y, moved: false, target: null };
+    renderAll();
+    return;
+  }
   if (additive || ev.altKey) {
     const w = toWorld(ev.clientX, ev.clientY);
     const rect = el('rect', { class: 'marquee', x: w.x, y: w.y, width: 0, height: 0 }); gO.appendChild(rect);
@@ -290,6 +376,24 @@ svg.addEventListener('pointermove', ev => {
       if (!drag.moved) return;
       const start = drag.start;
       drag.ids.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; n.x = snap(start[id].x + dx); n.y = snap(start[id].y + dy); });
+      // highlight the frame the pointer is over (that's where the node will land)
+      const over = containerAt(w.x, w.y);
+      const ids = drag.ids;
+      frameEls.forEach((g, id) => g.classList.toggle('target', id === over && !ids.some(nid => (state.doc.nodes.find(x => x.id === nid)?.container ?? null) === over)));
+      renderCanvas(); break;
+    }
+    case 'frame': {
+      const dx = w.x - drag.ox, dy = w.y - drag.oy;
+      if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) { drag.moved = true; mutate(() => {}); }
+      if (!drag.moved) return;
+      const d = drag;
+      d.nodeIds.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; n.x = snap(d.start[id].x + dx); n.y = snap(d.start[id].y + dy); });
+      // empty containers keep a stored frame; move those too
+      for (const cid in d.frameStart) { const f = d.frameStart[cid]; state.doc.frames[cid] = { ...f, x: snap(f.x + dx), y: snap(f.y + dy) }; }
+      const over = containerAt(w.x, w.y, d.id);
+      const cur = state.doc.containers.find(c => c.id === d.id)!;
+      d.target = over !== (cur.parent ?? null) ? over : null;
+      frameEls.forEach((g, id) => g.classList.toggle('target', id === over && over !== (cur.parent ?? null)));
       renderCanvas(); break;
     }
     case 'pan':
@@ -322,7 +426,32 @@ function up(ev: PointerEvent) {
   const d = drag; drag = null;
   switch (d.type) {
     case 'pan': if (!d.moved) { select(null); renderAll(); } break;
-    case 'node': d.ids.forEach(id => nodeEls.get(id)?.classList.remove('dragging')); renderAll(); break;
+    case 'node': {
+      d.ids.forEach(id => nodeEls.get(id)?.classList.remove('dragging'));
+      frameEls.forEach(g => g.classList.remove('target'));
+      if (d.moved) {
+        // re-home each dropped node by its centre; use the pointer for the primary node
+        d.ids.forEach(id => {
+          const n = state.doc.nodes.find(x => x.id === id)!;
+          const cx = n.x + KINDS[n.kind].w / 2, cy = n.y + NODE_H / 2;
+          const into = containerAt(cx, cy);
+          if ((n.container ?? null) !== into) n.container = into;
+        });
+      }
+      renderAll(); break;
+    }
+    case 'frame': {
+      frameEls.forEach(g => g.classList.remove('target'));
+      if (d.moved && d.target !== null) {
+        const c = state.doc.containers.find(x => x.id === d.id)!;
+        c.parent = d.target;
+      } else if (d.moved) {
+        const c = state.doc.containers.find(x => x.id === d.id)!;
+        const f = frames[d.id]; const over = containerAt(f.x + f.w / 2, f.y + 8, d.id);
+        if (over !== (c.parent ?? null)) c.parent = over;
+      }
+      renderAll(); break;
+    }
     case 'connect': {
       d.path.remove(); hint(null);
       nodeEls.get(d.target || '')?.classList.remove('target');
@@ -377,10 +506,11 @@ svg.addEventListener('wheel', ev => {
 
 export function fit(animated = true) {
   const { doc } = state;
-  if (!doc.nodes.length) return;
+  if (!doc.nodes.length && !doc.containers.length) return;
   const r = svg.getBoundingClientRect();
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
   doc.nodes.forEach(n => { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + KINDS[n.kind].w); y1 = Math.max(y1, n.y + NODE_H); });
+  Object.values(computeFrames()).forEach(f => { x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); });
   const pad = 48;
   const k = Math.min(1.5, Math.max(0.25, Math.min((r.width - pad * 2) / (x1 - x0), (r.height - pad * 2) / (y1 - y0))));
   const target = { k, x: (r.width - (x1 - x0) * k) / 2 - x0 * k, y: (r.height - (y1 - y0) * k) / 2 - y0 * k };
@@ -402,6 +532,7 @@ export function addNode(kind: Kind, x?: number, y?: number) {
     x = c.x - KINDS[kind].w / 2; y = c.y - NODE_H / 2;
   }
   const n = makeNode(kind, snap(x), snap(y));
+  n.container = containerAt(n.x + KINDS[kind].w / 2, n.y + NODE_H / 2);
   mutate(() => state.doc.nodes.push(n));
   select({ type: 'node', id: n.id });
   renderAll();
@@ -416,9 +547,29 @@ stage.addEventListener('dragover', ev => { ev.preventDefault(); ev.dataTransfer!
 stage.addEventListener('dragleave', () => stage.classList.remove('dropping'));
 stage.addEventListener('drop', ev => {
   ev.preventDefault(); stage.classList.remove('dropping');
-  const kind = ev.dataTransfer!.getData('text/kind') as Kind; if (!KINDS[kind]) return;
   const w = toWorld(ev.clientX, ev.clientY);
+  if (ev.dataTransfer!.getData('text/container')) { addContainer('cloud', w.x - 130, w.y - 70); return; }
+  const kind = ev.dataTransfer!.getData('text/kind') as Kind; if (!KINDS[kind]) return;
   addNode(kind, w.x - KINDS[kind].w / 2, w.y - NODE_H / 2);
+});
+
+export function addContainer(kind: ContainerKind = 'cloud', x?: number, y?: number) {
+  if (x === undefined || y === undefined) {
+    const r = svg.getBoundingClientRect();
+    const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
+    x = c.x - 130; y = c.y - 70;
+  }
+  const c = makeContainer(kind, kind === 'cloud' ? 'New environment' : CONTAINER_KINDS[kind].label);
+  c.parent = containerAt(x + 130, y + 70);
+  mutate(() => { state.doc.containers.push(c); state.doc.frames[c.id] = { x: snap(x!), y: snap(y!), w: 260, h: 140 }; });
+  select({ type: 'container', id: c.id });
+  renderAll();
+  return c;
+}
+document.querySelectorAll<HTMLElement>('#rail [data-add-container]').forEach(b => {
+  b.addEventListener('dragstart', ev => { ev.dataTransfer!.setData('text/container', '1'); ev.dataTransfer!.effectAllowed = 'copy'; });
+  b.setAttribute('draggable', 'true');
+  b.addEventListener('click', () => addContainer());
 });
 
 export function nudge(dx: number, dy: number) {

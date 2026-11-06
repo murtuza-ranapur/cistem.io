@@ -1,9 +1,9 @@
-import { exampleDoc, type Doc, type Node, type Edge } from './model';
+import { exampleDoc, type Doc, type Node, type Edge, type Container } from './model';
 import { toFile, fromFile, type DiagramFile } from './document';
 import { compute, type Results } from './engine';
 import * as history from './history';
 
-export type Selection = { type: 'node' | 'edge'; id: string } | null;
+export type Selection = { type: 'node' | 'edge' | 'container'; id: string } | null;
 
 export const state = {
   doc: {} as Doc,
@@ -19,10 +19,12 @@ export const fmt = (v: number) =>
   v === Infinity ? '∞' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : Math.round(v).toString();
 export const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 
-export function current(): Node | Edge | null {
+export function current(): Node | Edge | Container | null {
   const s = state.sel;
   if (!s) return null;
-  return s.type === 'node' ? state.doc.nodes.find(x => x.id === s.id) ?? null : state.doc.edges.find(x => x.id === s.id) ?? null;
+  if (s.type === 'node') return state.doc.nodes.find(x => x.id === s.id) ?? null;
+  if (s.type === 'edge') return state.doc.edges.find(x => x.id === s.id) ?? null;
+  return state.doc.containers.find(x => x.id === s.id) ?? null;
 }
 export function selectedNodeIds(): string[] {
   const ids = new Set(state.multi);

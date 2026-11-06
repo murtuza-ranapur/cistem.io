@@ -1,7 +1,7 @@
 import './style.css';
 import { type Kind } from './model';
 import { state, current, restore, loadExample, loadFile, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
-import { fit, zoomAt, hint, addNode, nudge } from './canvas';
+import { fit, zoomAt, hint, addNode, addContainer, nudge } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import './sheet';
@@ -38,7 +38,17 @@ redoBtn.onclick = () => { redo(); refreshHistory(); };
 // ---------- delete / duplicate ----------
 function deleteSelection() {
   const ids = selectedNodeIds().filter(id => state.doc.nodes.find(n => n.id === id)?.kind !== 'entry');
-  if (state.sel?.type === 'edge') {
+  if (state.sel?.type === 'container') {
+    const id = state.sel.id;
+    mutate(() => {
+      const c = state.doc.containers.find(x => x.id === id)!; const parent = c.parent ?? null;
+      state.doc.nodes.forEach(x => { if ((x.container ?? null) === id) x.container = parent; });
+      state.doc.containers.forEach(x => { if ((x.parent ?? null) === id) x.parent = parent; });
+      state.doc.links = state.doc.links.filter(l => l.from !== id && l.to !== id);
+      delete state.doc.frames[id];
+      state.doc.containers = state.doc.containers.filter(x => x.id !== id);
+    });
+  } else if (state.sel?.type === 'edge') {
     const id = state.sel.id;
     mutate(() => { state.doc.edges = state.doc.edges.filter(e => e.id !== id); });
   } else if (ids.length) {
@@ -81,9 +91,12 @@ function moveTo(target: Positions, then?: () => void) {
   requestAnimationFrame(tick);
 }
 function organise() {
-  const next = layeredLayout(state.doc);
+  const res = layeredLayout(state.doc);
+  const next = res.positions;
   if (state.doc.nodes.every(n => next[n.id].x === n.x && next[n.id].y === n.y)) { hint('Already organised', 1200); return; }
   history.snapshot(state.doc);
+  // empty containers have no members to follow; give them their computed frame
+  for (const id in res.frames) if (!state.doc.nodes.some(n => n.container === id) && !state.doc.containers.some(c => c.parent === id)) state.doc.frames[id] = res.frames[id];
   moveTo(next, () => fit());
 }
 $('layoutBtn').onclick = organise;
@@ -111,6 +124,7 @@ document.addEventListener('keydown', ev => {
   if (mod && ev.key === '-') { ev.preventDefault(); $('zout').click(); return; }
   if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelection(); return; }
   if (ev.key.toLowerCase() === 'o' && !mod) { organise(); return; }
+  if (ev.key.toLowerCase() === 'e' && !mod) { addContainer(); return; }
   if (ev.key === 'Escape') { select(null); renderAll(); return; }
   const step = ev.shiftKey ? 32 : 8;
   if (ev.key === 'ArrowLeft') { ev.preventDefault(); nudge(-step, 0); }

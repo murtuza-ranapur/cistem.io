@@ -1,4 +1,4 @@
-import { KINDS, METHODS, PG_TYPES, EVICTIONS, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode } from './model';
+import { KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
 import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select } from './state';
 import * as history from './history';
 
@@ -23,6 +23,7 @@ const schemaLabel = (n: Node) => n.kind === 'service' ? 'Endpoints' : n.kind ===
 function capacityTab(n: Node): string {
   const r = state.results.nodes[n.id];
   let h = '<div class="tab"><div class="props">' + inp('name', 'name', n.name).replace('<label>', '<label class="wide">');
+  h += `<label class="wide">in<select data-path="container" data-nullable="1"><option value="" ${!n.container ? 'selected' : ''}>(no environment)</option>${containerOptions(n.container ?? null)}</select></label>`;
   KINDS[n.kind].fields.forEach(([key, lbl]) => { h += inp(key, lbl, (n as any)[key], 'number'); });
   if (n.kind === 'cache') h += selIn('eviction', 'eviction policy', n.eviction, EVICTIONS).replace('<label>', '<label class="wide">');
   if (n.kind === 'entry') {
@@ -87,6 +88,43 @@ function schemaTab(n: Node): string {
   return h + '</div>';
 }
 
+/** Options for a container picker, indented by depth; `exclude` hides a container and its descendants. */
+function containerOptions(selected: string | null, exclude: string | null = null): string {
+  const { doc } = state;
+  const line = (c: Container) => {
+    const d = ancestry(doc, c.id).length - 1;
+    return `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${'\u00a0\u00a0'.repeat(d)}${esc(c.name)} · ${CONTAINER_KINDS[c.kind].label.toLowerCase()}</option>`;
+  };
+  const walk = (parent: string | null): string => doc.containers.filter(c => (c.parent ?? null) === parent && !(exclude && ancestry(doc, c.id).includes(exclude))).map(c => line(c) + walk(c.id)).join('');
+  return walk(null);
+}
+const pathOf = (id: string | null) => ancestry(state.doc, id).reverse().map(cid => state.doc.containers.find(c => c.id === cid)?.name ?? cid).join(' / ');
+
+function containerSheet(c: Container): string {
+  const { doc } = state;
+  const members = doc.nodes.filter(n => (n.container ?? null) === c.id);
+  const children = doc.containers.filter(k => (k.parent ?? null) === c.id);
+  const links = doc.links.filter(l => l.from === c.id || l.to === c.id);
+  let h = `<div class="head"><span class="k" style="color:hsl(${CONTAINER_KINDS[c.kind].hue} 45% 45%)">${icon('container').replace('var(--c-container)', `hsl(${CONTAINER_KINDS[c.kind].hue} 45% 45%)`)}${CONTAINER_KINDS[c.kind].label}</span><strong>${esc(c.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-container" title="Delete (members stay)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div>`;
+  h += `<div class="tab"><div class="props">${inp('name', 'name', c.name).replace('<label>', '<label class="wide">')}`;
+  h += selIn('kind', 'kind', c.kind, Object.keys(CONTAINER_KINDS)).replace(/<option ([^>]*)>([a-z]+)<\/option>/g, (_m, attrs, k) => `<option ${attrs}>${CONTAINER_KINDS[k as ContainerKind].label}</option>`);
+  h += `<label>inside<select data-path="parent" data-nullable="1"><option value="" ${!c.parent ? 'selected' : ''}>(top level)</option>${containerOptions(c.parent ?? null, c.id)}</select></label>`;
+  h += inp('provider', 'provider', c.provider ?? '', 'text', 'placeholder="aws · ibm · gcp · on-prem"');
+  h += inp('owner', 'owner', c.owner ?? '', 'text', 'placeholder="team or company"');
+  h += `${inp('note', 'note', c.note ?? '').replace('<label>', '<label class="wide">')}</div>`;
+  h += `<div class="stats"><div class="stat-tile"><div class="l">components</div><div class="v">${members.length}</div></div><div class="stat-tile"><div class="l">nested</div><div class="v">${children.length}</div></div></div>`;
+  if (c.parent) h += `<p class="note">${esc(pathOf(c.id))}</p>`;
+  h += `<section class="list" style="margin-top:14px"><h3>Links to other environments <span class="spacer"></span>${addBtn('add-link', 'link')}</h3>`;
+  links.forEach(l => {
+    const other = l.from === c.id ? l.to : l.from;
+    const i = doc.links.indexOf(l);
+    h += `<div class="item"><div class="row topic"><label>to<select data-path="links.${i}.${l.from === c.id ? 'to' : 'from'}">${containerOptions(other, c.id)}</select></label>${selIn(`links.${i}.type`, 'type', l.type, Object.keys(LINK_TYPES).includes(l.type) ? Object.keys(LINK_TYPES) : [l.type, ...Object.keys(LINK_TYPES)])}${xBtn(`rm-link:${i}`)}</div><div class="row one">${inp(`links.${i}.latencyMs`, 'added latency ms', l.latencyMs, 'number', 'min="0"')}<span></span></div></div>`;
+  });
+  if (!links.length) h += `<p class="empty">No links. Calls out of here cost ${CROSSING_DEFAULT_MS.siblings} ms to a sibling and ${CROSSING_DEFAULT_MS.differentRoots} ms to another cloud unless a link says otherwise.</p>`;
+  h += '</section></div>';
+  return h;
+}
+
 function nodeSheet(n: Node): string {
   let h = `<div class="head"><span class="k" style="color:var(--c-${n.kind})">${icon(n.kind)}${KINDS[n.kind].label}</span><strong>${esc(n.name)}</strong><span class="spacer"></span>${n.kind !== 'entry' ? `<button class="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button>` : ''}</div>`;
   if (hasSchema(n)) {
@@ -125,7 +163,7 @@ export function drawSheet() {
   const t = current();
   if (!t) { state.sel = null; inspector.classList.add('closed'); return; }
   inspector.classList.remove('closed');
-  body.innerHTML = state.sel!.type === 'node' ? nodeSheet(t as Node) : edgeSheet(t as Edge);
+  body.innerHTML = state.sel!.type === 'node' ? nodeSheet(t as Node) : state.sel!.type === 'edge' ? edgeSheet(t as Edge) : containerSheet(t as Container);
   body.querySelectorAll<HTMLTextAreaElement>('textarea[data-validate]').forEach(validateJson);
   body.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab as typeof tab; drawSheet(); });
 }
@@ -139,8 +177,12 @@ body.addEventListener('input', ev => {
   const f = ev.target as HTMLInputElement;
   if (!f.dataset.path) return;
   const t = current(); if (!t) return;
-  const v = f.type === 'checkbox' ? f.checked : f.type === 'number' ? (f.value === '' ? 0 : +f.value) : f.dataset.int ? (f.value === '' ? null : +f.value) : f.value;
-  setPath(t, f.dataset.path, v);
+  const v = f.type === 'checkbox' ? f.checked : f.type === 'number' ? (f.value === '' ? 0 : +f.value) : f.dataset.int ? (f.value === '' ? null : +f.value) : f.dataset.nullable ? (f.value === '' ? null : f.value) : f.value;
+  if (f.dataset.path.startsWith('links.')) {
+    setPath(state.doc, f.dataset.path, v);
+    if (f.dataset.path.endsWith('.type') && typeof v === 'string' && v in LINK_TYPES) { const i = +f.dataset.path.split('.')[1]; state.doc.links[i].latencyMs = LINK_TYPES[v]; renderAll(); return; }
+  } else setPath(t, f.dataset.path, v);
+  if (f.dataset.path === 'container' || f.dataset.path === 'parent' || f.dataset.path === 'kind') { renderAll(); return; }
   if (f.tagName === 'TEXTAREA') validateJson(f as unknown as HTMLTextAreaElement);
   renderCanvas();
   if (f.dataset.path === 'name') { const s = body.querySelector('.head strong'); if (s) s.textContent = (t as Node).name; }
@@ -152,6 +194,24 @@ body.addEventListener('click', ev => {
   const n = current() as any; if (!n) return;
   if (b.dataset.action === 'delete-node') { mutate(() => { state.doc.nodes = state.doc.nodes.filter(x => x.id !== n.id); state.doc.edges = state.doc.edges.filter(e => e.from !== n.id && e.to !== n.id); }); select(null); renderAll(); return; }
   if (b.dataset.action === 'delete-edge') { mutate(() => { state.doc.edges = state.doc.edges.filter(e => e.id !== n.id); }); select(null); renderAll(); return; }
+  if (b.dataset.action === 'delete-container') {
+    mutate(() => {
+      const parent = n.parent ?? null;
+      state.doc.nodes.forEach(x => { if ((x.container ?? null) === n.id) x.container = parent; });
+      state.doc.containers.forEach(x => { if ((x.parent ?? null) === n.id) x.parent = parent; });
+      state.doc.links = state.doc.links.filter(l => l.from !== n.id && l.to !== n.id);
+      delete state.doc.frames[n.id];
+      state.doc.containers = state.doc.containers.filter(x => x.id !== n.id);
+    });
+    select(null); renderAll(); return;
+  }
+  if (b.dataset.action === 'add-link') {
+    const other = state.doc.containers.find(x => x.id !== n.id && !ancestry(state.doc, x.id).includes(n.id));
+    if (!other) return;
+    mutate(() => state.doc.links.push({ id: nextId('l'), from: n.id, to: other.id, type: 'privatelink', latencyMs: LINK_TYPES['privatelink'] }));
+    renderAll(); return;
+  }
+  if (b.dataset.action?.startsWith('rm-link:')) { const i = +b.dataset.action.split(':')[1]; mutate(() => state.doc.links.splice(i, 1)); renderAll(); return; }
   history.snapshot(state.doc);
   if (b.dataset.platform) {
     const p = b.dataset.platform;

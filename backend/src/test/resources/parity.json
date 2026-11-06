@@ -1,6 +1,6 @@
 {
  "file": {
-  "version": 2,
+  "version": 3,
   "kind": "system",
   "meta": {
    "title": "Parity fixture",
@@ -24,7 +24,8 @@
      "kind": "lb",
      "name": "ALB",
      "maxRps": 50000,
-     "latency": 1
+     "latency": 1,
+     "container": "c9"
     },
     {
      "id": "n3",
@@ -62,7 +63,8 @@
        "req": "",
        "res": "{\n  \"id\": \"pay_01H...\",\n  \"status\": \"CAPTURED\"\n}"
       }
-     ]
+     ],
+     "container": "c9"
     },
     {
      "id": "n4",
@@ -71,7 +73,8 @@
      "maxOps": 100000,
      "hitRatio": 0.85,
      "latency": 1,
-     "eviction": "allkeys-lru"
+     "eviction": "allkeys-lru",
+     "container": "c10"
     },
     {
      "id": "n5",
@@ -146,7 +149,8 @@
         }
        ]
       }
-     ]
+     ],
+     "container": "c10"
     },
     {
      "id": "n6",
@@ -160,7 +164,8 @@
        "partitions": 12,
        "schema": "{\n  \"type\": \"record\",\n  \"name\": \"PaymentAuthorised\",\n  \"namespace\": \"com.example.payments\",\n  \"fields\": [\n    {\"name\": \"paymentId\", \"type\": \"string\"},\n    {\"name\": \"amountMinor\", \"type\": \"long\"},\n    {\"name\": \"currency\", \"type\": \"string\"}\n  ]\n}"
       }
-     ]
+     ],
+     "container": "c10"
     },
     {
      "id": "n7",
@@ -169,7 +174,8 @@
      "rpsPerInstance": 400,
      "instances": 8,
      "latency": 40,
-     "endpoints": []
+     "endpoints": [],
+     "container": "c10"
     }
    ],
    "edges": [
@@ -216,6 +222,36 @@
      "to": "n7",
      "calls": 1
     }
+   ],
+   "containers": [
+    {
+     "id": "c8",
+     "kind": "cloud",
+     "name": "AWS",
+     "parent": null,
+     "provider": "aws"
+    },
+    {
+     "id": "c9",
+     "kind": "account",
+     "name": "acq-edge",
+     "parent": "c8"
+    },
+    {
+     "id": "c10",
+     "kind": "account",
+     "name": "acq-core",
+     "parent": "c8"
+    }
+   ],
+   "links": [
+    {
+     "id": "l1",
+     "from": "c9",
+     "to": "c10",
+     "type": "privatelink",
+     "latencyMs": 2
+    }
    ]
   },
   "layout": {
@@ -248,7 +284,8 @@
      "x": 1280,
      "y": 460
     }
-   }
+   },
+   "frames": {}
   }
  },
  "expected": {
@@ -267,7 +304,7 @@
     "util": 0.14,
     "status": "ok",
     "lat": 1.1627906976744187,
-    "cum": 1.1627906976744187
+    "cum": 2.162790697674419
    },
    "n3": {
     "load": 7000,
@@ -275,7 +312,7 @@
     "util": 1.1666666666666667,
     "status": "crit",
     "lat": 250,
-    "cum": 251.1627906976744
+    "cum": 252.1627906976744
    },
    "n4": {
     "load": 14000,
@@ -283,7 +320,7 @@
     "util": 0.14,
     "status": "ok",
     "lat": 1.1627906976744187,
-    "cum": 252.32558139534882
+    "cum": 255.32558139534882
    },
    "n5": {
     "load": 9100,
@@ -291,7 +328,7 @@
     "util": 0.9858333333333333,
     "status": "warn",
     "lat": 60,
-    "cum": 312.3255813953488
+    "cum": 315.3255813953488
    },
    "n6": {
     "load": 7000,
@@ -299,7 +336,7 @@
     "util": 0.35,
     "status": "ok",
     "lat": 7.692307692307692,
-    "cum": 258.8550983899821
+    "cum": 261.8550983899821
    },
    "n7": {
     "load": 7000,
@@ -307,7 +344,7 @@
     "util": 2.1875,
     "status": "crit",
     "lat": 400,
-    "cum": 658.8550983899821
+    "cum": 661.8550983899821
    }
   },
   "edges": {
@@ -322,38 +359,67 @@
   "verdict": {
    "status": "crit",
    "node": "n3",
-   "lat": 658.8550983899821,
+   "lat": 661.8550983899821,
    "converged": true
   },
   "layout": {
-   "n1": {
-    "x": 40,
-    "y": 104
-   },
    "n2": {
-    "x": 352,
-    "y": 104
+    "x": 408,
+    "y": 220
    },
    "n3": {
-    "x": 664,
-    "y": 104
+    "x": 656,
+    "y": 220
    },
    "n4": {
-    "x": 984,
-    "y": 40
-   },
-   "n6": {
-    "x": 984,
-    "y": 176
+    "x": 976,
+    "y": 156
    },
    "n5": {
-    "x": 1304,
-    "y": 40
+    "x": 1240,
+    "y": 156
+   },
+   "n6": {
+    "x": 976,
+    "y": 292
    },
    "n7": {
-    "x": 1304,
-    "y": 176
+    "x": 1240,
+    "y": 292
+   },
+   "n1": {
+    "x": 40,
+    "y": 192
    }
+  },
+  "frames": {
+   "c9": {
+    "x": 380,
+    "y": 162,
+    "w": 506,
+    "h": 178
+   },
+   "c10": {
+    "x": 948,
+    "y": 98,
+    "w": 516,
+    "h": 310
+   },
+   "c8": {
+    "x": 352,
+    "y": 40,
+    "w": 1138,
+    "h": 396
+   }
+  },
+  "crossings": {
+   "e1": 1,
+   "e2": 0,
+   "e3": 2,
+   "e4": 0,
+   "e5": 2,
+   "e6": 2,
+   "e7": 0
   }
  }
 }

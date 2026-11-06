@@ -40,6 +40,10 @@ class ParityTest {
             var en = it.next();
             assertEquals(en.getValue().asDouble(), r.edges().get(en.getKey()), 1e-6, "edge " + en.getKey());
         }
+        for (var it = exp.path("crossings").properties().iterator(); it.hasNext(); ) {
+            var en = it.next();
+            assertEquals(en.getValue().asDouble(), r.crossings().get(en.getKey()), 1e-9, "crossing " + en.getKey());
+        }
         JsonNode v = exp.path("verdict");
         assertEquals(v.path("status").asText(), r.verdict().status().name());
         assertEquals(v.path("node").asText(), r.verdict().nodeId());
@@ -52,12 +56,23 @@ class ParityTest {
         JsonNode f = fixture();
         var got = Layout.layered(f.path("file").path("model"));
         JsonNode exp = f.path("expected").path("layout");
-        assertEquals(exp.size(), got.size());
+        assertEquals(exp.size(), got.positions().size());
         for (var it = exp.properties().iterator(); it.hasNext(); ) {
             var en = it.next();
-            Layout.Point p = got.get(en.getKey());
+            Layout.Point p = got.positions().get(en.getKey());
             assertEquals(en.getValue().path("x").asInt(), p.x(), en.getKey() + " x");
             assertEquals(en.getValue().path("y").asInt(), p.y(), en.getKey() + " y");
+        }
+        JsonNode fr = f.path("expected").path("frames");
+        assertEquals(fr.size(), got.frames().size());
+        for (var it = fr.properties().iterator(); it.hasNext(); ) {
+            var en = it.next();
+            Layout.Frame g = got.frames().get(en.getKey());
+            assertNotNull(g, en.getKey());
+            assertEquals(en.getValue().path("x").asInt(), g.x(), en.getKey() + " fx");
+            assertEquals(en.getValue().path("y").asInt(), g.y(), en.getKey() + " fy");
+            assertEquals(en.getValue().path("w").asInt(), g.w(), en.getKey() + " fw");
+            assertEquals(en.getValue().path("h").asInt(), g.h(), en.getKey() + " fh");
         }
     }
 }
