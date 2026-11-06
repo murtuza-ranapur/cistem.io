@@ -215,7 +215,7 @@ public class DiagramTools {
     @McpTool(name = "auto_organise", description = "Lay the diagram out left-to-right from the entry node (same algorithm as the editor's Auto-organise).")
     public ObjectNode autoOrganise(@McpToolParam(description = "Diagram id") String diagramId) {
         return edit(diagramId, f -> {
-            Layout.Result r = Layout.layered(f.path("model"));
+            Layout.Result r = Layout.layered(f.path("model"), f.path("layout").path("detail"));
             ObjectNode positions = ((ObjectNode) f.path("layout")).putObject("positions");
             r.positions().forEach((id, p) -> positions.putObject(id).put("x", p.x()).put("y", p.y()));
             ObjectNode frames = ((ObjectNode) f.path("layout")).putObject("frames");

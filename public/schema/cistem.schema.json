@@ -100,6 +100,16 @@
               }
             }
           }
+        },
+        "detail": {
+          "type": "object",
+          "description": "Node id \u2192 compact | expanded (how much of a component's schema is drawn on the canvas).",
+          "additionalProperties": {
+            "enum": [
+              "compact",
+              "expanded"
+            ]
+          }
         }
       }
     }
@@ -485,6 +495,22 @@
               },
               "nullable": {
                 "type": "boolean"
+              },
+              "unique": {
+                "type": "boolean"
+              },
+              "index": {
+                "type": "boolean"
+              },
+              "default": {
+                "type": "string"
+              },
+              "references": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Foreign key target: \"table.column\" in the same database, or \"<node id>:table.column\" in another database node."
               }
             }
           }
