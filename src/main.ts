@@ -5,7 +5,7 @@ import { fit, zoomAt, hint, addNode, nudge } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import './sheet';
-import { cloud, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, toggleShare, openSettings, onSyncStatus, bootCloud } from './cloud';
+import { cloud, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
 import { onAfterRender } from './state';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -148,20 +148,31 @@ let toastTimer = 0;
 function toast(t: string, ms = 2200) { toastEl.textContent = t; toastEl.hidden = false; clearTimeout(toastTimer); toastTimer = window.setTimeout(() => (toastEl.hidden = true), ms); }
 onSyncStatus((s, detail) => {
   syncEl.className = 'sync ' + s;
-  syncText.textContent = { offline: 'offline', saved: 'saved', saving: 'saving…', dirty: 'unsaved', conflict: 'conflict', error: 'error', readonly: 'read-only' }[s];
-  syncEl.title = detail || { offline: 'Working in this browser only. Click to connect.', saved: 'All changes saved to the API', saving: 'Saving…', dirty: 'Changes pending', conflict: 'Changed elsewhere', error: 'Save failed', readonly: 'Shared link: changes stay local' }[s];
+  syncText.textContent = { local: cloud.user ? 'save' : 'not saved', saved: 'saved', saving: 'saving…', dirty: 'unsaved', conflict: 'conflict', error: 'retry save', readonly: 'read-only' }[s];
+  syncEl.title = detail || { local: cloud.user ? 'Save this diagram to your account' : 'Kept in this browser only. Sign in to save.', saved: 'All changes saved', saving: 'Saving…', dirty: 'Changes pending', conflict: 'Changed elsewhere', error: 'Save failed. Click to retry.', readonly: 'Shared link: you are viewing a copy' }[s];
   conflictEl.hidden = s !== 'conflict';
   if (s === 'error' && detail) toast(detail, 4000);
+  if (s === 'local' && detail) toast(detail, 4000);
   titleInput.readOnly = s === 'readonly';
 });
-syncEl.onclick = () => { if (cloud.status === 'offline') { cloud.id ? saveNow() : saveAsNew(); } else if (cloud.status === 'dirty' || cloud.status === 'error') saveNow(); };
+syncEl.onclick = () => { if (cloud.status === 'local' || cloud.status === 'dirty' || cloud.status === 'error') saveNow(); };
+onUserChange(u => {
+  $('signInBtn').hidden = !!u; $('accountBtn').hidden = !u;
+  if (u) { ($('avatar') as HTMLImageElement).src = u.avatarUrl || ''; $('login').textContent = u.login; $('accountName').textContent = u.name || u.login; }
+});
+$('signInBtn').onclick = signIn;
+const accountMenu = $('accountMenu');
+$('accountBtn').onclick = () => { accountMenu.hidden = !accountMenu.hidden; };
+document.addEventListener('click', ev => { if (!accountMenu.hidden && !(ev.target as Element).closest('#accountMenu,#accountBtn')) accountMenu.hidden = true; });
+$('signOutBtn').onclick = () => { accountMenu.hidden = true; signOut(); };
+if (new URL(location.href).searchParams.get('login') === 'failed') toast('GitHub sign-in didn\'t complete. Try again.', 5000);
 $('conflictTheirs').onclick = () => resolveConflict('theirs');
 $('conflictMine').onclick = () => resolveConflict('mine');
 $('drawerBtn').onclick = openDrawer; $('drawerClose').onclick = closeDrawer;
 $('newDiagram').onclick = newDiagram; $('saveAsNew').onclick = () => { saveAsNew(); closeDrawer(); };
-$('settingsBtn').onclick = openSettings;
 $('shareBtn').onclick = async () => {
-  if (!cloud.id) { toast('Save to the API first to share'); return; }
+  if (!cloud.user) { signIn(); return; }
+  if (!cloud.id) { await saveNow(); if (!cloud.id) return; }
   try {
     const url = await toggleShare();
     if (!url) { toast('Share link removed'); return; }
@@ -173,7 +184,9 @@ document.addEventListener('keydown', ev => { if ((ev.metaKey || ev.ctrlKey) && e
 
 // ---------- boot ----------
 (async () => {
-  const fromCloud = await bootCloud();
-  if (!fromCloud) { if (!restore()) loadExample(); history.reset(); setRps(state.doc.targetRps); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false)); }
+  const hasLocal = restore();
+  if (!hasLocal) loadExample();
+  history.reset(); setRps(state.doc.targetRps); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false));
+  await bootCloud(hasLocal);   // may replace the doc with a cloud one; fires cistem:opened if so
 })();
 void current;

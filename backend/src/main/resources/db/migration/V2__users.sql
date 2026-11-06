@@ -1,0 +1,36 @@
+create table users (
+    id          uuid primary key,
+    provider    text        not null,
+    provider_id text        not null,
+    login       text        not null,
+    name        text,
+    avatar_url  text,
+    created_at  timestamptz not null default now(),
+    last_seen   timestamptz not null default now(),
+    unique (provider, provider_id)
+);
+
+alter table diagrams add column owner_id uuid references users (id) on delete cascade;
+create index diagrams_owner_idx on diagrams (owner_id, updated_at desc);
+
+-- Spring Session JDBC (schema-postgresql.sql, inlined so Flyway owns it)
+create table spring_session (
+    primary_id            char(36) not null,
+    session_id            char(36) not null,
+    creation_time         bigint   not null,
+    last_access_time      bigint   not null,
+    max_inactive_interval int      not null,
+    expiry_time           bigint   not null,
+    principal_name        varchar(100),
+    constraint spring_session_pk primary key (primary_id)
+);
+create unique index spring_session_ix1 on spring_session (session_id);
+create index spring_session_ix2 on spring_session (expiry_time);
+create index spring_session_ix3 on spring_session (principal_name);
+create table spring_session_attributes (
+    session_primary_id char(36)     not null,
+    attribute_name     varchar(200) not null,
+    attribute_bytes    bytea        not null,
+    constraint spring_session_attributes_pk primary key (session_primary_id, attribute_name),
+    constraint spring_session_attributes_fk foreign key (session_primary_id) references spring_session (primary_id) on delete cascade
+);

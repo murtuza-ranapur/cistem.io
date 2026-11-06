@@ -184,7 +184,22 @@ section.list h3 .spacer{flex:1}
 .danger{color:var(--crit);border-color:transparent;background:transparent}
 .danger:hover{background:var(--crit-soft);border-color:transparent}
 
+/* ---- account ---- */
+.signin{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:500;font-size:12.5px}
+.signin:hover{background:var(--fg);border-color:var(--fg);opacity:.9}
+.signin svg{width:16px;height:16px;fill:currentColor}
+.account{display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 3px;border-radius:999px;border-color:transparent;background:transparent;font-size:12.5px}
+.account:hover{background:var(--line-2)}
+.account img{width:24px;height:24px;border-radius:50%;background:var(--line)}
+.menu{position:fixed;top:46px;right:14px;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;z-index:30;animation:fadeIn 120ms var(--ease) both}
+.menu-head{padding:8px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line);margin-bottom:4px}
+.menu-item{display:block;width:100%;text-align:left;border:none;background:transparent;padding:8px 10px;border-radius:7px}
+.menu-item:hover{background:var(--line-2)}
 /* ---- sync chip, drawer, banners ---- */
+.sync{cursor:pointer;background:transparent}
+.sync:hover{background:var(--line-2)}
+.sync.local{color:var(--fg)}
+.sync.local .sdot{display:none}
 .sync{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);font-family:var(--mono);padding:3px 8px;border-radius:999px;border:1px solid var(--line);transition:color var(--t) var(--ease),border-color var(--t) var(--ease)}
 .sync .sdot{width:6px;height:6px;border-radius:50%;background:var(--muted);transition:background var(--t) var(--ease)}
 .sync.saved .sdot{background:var(--ok)}.sync.saving .sdot,.sync.dirty .sdot{background:var(--warn)}.sync.conflict .sdot,.sync.error .sdot{background:var(--crit)}
@@ -221,6 +236,7 @@ section.list h3 .spacer{flex:1}
 @media (max-width:900px){
   #app{grid-template-rows:auto auto 1fr auto;grid-template-columns:1fr;grid-template-areas:"top" "rail" "stage" "inspector"}
   #top{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
+  .signin span,.account span{display:none}
   #drawer{width:min(320px,88vw)}
   .title{width:120px}
   #rpsRange{display:none}
