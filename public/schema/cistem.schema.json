@@ -533,6 +533,10 @@
         "schema": {
           "type": "string",
           "description": "Avro schema, JSON text."
+        },
+        "key": {
+          "type": "string",
+          "description": "Field (or expression) used as the message/partition key."
         }
       }
     },

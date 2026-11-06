@@ -268,6 +268,114 @@ class T {
     eq(after.container, 'c9', 'still in the same container');
   });
 
+  // ---- structured editors ----
+  const openSchema = async (t, id) => { await t.clickNode(id); await t.page.click('[data-tab="schema"]'); await t.page.waitForTimeout(200); };
+  const fe = (path) => `[data-fe="${path}"]`;
+
+  await test('body editor shows existing JSON as fields and edits write JSON back', async t => {
+    await openSchema(t, 'n3');
+    const rows = await t.page.$$eval(fe('endpoints.0.req') + ' [data-fpath] input.fname', els => els.map(e => e.value));
+    assert(rows.includes('amount') && rows.includes('currency'), 'fields parsed from the stored JSON: ' + rows);
+    // add a field, name it, set an example
+    await t.page.click(fe('endpoints.0.req') + ' [data-feact="add"][data-flist=""]'); await t.page.waitForTimeout(100);
+    await t.page.keyboard.type('reference'); // focus landed on the new row's name
+    const newRow = (await t.page.$$(fe('endpoints.0.req') + ' [data-fpath]')).at(-1);
+    await (await newRow.$('input.fex')).fill('ORD-42'); await t.page.waitForTimeout(100);
+    const d = await t.doc(); const req = JSON.parse(d.model.nodes.find(n => n.id === 'n3').endpoints[0].req);
+    eq(req.reference, 'ORD-42', 'new string field in the JSON'); eq(req.amount, 1299, 'existing field kept');
+  });
+
+  await test('changing a field type to object nests children; array picks an item type', async t => {
+    await openSchema(t, 'n3');
+    const row = (await t.page.$$(fe('endpoints.0.req') + ' [data-fpath]'))[0]; // amount
+    await (await row.$('select[data-fk="type"]')).selectOption('object'); await t.page.waitForTimeout(150);
+    await t.page.click(fe('endpoints.0.req') + ' [data-feact="add"][data-flist="0"]'); await t.page.waitForTimeout(100);
+    await t.page.keyboard.type('minor');
+    const child = await t.page.$(fe('endpoints.0.req') + ' [data-fpath="0.0"]');
+    await (await child.$('select[data-fk="type"]')).selectOption('integer'); await t.page.waitForTimeout(150);
+    await (await t.page.$(fe('endpoints.0.req') + ' [data-fpath="0.0"] input.fex')).fill('1200'); await t.page.waitForTimeout(100);
+    let req = JSON.parse((await t.node('n3')).endpoints[0].req);
+    eq(req.amount.minor, 1200, 'nested integer');
+    // array of strings
+    const cur = (await t.page.$$(fe('endpoints.0.req') + ' [data-fpath="1"]'))[0];
+    await (await cur.$('select[data-fk="type"]')).selectOption('array'); await t.page.waitForTimeout(150);
+    req = JSON.parse((await t.node('n3')).endpoints[0].req);
+    assert(Array.isArray(req.currency) && typeof req.currency[0] === 'string', 'array<string> written: ' + JSON.stringify(req.currency));
+  });
+
+  await test('JSON tab accepts pasted JSON and Fields view reflects it', async t => {
+    await openSchema(t, 'n3');
+    await t.page.click(fe('endpoints.1.req') + ' [data-femode="json"]'); await t.page.waitForTimeout(100);
+    await t.page.fill(fe('endpoints.1.req') + ' textarea', '{"merchantId": "m_1", "items": [{"sku": "A", "qty": 2}], "test": true}'); await t.page.waitForTimeout(100);
+    await t.page.click(fe('endpoints.1.req') + ' [data-femode="fields"]'); await t.page.waitForTimeout(150);
+    const names = await t.page.$$eval(fe('endpoints.1.req') + ' [data-fpath] input.fname', els => els.map(e => e.value));
+    assert(names.join(',') === 'merchantId,items,sku,qty,test', 'tree from pasted JSON: ' + names);
+    const types = await t.page.$$eval(fe('endpoints.1.req') + ' [data-fpath] select[data-fk="type"]', els => els.map(e => e.value));
+    assert(types.join(',') === 'string,array,string,integer,boolean', 'types inferred: ' + types);
+  });
+
+  await test('invalid JSON stays editable as text with Fields disabled', async t => {
+    await openSchema(t, 'n3');
+    await t.page.click(fe('endpoints.1.res') + ' [data-femode="json"]'); await t.page.waitForTimeout(100);
+    await t.page.fill(fe('endpoints.1.res') + ' textarea', '{ not json'); await t.page.waitForTimeout(100);
+    assert(await t.page.$eval(fe('endpoints.1.res') + ' textarea', e => e.classList.contains('bad')), 'marked invalid');
+    await t.clickNode('n2'); await openSchema(t, 'n3');
+    assert(await t.page.$eval(fe('endpoints.1.res') + ' [data-femode="fields"]', e => e.disabled), 'Fields disabled for unparseable text');
+    eq((await t.node('n3')).endpoints[1].res, '{ not json', 'raw text preserved');
+  });
+
+  await test('Avro editor: nullable, logical type, enum symbols and a nested record', async t => {
+    await openSchema(t, 'n6');
+    const p = 'topics.0.schema';
+    await t.page.check(fe(p) + ' [data-fpath="2"] input[data-fk="nullable"]'); await t.page.waitForTimeout(100); // currency nullable
+    await t.page.selectOption(fe(p) + ' [data-fpath="0"] select[data-fk="type"]', 'uuid'); await t.page.waitForTimeout(150);
+    await t.page.click(fe(p) + ' [data-feact="add"][data-flist=""]'); await t.page.waitForTimeout(100); await t.page.keyboard.type('status');
+    await t.page.selectOption(fe(p) + ' [data-fpath="3"] select[data-fk="type"]', 'enum'); await t.page.waitForTimeout(150);
+    await t.page.fill(fe(p) + ' [data-fpath="3"] input[data-fk="symbols"]', 'NEW, PAID'); await t.page.waitForTimeout(100);
+    await t.page.click(fe(p) + ' [data-feact="add"][data-flist=""]'); await t.page.waitForTimeout(100); await t.page.keyboard.type('lines');
+    await t.page.selectOption(fe(p) + ' [data-fpath="4"] select[data-fk="type"]', 'array'); await t.page.waitForTimeout(150);
+    await t.page.selectOption(fe(p) + ' [data-fpath="4"] select[data-fk="items"]', 'record'); await t.page.waitForTimeout(150);
+    await t.page.click(fe(p) + ' [data-feact="add"][data-flist="4"]'); await t.page.waitForTimeout(100); await t.page.keyboard.type('sku');
+    const s = JSON.parse((await t.node('n6')).topics[0].schema);
+    eq(s.type, 'record'); eq(s.name, 'PaymentAuthorised');
+    assert(Array.isArray(s.fields[2].type) && s.fields[2].type[0] === 'null' && s.fields[2].default === null, 'nullable union with default null');
+    eq(s.fields[0].type.logicalType, 'uuid', 'logical type');
+    eq(s.fields[3].type.type, 'enum'); assert(s.fields[3].type.symbols.join() === 'NEW,PAID', 'enum symbols');
+    eq(s.fields[4].type.type, 'array'); eq(s.fields[4].type.items.type, 'record'); eq(s.fields[4].type.items.fields[0].name, 'sku', 'nested record field');
+    // the canvas can render it
+    await t.page.keyboard.press('Escape'); await t.clickNode('n6'); await t.page.keyboard.press('Space'); await t.page.waitForTimeout(300);
+    const txt = await t.page.$eval('[data-node="n6"]', g => g.textContent);
+    assert(txt.includes('enum(2)') && txt.includes('array<Lines>'), 'expanded node shows the new types: ' + txt);
+  });
+
+  await test('topic partition key is saved and tagged on the expanded node', async t => {
+    await openSchema(t, 'n6');
+    const opts = await t.page.$$eval('#tk-0 option', os => os.map(o => o.value));
+    assert(opts.includes('paymentId'), 'key suggestions come from the schema fields: ' + opts);
+    await t.page.fill('input[data-path="topics.0.key"]', 'paymentId'); await t.page.waitForTimeout(100);
+    eq((await t.node('n6')).topics[0].key, 'paymentId');
+    await t.page.keyboard.press('Escape'); await t.clickNode('n6'); await t.page.keyboard.press('Space'); await t.page.waitForTimeout(300);
+    assert((await t.page.$eval('[data-node="n6"]', g => g.textContent)).includes('KEY'), 'KEY tag drawn');
+  });
+
+  await test('header name and value fields offer suggestions', async t => {
+    await openSchema(t, 'n3');
+    const names = await t.page.$$eval('#hdrNames option', os => os.map(o => o.value));
+    assert(names.includes('Idempotency-Key') && names.includes('Content-Type'), 'common header names listed');
+    const vals = await t.page.$$eval('#hv-0-0 option', os => os.map(o => o.value)); // Authorization
+    assert(vals.includes('Bearer <token>'), 'values suggested for Authorization: ' + vals);
+    eq(await t.page.$eval('input[data-path="endpoints.0.headers.0.k"]', e => e.getAttribute('list')), 'hdrNames');
+  });
+
+  await test('undo reverts a field-editor change', async t => {
+    await openSchema(t, 'n3');
+    const before = (await t.node('n3')).endpoints[0].req;
+    await t.page.click(fe('endpoints.0.req') + ' [data-fpath="0"] [data-feact="rm"]'); await t.page.waitForTimeout(150);
+    assert(!JSON.parse((await t.node('n3')).endpoints[0].req).amount, 'amount removed');
+    await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(200);
+    eq((await t.node('n3')).endpoints[0].req, before, 'restored');
+  });
+
   const failed = results.filter(r => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} passed${failed.length ? ' — screenshots in ' + OUT : ''}`);
   process.exit(failed.length ? 1 : 0);

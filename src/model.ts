@@ -5,7 +5,7 @@ export interface Endpoint { method: string; path: string; headers: Header[]; req
 export interface Column { name: string; type: string; pk: boolean; nullable: boolean; unique?: boolean; references?: string | null; default?: string; index?: boolean }
 /** `references` is "table.column" within the same database, or "node:table.column" for another database node. */
 export interface Table { name: string; columns: Column[] }
-export interface Topic { name: string; partitions: number; schema: string }
+export interface Topic { name: string; partitions: number; schema: string; key?: string }
 
 export interface NodeBase { id: string; kind: Kind; x: number; y: number; name: string; latency?: number; container?: string | null }
 export interface EntryNode extends NodeBase { kind: 'entry'; platforms: string[] }

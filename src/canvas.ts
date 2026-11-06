@@ -229,7 +229,9 @@ function drawDetail(g: SVGGElement, n: Node, w: number) {
       const pc = el('text', { class: 'tcount', x: w - 14, y: y + 13, 'text-anchor': 'end' }); pc.textContent = `${t.partitions ?? '?'} partitions`; d.appendChild(pc);
       y += EXP.topicHead;
       for (const [fname, ftype] of topicFields(t)) {
-        const f = el('text', { class: 'col', x: 22, y: y + 10 }); f.textContent = fname; d.appendChild(f);
+        let fx = 22;
+        if (t.key && t.key === fname) fx += tag(d, fx, y + 10, 'KEY', 'pk') + 4;
+        const f = el('text', { class: 'col', x: fx, y: y + 10 }); f.textContent = fname; d.appendChild(f);
         const ft = el('text', { class: 'ctype', x: w - 14, y: y + 10, 'text-anchor': 'end' }); ft.textContent = ftype; d.appendChild(ft);
         y += EXP.topicRow;
       }
