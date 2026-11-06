@@ -57,7 +57,7 @@ cistem is also an MCP server, so Claude (claude.ai, Claude Code) can read and ch
 
 - Endpoint: `https://<host>/mcp` (Streamable HTTP)
 - Auth: OAuth 2.1 with cistem as the authorization server. Add the URL as a custom connector; the client registers itself (dynamic client registration), you're sent through the normal GitHub sign-in, and the token it receives is bound to your account. No keys to paste.
-- Tools: `list_diagrams`, `get_diagram`, `evaluate`, `create_diagram`, `delete_diagram`, `rename_diagram`, `set_target_rps`, `add_component`, `set_properties`, `remove_component`, `connect`, `set_edge`, `disconnect`, `auto_organise`. Every edit returns a fresh evaluation.
+- Tools: `list_diagrams`, `get_diagram`, `evaluate`, `create_diagram`, `delete_diagram`, `rename_diagram`, `set_target_rps`, `add_component`, `set_properties`, `remove_component`, `connect`, `set_edge`, `disconnect`, `auto_organise`, and for environments `list_containers`, `add_container`, `set_container`, `move_component`, `remove_container`, `link_containers`, `unlink_containers`. Every edit returns a fresh evaluation.
 - Resource: `cistem://schema` (the JSON Schema below).
 - The Java engine (`backend/src/main/java/io/cistem/engine`) is a port of the TypeScript one; `ParityTest` pins both to identical numbers on a fixture generated from the TS side.
 - The editor polls for versions saved elsewhere, so MCP edits appear on an open canvas within a few seconds.
@@ -70,15 +70,19 @@ Diagrams are plain JSON, described by [`schema/cistem.schema.json`](schema/ciste
 
 ```jsonc
 {
-  "version": 2,
+  "version": 3,
   "kind": "system",
   "meta":   { "title": "...", "created": "...", "updated": "..." },
-  "model":  { "targetRps": 5000, "nodes": [...], "edges": [...] },   // what the system is
-  "layout": { "positions": { "<node id>": { "x": 0, "y": 0 } } }   // where it is drawn
+  "model":  { "targetRps": 5000, "nodes": [...], "edges": [...], "containers": [...], "links": [...] },   // what the system is
+  "layout": { "positions": { "<node id>": { "x": 0, "y": 0 } }, "frames": { "<container id>": { "x": 0, "y": 0, "w": 0, "h": 0 } } }   // where it is drawn
 }
 ```
 
 `model` never contains coordinates or computed results; `layout` can be empty and the editor will auto-organise. Older files are migrated on load (`src/document.ts`); a file from a newer version is refused with a clear message rather than silently mangled.
+
+## Environments (containers)
+
+Components live in containers: a cloud, an account, a VPC, a region, a data centre or a team, nested as needed (`AWS › acq-core`). Frames on the canvas fit their members automatically; drag a component into a frame to move it there, drag a frame to move everything inside it. Calls that cross a boundary pick up latency: 0 ms inside one container, 1 ms between siblings, 10 ms between different clouds, or whatever a declared link says (`privatelink` 2 ms, `direct-connect` 10 ms, `vpn` 20 ms…). Crossing edges are dashed and show the added latency; `evaluate` lists them.
 
 ## How the capacity model works
 

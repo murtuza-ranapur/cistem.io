@@ -138,6 +138,40 @@ class McpOAuthFlowTest {
         assertEquals("breaks", JsonPath.read(eval, "$.verdict"));           // 2000 rps into 2×500
         assertEquals("api", JsonPath.read(eval, "$.bottleneck"));
 
+        // containers: AWS + IBM, api into AWS, a legacy service into IBM, a direct-connect link; crossing shows up in evaluate
+        String aws = JsonPath.read(unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"add_container","arguments":{"diagramId":"%s","kind":"cloud","name":"AWS","provider":"aws"}}}""".formatted(diagramId))), "$.containerId");
+        String ibm = JsonPath.read(unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"add_container","arguments":{"diagramId":"%s","kind":"datacentre","name":"IBM legacy","owner":"sister company"}}}""".formatted(diagramId))), "$.containerId");
+        mcp(access, session, """
+                {"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"move_component","arguments":{"diagramId":"%s","componentId":"%s","containerId":"%s"}}}""".formatted(diagramId, svcId, aws));
+        String legacy = JsonPath.read(unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"add_component","arguments":{"diagramId":"%s","kind":"service","name":"legacy","containerId":"%s","properties":{"instances":20,"rpsPerInstance":500}}}}""".formatted(diagramId, ibm))), "$.componentId");
+        mcp(access, session, """
+                {"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"connect","arguments":{"diagramId":"%s","from":"%s","to":"%s"}}}""".formatted(diagramId, svcId, legacy));
+        String linked = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"link_containers","arguments":{"diagramId":"%s","fromId":"%s","toId":"%s","type":"direct-connect"}}}""".formatted(diagramId, aws, ibm)));
+        List<Map<String, Object>> crossings = JsonPath.read(linked, "$.evaluation.boundaryCrossings");
+        var toLegacy = crossings.stream().filter(x -> "legacy".equals(x.get("to"))).findFirst().orElseThrow(() -> new AssertionError(linked));
+        assertEquals(10, ((Number) toLegacy.get("addedLatencyMs")).intValue(), "direct-connect default");
+        var toApi = crossings.stream().filter(x -> "api".equals(x.get("to"))).findFirst().orElseThrow();
+        assertEquals(1, ((Number) toApi.get("addedLatencyMs")).intValue(), "unplaced clients → AWS is a sibling-level hop");
+        String containers = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"list_containers","arguments":{"diagramId":"%s"}}}""".formatted(diagramId)));
+        assertTrue(containers.contains("\"IBM legacy\"") && containers.contains("legacy"), containers);
+        // a container can't be put inside itself
+        String bad = mcp(access, session, """
+                {"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"set_container","arguments":{"diagramId":"%s","containerId":"%s","properties":{"parent":"%s"}}}}""".formatted(diagramId, aws, aws));
+        assertTrue(bad.contains("inside itself"), bad);
+        // organise writes frames
+        String org = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"auto_organise","arguments":{"diagramId":"%s"}}}""".formatted(diagramId)));
+        assertNotNull(org);
+        String doc = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(diagramId)));
+        assertEquals(Integer.valueOf(3), JsonPath.read(doc, "$.version"));
+        assertNotNull(JsonPath.read(doc, "$.layout.frames." + aws + ".w"));
+
         // the diagram is owned by murtu and visible through the REST API as that user
         mvc.perform(get("/api/diagrams/" + diagramId).with(oauth2Login().oauth2User(principal)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("From MCP"));
@@ -156,14 +190,15 @@ class McpOAuthFlowTest {
     }
 
     /** Streamable HTTP may answer as JSON or as an SSE frame; pull the JSON-RPC result either way. */
-    private static String unwrap(String response) {
+    private static String unwrap(String response) { return unwrap(response, true); }
+    private static String unwrap(String response, boolean failOnError) {
         String json = response.trim();
         if (!json.startsWith("{")) {   // SSE frame: id:/event:/data: lines
             StringBuilder sb = new StringBuilder();
             for (String line : json.split("\n")) if (line.startsWith("data:")) sb.append(line.substring(5).trim());
             json = sb.toString();
         }
-        if (JsonPath.read(json, "$.result.isError") instanceof Boolean b && b) fail("tool error: " + json);
+        if (JsonPath.read(json, "$.result.isError") instanceof Boolean b && b && failOnError) fail("tool error: " + json);
         return JsonPath.read(json, "$.result.content[0].text");
     }
 

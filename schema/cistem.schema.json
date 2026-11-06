@@ -2,137 +2,587 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://murtuza-ranapur.github.io/cistem.io/schema/cistem.schema.json",
   "title": "cistem.io diagram",
-  "description": "A diagram file. `model` describes the system; `layout` only says where things are drawn, so tools that import from text may leave it empty and let the editor auto-organise.",
+  "description": "A diagram file. `model` describes the system; `layout` only says where things are drawn, so tools that import from text may leave it empty and let the editor auto-organise. Containers are the environments components live in (clouds, accounts, VPCs...); links say how two containers talk and add latency to calls that cross between them.",
   "type": "object",
-  "required": ["version", "kind", "meta", "model", "layout"],
+  "required": [
+    "version",
+    "kind",
+    "meta",
+    "model",
+    "layout"
+  ],
   "additionalProperties": false,
   "properties": {
-    "version": { "const": 2 },
-    "kind": { "enum": ["system"], "description": "Diagram kind. Other kinds (flow, sequence, state) will share this envelope." },
+    "version": {
+      "const": 3
+    },
+    "kind": {
+      "enum": [
+        "system"
+      ],
+      "description": "Diagram kind. Other kinds (flow, sequence, state) will share this envelope."
+    },
     "meta": {
       "type": "object",
-      "required": ["title", "created", "updated"],
+      "required": [
+        "title",
+        "created",
+        "updated"
+      ],
       "properties": {
-        "title": { "type": "string" },
-        "created": { "type": "string", "format": "date-time" },
-        "updated": { "type": "string", "format": "date-time" },
-        "tags": { "type": "array", "items": { "type": "string" } }
+        "title": {
+          "type": "string"
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-    "model": { "$ref": "#/$defs/systemModel" },
+    "model": {
+      "$ref": "#/$defs/systemModel"
+    },
     "layout": {
       "type": "object",
       "properties": {
         "positions": {
           "type": "object",
-          "description": "Node id → top-left corner in canvas units.",
-          "additionalProperties": { "type": "object", "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } }
+          "description": "Node id \u2192 top-left corner in canvas units.",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "frames": {
+          "type": "object",
+          "description": "Container id \u2192 drawn frame in canvas units (optional; the editor fits frames to members when absent).",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "w": {
+                "type": "number"
+              },
+              "h": {
+                "type": "number"
+              }
+            }
+          }
         }
       }
     }
   },
   "$defs": {
-    "id": { "type": "string", "minLength": 1 },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
     "systemModel": {
       "type": "object",
-      "required": ["targetRps", "nodes", "edges"],
+      "required": [
+        "targetRps",
+        "nodes",
+        "edges"
+      ],
       "properties": {
-        "targetRps": { "type": "number", "minimum": 0, "description": "Load injected at every entry node." },
-        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
-        "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+        "targetRps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Load injected at every entry node."
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        },
+        "containers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/container"
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        }
       }
     },
     "node": {
       "oneOf": [
-        { "$ref": "#/$defs/entry" }, { "$ref": "#/$defs/lb" }, { "$ref": "#/$defs/service" },
-        { "$ref": "#/$defs/cache" }, { "$ref": "#/$defs/db" }, { "$ref": "#/$defs/queue" }
+        {
+          "$ref": "#/$defs/entry"
+        },
+        {
+          "$ref": "#/$defs/lb"
+        },
+        {
+          "$ref": "#/$defs/service"
+        },
+        {
+          "$ref": "#/$defs/cache"
+        },
+        {
+          "$ref": "#/$defs/db"
+        },
+        {
+          "$ref": "#/$defs/queue"
+        }
       ]
     },
     "nodeBase": {
       "type": "object",
-      "required": ["id", "kind", "name"],
-      "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "latency": { "type": "number", "minimum": 0, "description": "Base latency in ms at low utilisation." } }
-    },
-    "entry": { "allOf": [{ "$ref": "#/$defs/nodeBase" }, { "properties": { "kind": { "const": "entry" }, "platforms": { "type": "array", "items": { "enum": ["web", "app"] } } } }] },
-    "lb": { "allOf": [{ "$ref": "#/$defs/nodeBase" }, { "required": ["maxRps"], "properties": { "kind": { "const": "lb" }, "maxRps": { "type": "number", "minimum": 0 } } }] },
-    "service": {
-      "allOf": [{ "$ref": "#/$defs/nodeBase" }, {
-        "required": ["rpsPerInstance", "instances"],
-        "properties": {
-          "kind": { "const": "service" },
-          "rpsPerInstance": { "type": "number", "minimum": 0 },
-          "instances": { "type": "integer", "minimum": 0 },
-          "endpoints": { "type": "array", "items": { "$ref": "#/$defs/endpoint" } }
+      "required": [
+        "id",
+        "kind",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "latency": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Base latency in ms at low utilisation."
+        },
+        "container": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Id of the container this component lives in, or null if unplaced."
         }
-      }]
+      }
+    },
+    "entry": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nodeBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "entry"
+            },
+            "platforms": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "web",
+                  "app"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "lb": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nodeBase"
+        },
+        {
+          "required": [
+            "maxRps"
+          ],
+          "properties": {
+            "kind": {
+              "const": "lb"
+            },
+            "maxRps": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "service": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/nodeBase"
+        },
+        {
+          "required": [
+            "rpsPerInstance",
+            "instances"
+          ],
+          "properties": {
+            "kind": {
+              "const": "service"
+            },
+            "rpsPerInstance": {
+              "type": "number",
+              "minimum": 0
+            },
+            "instances": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "endpoints": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/endpoint"
+              }
+            }
+          }
+        }
+      ]
     },
     "cache": {
-      "allOf": [{ "$ref": "#/$defs/nodeBase" }, {
-        "required": ["maxOps", "hitRatio"],
-        "properties": {
-          "kind": { "const": "cache" },
-          "maxOps": { "type": "number", "minimum": 0 },
-          "hitRatio": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of lookups served without going downstream." },
-          "eviction": { "enum": ["allkeys-lru", "volatile-lru", "allkeys-lfu", "volatile-ttl", "noeviction"] }
+      "allOf": [
+        {
+          "$ref": "#/$defs/nodeBase"
+        },
+        {
+          "required": [
+            "maxOps",
+            "hitRatio"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cache"
+            },
+            "maxOps": {
+              "type": "number",
+              "minimum": 0
+            },
+            "hitRatio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of lookups served without going downstream."
+            },
+            "eviction": {
+              "enum": [
+                "allkeys-lru",
+                "volatile-lru",
+                "allkeys-lfu",
+                "volatile-ttl",
+                "noeviction"
+              ]
+            }
+          }
         }
-      }]
+      ]
     },
     "db": {
-      "allOf": [{ "$ref": "#/$defs/nodeBase" }, {
-        "required": ["maxQps"],
-        "properties": {
-          "kind": { "const": "db" },
-          "maxQps": { "type": "number", "minimum": 0, "description": "Per node (primary or replica)." },
-          "replicas": { "type": "integer", "minimum": 0 },
-          "readShare": { "type": "number", "minimum": 0, "maximum": 1 },
-          "tables": { "type": "array", "items": { "$ref": "#/$defs/table" } }
+      "allOf": [
+        {
+          "$ref": "#/$defs/nodeBase"
+        },
+        {
+          "required": [
+            "maxQps"
+          ],
+          "properties": {
+            "kind": {
+              "const": "db"
+            },
+            "maxQps": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Per node (primary or replica)."
+            },
+            "replicas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "readShare": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "tables": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/table"
+              }
+            }
+          }
         }
-      }]
+      ]
     },
     "queue": {
-      "allOf": [{ "$ref": "#/$defs/nodeBase" }, {
-        "required": ["maxThroughput"],
-        "properties": {
-          "kind": { "const": "queue" },
-          "maxThroughput": { "type": "number", "minimum": 0 },
-          "topics": { "type": "array", "items": { "$ref": "#/$defs/topic" } }
+      "allOf": [
+        {
+          "$ref": "#/$defs/nodeBase"
+        },
+        {
+          "required": [
+            "maxThroughput"
+          ],
+          "properties": {
+            "kind": {
+              "const": "queue"
+            },
+            "maxThroughput": {
+              "type": "number",
+              "minimum": 0
+            },
+            "topics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/topic"
+              }
+            }
+          }
         }
-      }]
+      ]
     },
     "edge": {
       "type": "object",
-      "required": ["id", "from", "to", "calls"],
+      "required": [
+        "id",
+        "from",
+        "to",
+        "calls"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "from": { "$ref": "#/$defs/id" },
-        "to": { "$ref": "#/$defs/id" },
-        "calls": { "type": "number", "minimum": 0, "description": "Downstream calls made per request arriving at `from`." },
-        "endpoint": { "type": ["integer", "null"], "minimum": 0, "description": "Index into the target service's endpoints, if known." }
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "from": {
+          "$ref": "#/$defs/id"
+        },
+        "to": {
+          "$ref": "#/$defs/id"
+        },
+        "calls": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Downstream calls made per request arriving at `from`."
+        },
+        "endpoint": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Index into the target service's endpoints, if known."
+        }
       }
     },
     "endpoint": {
       "type": "object",
-      "required": ["method", "path"],
+      "required": [
+        "method",
+        "path"
+      ],
       "properties": {
-        "method": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
-        "path": { "type": "string" },
-        "headers": { "type": "array", "items": { "type": "object", "required": ["k", "v"], "properties": { "k": { "type": "string" }, "v": { "type": "string" } } } },
-        "req": { "type": "string", "description": "Example request body, JSON text." },
-        "res": { "type": "string", "description": "Example response body, JSON text." }
+        "method": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "k",
+              "v"
+            ],
+            "properties": {
+              "k": {
+                "type": "string"
+              },
+              "v": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "req": {
+          "type": "string",
+          "description": "Example request body, JSON text."
+        },
+        "res": {
+          "type": "string",
+          "description": "Example response body, JSON text."
+        }
       }
     },
     "table": {
       "type": "object",
-      "required": ["name", "columns"],
+      "required": [
+        "name",
+        "columns"
+      ],
       "properties": {
-        "name": { "type": "string" },
-        "columns": { "type": "array", "items": { "type": "object", "required": ["name", "type"], "properties": { "name": { "type": "string" }, "type": { "type": "string" }, "pk": { "type": "boolean" }, "nullable": { "type": "boolean" } } } }
+        "name": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "pk": {
+                "type": "boolean"
+              },
+              "nullable": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
       }
     },
     "topic": {
       "type": "object",
-      "required": ["name"],
-      "properties": { "name": { "type": "string" }, "partitions": { "type": "integer", "minimum": 1 }, "schema": { "type": "string", "description": "Avro schema, JSON text." } }
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "partitions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "schema": {
+          "type": "string",
+          "description": "Avro schema, JSON text."
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "cloud",
+            "account",
+            "vpc",
+            "region",
+            "datacentre",
+            "team"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Enclosing container id; null for a root."
+        },
+        "provider": {
+          "type": "string",
+          "description": "e.g. aws, ibm, gcp, on-prem"
+        },
+        "owner": {
+          "type": "string",
+          "description": "Team or company responsible."
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": [
+        "id",
+        "from",
+        "to",
+        "type",
+        "latencyMs"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "from": {
+          "$ref": "#/$defs/id"
+        },
+        "to": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "type": "string",
+          "description": "same-network | vpc-peering | privatelink | transit-gateway | vpn | direct-connect | public-internet | free text"
+        },
+        "latencyMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Added to every call crossing between these containers (or their descendants)."
+        }
+      }
     }
   }
 }

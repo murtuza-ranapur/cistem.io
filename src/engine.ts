@@ -1,9 +1,9 @@
-import type { Doc, Node } from './model';
+import { crossingLatency, type Doc, type Node } from './model';
 
 export type Status = 'ok' | 'warn' | 'crit';
 export interface NodeResult { load: number; cap: number; util: number; status: Status; lat: number; cum: number }
 export interface Verdict { status: Status; node: Node | null; lat: number; converged: boolean }
-export interface Results { nodes: Record<string, NodeResult>; edges: Record<string, number>; verdict: Verdict }
+export interface Results { nodes: Record<string, NodeResult>; edges: Record<string, number>; crossings: Record<string, number>; verdict: Verdict }
 
 const num = (v: unknown) => +(v as number) || 0;
 const clamp01 = (v: unknown) => Math.min(1, Math.max(0, num(v)));
@@ -58,7 +58,7 @@ export function compute(doc: Doc): Results {
       const s = byId[e.from];
       if (!s || !byId[e.to]) return;
       next[e.to] += load[s.id] * outFactor(s, outs[s.id]) * num(e.calls);
-      ncum[e.to] = Math.max(ncum[e.to], cum[s.id] + effLatency(s, load[s.id]));
+      ncum[e.to] = Math.max(ncum[e.to], cum[s.id] + effLatency(s, load[s.id]) + crossingLatency(doc, s.container, byId[e.to].container));
     });
     let delta = 0;
     doc.nodes.forEach(n => { delta += Math.abs(next[n.id] - load[n.id]); });
@@ -79,8 +79,12 @@ export function compute(doc: Doc): Results {
     else if (status === 'warn' && worst === 'ok') { worst = 'warn'; worstNode = n; }
   });
 
-  const edges: Record<string, number> = {};
-  doc.edges.forEach(e => { const s = byId[e.from]; if (s) edges[e.id] = load[s.id] * outFactor(s, outs[s.id]) * num(e.calls); });
+  const edges: Record<string, number> = {}, crossings: Record<string, number> = {};
+  doc.edges.forEach(e => {
+    const s = byId[e.from], t = byId[e.to]; if (!s || !t) return;
+    edges[e.id] = load[s.id] * outFactor(s, outs[s.id]) * num(e.calls);
+    crossings[e.id] = crossingLatency(doc, s.container, t.container);
+  });
 
-  return { nodes, edges, verdict: { status: worst, node: worstNode, lat: maxLat, converged } };
+  return { nodes, edges, crossings, verdict: { status: worst, node: worstNode, lat: maxLat, converged } };
 }

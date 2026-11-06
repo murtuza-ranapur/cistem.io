@@ -129,6 +129,22 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 #overlay path{fill:none;stroke:var(--sel);stroke-width:1.5;stroke-dasharray:5 4;pointer-events:none}
 .marquee{fill:var(--sel-soft);stroke:var(--sel);stroke-width:1}
 
+/* ---- container frames ---- */
+.frame{cursor:grab}
+.frame rect.fbody{fill:hsl(var(--h) 45% 55% / calc(.06 + var(--depth) * .03));stroke:hsl(var(--h) 35% 60% / .55);stroke-width:1;stroke-dasharray:6 4;transition:fill var(--t) var(--ease),stroke var(--t) var(--ease)}
+.frame:hover rect.fbody{stroke:hsl(var(--h) 45% 50%)}
+.frame.sel rect.fbody{stroke:var(--sel);stroke-width:1.5;stroke-dasharray:none}
+.frame.target rect.fbody{stroke:var(--sel);stroke-width:2;fill:var(--sel-soft);stroke-dasharray:none}
+.frame rect.fhead{fill:hsl(var(--h) 45% 55% / .10)}
+.frame .ficon{fill:none;stroke:hsl(var(--h) 45% 45%);stroke-width:1.6;stroke-linecap:round}
+.frame text{font-family:var(--font);pointer-events:none}
+.frame .ftitle{font-size:12.5px;font-weight:600;fill:var(--fg)}
+.frame .fkind{font-size:10.5px;fill:var(--muted);letter-spacing:.04em}
+.frame .fmeta{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
+.edge.cross path.line{stroke-dasharray:7 4}
+.rail-sep{width:32px;height:1px;background:var(--line);margin:6px 0}
+.k-container svg{stroke:var(--muted)}
+
 /* ---- inspector ---- */
 #inspector{grid-area:inspector;width:340px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;overflow-x:hidden;transition:width var(--t) var(--ease),opacity var(--t) var(--ease);z-index:4}
 #inspector.closed{width:0;border-left-color:transparent;opacity:0}
