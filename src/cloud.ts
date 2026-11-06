@@ -74,6 +74,31 @@ export async function saveNow() {
 }
 window.addEventListener('beforeunload', () => { if (cloud.status === 'dirty') saveNow(); });
 
+// ---------- live refresh ----------
+// While a saved diagram is open and nothing is pending, ask the API every few seconds whether
+// someone else (another tab, an MCP client) saved a newer version, and load it if so.
+let pollTimer = 0;
+async function pollOnce() {
+  if (!signedIn() || !cloud.id || cloud.readonly || cloud.status !== 'saved' || document.hidden) return;
+  try {
+    const list = await api.list();
+    const mine = list.find(d => d.id === cloud.id);
+    if (mine && mine.version > cloud.version && cloud.status === 'saved') {
+      const fresh = await api.get(cloud.id);
+      const sel = state.sel;
+      adoptStored(fresh);
+      state.sel = sel && (sel.type === 'node' ? state.doc.nodes.some(n => n.id === sel.id) : state.doc.edges.some(e => e.id === sel.id)) ? sel : null;
+      renderAll();
+      document.dispatchEvent(new CustomEvent('cistem:external-update'));
+    }
+  } catch { /* transient */ }
+}
+export function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = window.setInterval(pollOnce, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollOnce(); });
+}
+
 // ---------- conflict ----------
 let pendingConflict: Stored | null = null;
 export function resolveConflict(choice: 'theirs' | 'mine') {
@@ -85,11 +110,12 @@ export function resolveConflict(choice: 'theirs' | 'mine') {
 
 // ---------- open / create ----------
 function adoptStored(s: Stored, readonly = false) {
+  const sameDiagram = cloud.id === s.id;
   cloud.id = readonly ? null : s.id; cloud.version = s.version; cloud.readonly = readonly;
   loadFile(s.document);
   cloud.lastSerialized = JSON.stringify(toFile(state.doc, state.meta));
   history.reset();
-  renderAll(); requestAnimationFrame(() => fit(false));
+  renderAll(); if (!sameDiagram) requestAnimationFrame(() => fit(false));
   setStatus(readonly ? 'readonly' : 'saved');
   syncUrl(readonly ? undefined : s.id);
   document.dispatchEvent(new CustomEvent('cistem:opened'));

@@ -1,0 +1,359 @@
+{
+ "file": {
+  "version": 2,
+  "kind": "system",
+  "meta": {
+   "title": "Parity fixture",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "targetRps": 7000,
+   "nodes": [
+    {
+     "id": "n1",
+     "kind": "entry",
+     "name": "Checkout clients",
+     "platforms": [
+      "web",
+      "app"
+     ]
+    },
+    {
+     "id": "n2",
+     "kind": "lb",
+     "name": "ALB",
+     "maxRps": 50000,
+     "latency": 1
+    },
+    {
+     "id": "n3",
+     "kind": "service",
+     "name": "checkout-api",
+     "rpsPerInstance": 600,
+     "instances": 10,
+     "latency": 25,
+     "endpoints": [
+      {
+       "method": "POST",
+       "path": "/v1/payments",
+       "headers": [
+        {
+         "k": "Authorization",
+         "v": "Bearer <token>"
+        },
+        {
+         "k": "Idempotency-Key",
+         "v": "<uuid>"
+        }
+       ],
+       "req": "{\n  \"amount\": 1299,\n  \"currency\": \"GBP\",\n  \"card_token\": \"tok_...\"\n}",
+       "res": "{\n  \"id\": \"pay_01H...\",\n  \"status\": \"AUTHORISED\"\n}"
+      },
+      {
+       "method": "GET",
+       "path": "/v1/payments/{id}",
+       "headers": [
+        {
+         "k": "Authorization",
+         "v": "Bearer <token>"
+        }
+       ],
+       "req": "",
+       "res": "{\n  \"id\": \"pay_01H...\",\n  \"status\": \"CAPTURED\"\n}"
+      }
+     ]
+    },
+    {
+     "id": "n4",
+     "kind": "cache",
+     "name": "session-cache",
+     "maxOps": 100000,
+     "hitRatio": 0.85,
+     "latency": 1,
+     "eviction": "allkeys-lru"
+    },
+    {
+     "id": "n5",
+     "kind": "db",
+     "name": "payments-db",
+     "maxQps": 4000,
+     "readShare": 0.85,
+     "replicas": 2,
+     "latency": 6,
+     "tables": [
+      {
+       "name": "payments",
+       "columns": [
+        {
+         "name": "id",
+         "type": "uuid",
+         "pk": true,
+         "nullable": false
+        },
+        {
+         "name": "merchant_id",
+         "type": "uuid",
+         "pk": false,
+         "nullable": false
+        },
+        {
+         "name": "amount_minor",
+         "type": "bigint",
+         "pk": false,
+         "nullable": false
+        },
+        {
+         "name": "currency",
+         "type": "varchar(255)",
+         "pk": false,
+         "nullable": false
+        },
+        {
+         "name": "status",
+         "type": "text",
+         "pk": false,
+         "nullable": false
+        },
+        {
+         "name": "created_at",
+         "type": "timestamptz",
+         "pk": false,
+         "nullable": false
+        }
+       ]
+      },
+      {
+       "name": "refunds",
+       "columns": [
+        {
+         "name": "id",
+         "type": "uuid",
+         "pk": true,
+         "nullable": false
+        },
+        {
+         "name": "payment_id",
+         "type": "uuid",
+         "pk": false,
+         "nullable": false
+        },
+        {
+         "name": "amount_minor",
+         "type": "bigint",
+         "pk": false,
+         "nullable": false
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "n6",
+     "kind": "queue",
+     "name": "events",
+     "maxThroughput": 20000,
+     "latency": 5,
+     "topics": [
+      {
+       "name": "payments.authorised",
+       "partitions": 12,
+       "schema": "{\n  \"type\": \"record\",\n  \"name\": \"PaymentAuthorised\",\n  \"namespace\": \"com.example.payments\",\n  \"fields\": [\n    {\"name\": \"paymentId\", \"type\": \"string\"},\n    {\"name\": \"amountMinor\", \"type\": \"long\"},\n    {\"name\": \"currency\", \"type\": \"string\"}\n  ]\n}"
+      }
+     ]
+    },
+    {
+     "id": "n7",
+     "kind": "service",
+     "name": "ledger-worker",
+     "rpsPerInstance": 400,
+     "instances": 8,
+     "latency": 40,
+     "endpoints": []
+    }
+   ],
+   "edges": [
+    {
+     "id": "e1",
+     "from": "n1",
+     "to": "n2",
+     "calls": 1
+    },
+    {
+     "id": "e2",
+     "from": "n2",
+     "to": "n3",
+     "calls": 1,
+     "endpoint": 0
+    },
+    {
+     "id": "e3",
+     "from": "n3",
+     "to": "n4",
+     "calls": 2
+    },
+    {
+     "id": "e4",
+     "from": "n4",
+     "to": "n5",
+     "calls": 1
+    },
+    {
+     "id": "e5",
+     "from": "n3",
+     "to": "n5",
+     "calls": 1
+    },
+    {
+     "id": "e6",
+     "from": "n3",
+     "to": "n6",
+     "calls": 1
+    },
+    {
+     "id": "e7",
+     "from": "n6",
+     "to": "n7",
+     "calls": 1
+    }
+   ]
+  },
+  "layout": {
+   "positions": {
+    "n1": {
+     "x": 20,
+     "y": 200
+    },
+    "n2": {
+     "x": 330,
+     "y": 200
+    },
+    "n3": {
+     "x": 640,
+     "y": 200
+    },
+    "n4": {
+     "x": 960,
+     "y": 60
+    },
+    "n5": {
+     "x": 960,
+     "y": 260
+    },
+    "n6": {
+     "x": 960,
+     "y": 460
+    },
+    "n7": {
+     "x": 1280,
+     "y": 460
+    }
+   }
+  }
+ },
+ "expected": {
+  "nodes": {
+   "n1": {
+    "load": 7000,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0
+   },
+   "n2": {
+    "load": 7000,
+    "cap": 50000,
+    "util": 0.14,
+    "status": "ok",
+    "lat": 1.1627906976744187,
+    "cum": 1.1627906976744187
+   },
+   "n3": {
+    "load": 7000,
+    "cap": 6000,
+    "util": 1.1666666666666667,
+    "status": "crit",
+    "lat": 250,
+    "cum": 251.1627906976744
+   },
+   "n4": {
+    "load": 14000,
+    "cap": 100000,
+    "util": 0.14,
+    "status": "ok",
+    "lat": 1.1627906976744187,
+    "cum": 252.32558139534882
+   },
+   "n5": {
+    "load": 9100,
+    "cap": 9230.76923076923,
+    "util": 0.9858333333333333,
+    "status": "warn",
+    "lat": 60,
+    "cum": 312.3255813953488
+   },
+   "n6": {
+    "load": 7000,
+    "cap": 20000,
+    "util": 0.35,
+    "status": "ok",
+    "lat": 7.692307692307692,
+    "cum": 258.8550983899821
+   },
+   "n7": {
+    "load": 7000,
+    "cap": 3200,
+    "util": 2.1875,
+    "status": "crit",
+    "lat": 400,
+    "cum": 658.8550983899821
+   }
+  },
+  "edges": {
+   "e1": 7000,
+   "e2": 7000,
+   "e3": 14000,
+   "e4": 2100.0000000000005,
+   "e5": 7000,
+   "e6": 7000,
+   "e7": 7000
+  },
+  "verdict": {
+   "status": "crit",
+   "node": "n3",
+   "lat": 658.8550983899821,
+   "converged": true
+  },
+  "layout": {
+   "n1": {
+    "x": 40,
+    "y": 104
+   },
+   "n2": {
+    "x": 352,
+    "y": 104
+   },
+   "n3": {
+    "x": 664,
+    "y": 104
+   },
+   "n4": {
+    "x": 984,
+    "y": 40
+   },
+   "n6": {
+    "x": 984,
+    "y": 176
+   },
+   "n5": {
+    "x": 1304,
+    "y": 40
+   },
+   "n7": {
+    "x": 1304,
+    "y": 176
+   }
+  }
+ }
+}

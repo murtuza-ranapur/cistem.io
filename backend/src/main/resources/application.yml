@@ -19,6 +19,21 @@ spring:
             client-secret: ${GITHUB_CLIENT_SECRET:}
             scope: read:user
   web.resources.cache.cachecontrol.max-age: 1h
+  ai.mcp.server:
+    name: cistem
+    version: 0.2.0
+    protocol: STREAMABLE
+    type: SYNC
+    annotation-scanner.enabled: true
+    instructions: >
+      cistem.io stores system-design diagrams whose components have behaviour. Use list_diagrams to find
+      the user's diagrams, evaluate to run the capacity model at a target RPS, and the add/connect/set tools
+      to change a design. Every edit returns a fresh evaluation so you can see its effect.
+    capabilities:
+      tool: true
+      resource: true
+      prompt: false
+      completion: false
 
 server:
   port: ${PORT:8080}

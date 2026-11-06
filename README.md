@@ -51,6 +51,19 @@ Environment variables on the service:
 
 Cookie sessions carry CSRF protection (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header); API-key calls don't need it.
 
+## MCP server
+
+cistem is also an MCP server, so Claude (claude.ai, Claude Code) can read and change your diagrams and run the capacity model in conversation.
+
+- Endpoint: `https://<host>/mcp` (Streamable HTTP)
+- Auth: OAuth 2.1 with cistem as the authorization server. Add the URL as a custom connector; the client registers itself (dynamic client registration), you're sent through the normal GitHub sign-in, and the token it receives is bound to your account. No keys to paste.
+- Tools: `list_diagrams`, `get_diagram`, `evaluate`, `create_diagram`, `delete_diagram`, `rename_diagram`, `set_target_rps`, `add_component`, `set_properties`, `remove_component`, `connect`, `set_edge`, `disconnect`, `auto_organise`. Every edit returns a fresh evaluation.
+- Resource: `cistem://schema` (the JSON Schema below).
+- The Java engine (`backend/src/main/java/io/cistem/engine`) is a port of the TypeScript one; `ParityTest` pins both to identical numbers on a fixture generated from the TS side.
+- The editor polls for versions saved elsewhere, so MCP edits appear on an open canvas within a few seconds.
+
+Scripts can still use `X-Api-Key` on `/mcp` (acting as the configured account); on `/mcp`, `Authorization: Bearer` always means an OAuth access token.
+
 ## File format
 
 Diagrams are plain JSON, described by [`schema/cistem.schema.json`](schema/cistem.schema.json):
@@ -91,9 +104,9 @@ src/canvas.ts      SVG rendering, pan/zoom/drag/connect/marquee
 src/layout.ts      auto-organise (layered)
 src/sheet.ts       inspector (capacity + schema editors)
 src/api.ts         API client
-src/cloud.ts       sign-in state, diagram drawer, autosave, conflicts, share
+src/cloud.ts       sign-in state, diagram drawer, autosave, conflicts, share, live refresh
 src/main.ts        toolbar, keyboard, JSON dialog, boot
-backend/           Spring Boot API (see above)
+backend/           Spring Boot API, MCP server, OAuth authorization server (see above)
 test/              node:assert tests run with tsx
 ```
 

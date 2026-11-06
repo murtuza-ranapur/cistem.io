@@ -3,6 +3,7 @@ package io.cistem.api;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -35,6 +36,7 @@ public class SecurityConfig {
     public static final String USER_ID_ATTR = "cistem_user_id";
 
     @Bean
+    @Order(3)
     SecurityFilterChain filterChain(HttpSecurity http, ApiKeyFilter apiKeyFilter, CistemProperties props) throws Exception {
         var csrfHandler = new CsrfTokenRequestAttributeHandler();
         csrfHandler.setCsrfRequestAttributeName(null); // render the token eagerly so the cookie is always set
@@ -46,7 +48,7 @@ public class SecurityConfig {
                 .anyRequest().permitAll())           // the SPA and its assets
             .oauth2Login(o -> o
                 .userInfoEndpoint(u -> u.userService(githubUserService()))
-                .defaultSuccessUrl(props.publicUrl() + "/", true)
+                .defaultSuccessUrl(props.publicUrl() + "/")   // or back to a saved request, e.g. /oauth2/authorize from an MCP client
                 .failureUrl(props.publicUrl() + "/?login=failed"))
             .logout(l -> l
                 .logoutUrl("/api/logout")

@@ -38,14 +38,17 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         this.keyLogin = env.getProperty("CISTEM_API_KEY_LOGIN", "");
     }
 
+    /** On /mcp only X-Api-Key counts: Bearer there is an OAuth access token. */
     public static boolean hasApiKey(HttpServletRequest req) {
-        return req.getHeader("X-Api-Key") != null
-                || (req.getHeader("Authorization") != null && req.getHeader("Authorization").startsWith("Bearer "));
+        if (req.getHeader("X-Api-Key") != null) return true;
+        if (req.getRequestURI().startsWith("/mcp")) return false;
+        return req.getHeader("Authorization") != null && req.getHeader("Authorization").startsWith("Bearer ");
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest req) {
-        return !props.apiKeyEnabled() || !hasApiKey(req) || !req.getRequestURI().startsWith("/api/");
+        String p = req.getRequestURI();
+        return !props.apiKeyEnabled() || !hasApiKey(req) || !(p.startsWith("/api/") || p.startsWith("/mcp"));
     }
 
     @Override

@@ -13,11 +13,21 @@ java {
 
 repositories { mavenCentral() }
 
+extra["springAiVersion"] = "2.0.2"
+
+dependencyManagement {
+    imports { mavenBom("org.springframework.ai:spring-ai-bom:${property("springAiVersion")}") }
+}
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.session:spring-session-jdbc")
+    // MCP server (Streamable HTTP) + OAuth2 for MCP clients
+    implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc")
+    implementation("org.springaicommunity:mcp-server-security-spring-boot:0.1.14")
+    implementation("org.springaicommunity:mcp-authorization-server-spring-boot:0.1.14")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
