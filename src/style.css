@@ -4,6 +4,7 @@
   --accent:#b86a12; --node:#ffffff; --node-line:#c9ced4; --edge:#9aa3ad; --sel:#2b6cb0; --sel-soft:rgba(43,108,176,.14);
   --ok:#2f8f5b; --warn:#d08a0e; --crit:#c73a3a; --ok-soft:#dff1e6; --warn-soft:#fbeccc; --crit-soft:#f9dede;
   --c-entry:#b86a12; --c-lb:#5b6b7c; --c-service:#2b6cb0; --c-cache:#c0392b; --c-db:#2f6f9f; --c-queue:#2a2f35;
+  --fk:#8a6d3b; --pk:#b86a12; --uq:#2f8f5b; --ix:#5b6b7c;
   --font:"IBM Plex Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   --ease:cubic-bezier(.2,.7,.2,1); --t:200ms;
   --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px -12px rgba(16,24,40,.18);
@@ -14,6 +15,7 @@
   --accent:#e0952f; --node:#1f2328; --node-line:#343b44; --edge:#6b7682; --sel:#6aa3e8; --sel-soft:rgba(106,163,232,.18);
   --ok:#4fbf7f; --warn:#e8a93a; --crit:#e46a6a; --ok-soft:#1b3326; --warn-soft:#3a2d12; --crit-soft:#3f1d1d;
   --c-entry:#e0952f; --c-lb:#9aa8b6; --c-service:#6aa3e8; --c-cache:#ee6a5b; --c-db:#6fb0e0; --c-queue:#d8dce0;
+  --fk:#d2b074; --pk:#e0952f; --uq:#4fbf7f; --ix:#9aa8b6;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -12px rgba(0,0,0,.6);
   color-scheme:dark}}
 :root[data-theme="dark"]{
@@ -21,6 +23,7 @@
   --accent:#e0952f; --node:#1f2328; --node-line:#343b44; --edge:#6b7682; --sel:#6aa3e8; --sel-soft:rgba(106,163,232,.18);
   --ok:#4fbf7f; --warn:#e8a93a; --crit:#e46a6a; --ok-soft:#1b3326; --warn-soft:#3a2d12; --crit-soft:#3f1d1d;
   --c-entry:#e0952f; --c-lb:#9aa8b6; --c-service:#6aa3e8; --c-cache:#ee6a5b; --c-db:#6fb0e0; --c-queue:#d8dce0;
+  --fk:#d2b074; --pk:#e0952f; --uq:#4fbf7f; --ix:#9aa8b6;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -12px rgba(0,0,0,.6);
   color-scheme:dark}
 
@@ -129,6 +132,27 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 #overlay path{fill:none;stroke:var(--sel);stroke-width:1.5;stroke-dasharray:5 4;pointer-events:none}
 .marquee{fill:var(--sel-soft);stroke:var(--sel);stroke-width:1}
 
+/* ---- expanded nodes ---- */
+.node .chev{cursor:pointer}
+.node .chev rect{fill:transparent;transition:fill var(--t) var(--ease)}
+.node .chev:hover rect{fill:var(--line-2)}
+.node .chev path{fill:none;stroke:var(--muted);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.node .sep{stroke:var(--line);stroke-width:1}
+.node .tbl{fill:var(--panel-2);stroke:var(--line);stroke-width:1}
+.node .tblhead{fill:var(--line-2)}
+.node .tname{font-family:var(--mono);font-size:11px;font-weight:500;fill:var(--fg)}
+.node .tcount{font-family:var(--mono);font-size:9.5px;fill:var(--muted)}
+.node .col{font-family:var(--mono);font-size:10.5px;fill:var(--fg)}
+.node .col.pkcol{font-weight:500}
+.node .ctype{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+.node .tag{stroke:none}
+.node .tag.pk{fill:var(--pk)}.node .tag.fk{fill:var(--fk)}.node .tag.uq{fill:var(--uq)}.node .tag.ix{fill:var(--ix)}
+.node .tagt{font-family:var(--mono);font-size:8.5px;font-weight:600;fill:#fff;letter-spacing:.04em}
+.node .method{font-family:var(--mono);font-size:10px;font-weight:600}
+.node .method.m-get{fill:var(--ok)}.node .method.m-post{fill:var(--c-service)}.node .method.m-put,.node .method.m-patch{fill:var(--warn)}.node .method.m-delete{fill:var(--crit)}
+.node .path{font-family:var(--mono);font-size:10.5px;fill:var(--fg)}
+#fks path.fk{fill:none;stroke:var(--fk);stroke-width:1.2;stroke-dasharray:3 3;pointer-events:none}
+
 /* ---- container frames ---- */
 .frame{cursor:grab}
 .frame rect.fbody{fill:hsl(var(--h) 45% 55% / calc(.06 + var(--depth) * .03));stroke:hsl(var(--h) 35% 60% / .55);stroke-width:1;stroke-dasharray:6 4;transition:fill var(--t) var(--ease),stroke var(--t) var(--ease)}
@@ -184,6 +208,8 @@ section.list h3 .spacer{flex:1}
 .item{border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;background:var(--panel-2);animation:fadeIn 180ms var(--ease) both}
 .item .row{display:grid;gap:8px;grid-template-columns:1fr 1fr;align-items:end}
 .item .row.cols{grid-template-columns:minmax(80px,1.3fr) minmax(90px,1.1fr) auto auto auto}
+.item .row.colx{grid-template-columns:minmax(120px,1.6fr) auto auto minmax(70px,.8fr);margin:-4px 0 6px;padding:0 0 8px;border-bottom:1px dashed var(--line-2)}
+.item .row.colx label{font-size:10.5px}
 .item .row.hdr{grid-template-columns:1fr 1fr auto}
 .item .row.topic{grid-template-columns:1.6fr .8fr auto}
 .item .row.ep{grid-template-columns:auto 1fr auto}

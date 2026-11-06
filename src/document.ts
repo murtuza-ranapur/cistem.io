@@ -28,6 +28,7 @@ export interface DiagramFile {
   layout: {
     positions: Record<string, { x: number; y: number }>;
     frames: Record<string, Frame>;
+    detail?: Record<string, 'compact' | 'expanded'>;
   };
 }
 
@@ -40,7 +41,7 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
     kind: 'system',
     meta: { title: meta?.title ?? 'Untitled system', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
     model: { targetRps: doc.targetRps, nodes, edges: doc.edges, containers: doc.containers ?? [], links: doc.links ?? [] },
-    layout: { positions, frames: doc.frames ?? {} },
+    layout: { positions, frames: doc.frames ?? {}, ...(Object.keys(doc.detail ?? {}).length ? { detail: doc.detail } : {}) },
   };
 }
 
@@ -48,7 +49,7 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {
   const f = migrate(input);
   const nodes = f.model.nodes.map(n => ({ ...n, ...(f.layout.positions[n.id] ?? { x: 0, y: 0 }) })) as Node[];
-  const doc = adopt({ targetRps: f.model.targetRps, nodes, edges: f.model.edges, containers: f.model.containers, links: f.model.links, frames: f.layout.frames });
+  const doc = adopt({ targetRps: f.model.targetRps, nodes, edges: f.model.edges, containers: f.model.containers, links: f.model.links, frames: f.layout.frames, detail: f.layout.detail ?? {} });
   return { doc, meta: f.meta };
 }
 

@@ -22,6 +22,7 @@
   <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
   <symbol id="ic-save" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></symbol>
   <symbol id="ic-container" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2" stroke-dasharray="3 2"/><path d="M3 9h18M7 5V3M11 5V3"/></symbol>
+  <symbol id="ic-expand" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M9 10v10M9 14h11"/></symbol>
   <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
   <symbol id="ic-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/></symbol>
   <symbol id="ic-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
@@ -43,6 +44,7 @@
       <span class="sep"></span>
       <button class="icon" id="layoutBtn" title="Auto-organise (O)" aria-label="Auto-organise"><svg><use href="#ic-organise"/></svg></button>
       <button class="icon" id="zfit" title="Fit to view (⌘0)" aria-label="Fit to view"><svg><use href="#ic-fit"/></svg></button>
+      <button class="icon" id="expandAll" title="Expand all schemas (⇧Space)" aria-label="Expand all"><svg><use href="#ic-expand"/></svg></button>
       <span class="sep"></span>
       <button class="icon" id="shareBtn" title="Share link" aria-label="Share"><svg><use href="#ic-share"/></svg></button>
       <button class="icon" id="ioBtn" title="Export / import JSON" aria-label="Export or import"><svg><use href="#ic-save"/></svg></button>
@@ -73,10 +75,11 @@
         <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--edge)"/></marker>
         <marker id="arrowCrit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--crit)"/></marker>
         <marker id="arrowSel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--sel)"/></marker>
+        <marker id="crow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1 1L11 6L1 11M1 6H11" fill="none" stroke="var(--fk)" stroke-width="1.3"/></marker>
         <filter id="lift" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.18"/></filter>
       </defs>
       <rect x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid)"/>
-      <g id="world"><g id="frames"></g><g id="edges"></g><g id="nodes"></g><g id="labels"></g><g id="overlay"></g></g>
+      <g id="world"><g id="frames"></g><g id="edges"></g><g id="nodes"></g><g id="fks"></g><g id="labels"></g><g id="overlay"></g></g>
     </svg>
     <div id="hint" hidden></div>
     <div id="emptyState" hidden><strong>Blank canvas</strong><span>Drag a component in from the left, or load the example.</span></div>

@@ -84,6 +84,10 @@ Diagrams are plain JSON, described by [`schema/cistem.schema.json`](schema/ciste
 
 Components live in containers: a cloud, an account, a VPC, a region, a data centre or a team, nested as needed (`AWS › acq-core`). Frames on the canvas fit their members automatically; drag a component into a frame to move it there, drag a frame to move everything inside it. Calls that cross a boundary pick up latency: 0 ms inside one container, 1 ms between siblings, 10 ms between different clouds, or whatever a declared link says (`privatelink` 2 ms, `direct-connect` 10 ms, `vpn` 20 ms…). Crossing edges are dashed and show the added latency; `evaluate` lists them.
 
+## Expanded view
+
+Databases, services and Kafka nodes have a chevron (or `Space` with the node selected; `⇧Space` toggles all). Expanded, a Postgres node draws each table with its columns, types and `PK` / `FK` / `UQ` / `IX` tags, and foreign keys are drawn as dashed lines between rows (across databases too). A service lists its endpoints; a Kafka node lists topics with their Avro fields. Auto-organise uses the expanded sizes. Column `references` take `table.column` or `<node id>:table.column`.
+
 ## How the capacity model works
 
 - Every edge carries **calls per incoming request** (one API call = 2 cache lookups + 1 DB query, say).

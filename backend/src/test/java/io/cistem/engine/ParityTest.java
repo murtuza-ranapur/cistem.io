@@ -66,7 +66,7 @@ class ParityTest {
     void layoutMatchesTypeScript() throws Exception { layoutMatches(fixture()); }
 
     void layoutMatches(JsonNode f) {
-        var got = Layout.layered(f.path("file").path("model"));
+        var got = Layout.layered(f.path("file").path("model"), f.path("file").path("layout").path("detail"));
         JsonNode exp = f.path("expected").path("layout");
         assertEquals(exp.size(), got.positions().size());
         for (var it = exp.properties().iterator(); it.hasNext(); ) {

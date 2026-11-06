@@ -21,6 +21,43 @@ public final class Layout {
 
     private Layout() {}
 
+    // ---- mirrors of model.ts nodeHeight / nodeWidthFor / topicFields (expanded view sizes) ----
+    static final int TABLE_HEAD = 22, ROW = 16, TABLE_PAD = 8, TABLE_GAP = 10, ENDPOINT_ROW = 18, TOPIC_HEAD = 20, TOPIC_ROW = 15, SECTION_PAD = 10, MAX_H = 560;
+
+    public static int nodeHeight(JsonNode n, boolean expanded) {
+        if (!expanded) return NODE_H;
+        String kind = n.path("kind").asText();
+        int extra = 0;
+        if ("db".equals(kind)) { JsonNode ts = n.path("tables"); for (JsonNode t : ts) extra += TABLE_HEAD + t.path("columns").size() * ROW + TABLE_PAD; extra += Math.max(0, ts.size() - 1) * TABLE_GAP; }
+        else if ("service".equals(kind)) extra = n.path("endpoints").size() * ENDPOINT_ROW;
+        else if ("queue".equals(kind)) { JsonNode ts = n.path("topics"); for (JsonNode t : ts) extra += TOPIC_HEAD + topicFieldCount(t) * TOPIC_ROW; extra += Math.max(0, ts.size() - 1) * 6; }
+        if (extra == 0) return NODE_H;
+        return Math.min(MAX_H, NODE_H + SECTION_PAD + extra + SECTION_PAD);
+    }
+
+    public static int nodeWidthFor(JsonNode n, boolean expanded) {
+        int w = nodeWidth(n);
+        if (!expanded) return w;
+        String kind = n.path("kind").asText();
+        if ("db".equals(kind)) {
+            int longest = 0;
+            for (JsonNode t : n.path("tables")) for (JsonNode c : t.path("columns")) {
+                int len = c.path("name").asText("").length() + c.path("type").asText("").length() + 3 + (c.path("references").isTextual() && !c.path("references").asText().isEmpty() ? 6 : 0);
+                longest = Math.max(longest, len);
+            }
+            return (int) Math.min(360, Math.max(w, 40 + longest * 6.4 + 60));
+        }
+        if ("service".equals(kind) || "queue".equals(kind)) return Math.max(w, 280);
+        return w;
+    }
+
+    static int topicFieldCount(JsonNode t) {
+        try {
+            JsonNode j = new tools.jackson.databind.ObjectMapper().readTree(t.path("schema").asText(""));
+            return j != null && j.path("fields").isArray() ? j.path("fields").size() : 0;
+        } catch (Exception e) { return 0; }
+    }
+
     /** Mirror of model.ts nodeWidth: deterministic, no font metrics. */
     public static int nodeWidth(JsonNode n) {
         int base = WIDTHS.getOrDefault(n.path("kind").asText(), 200);
@@ -28,8 +65,11 @@ public final class Layout {
         return Math.min(320, Math.max(base, (int) Math.round(need / 8) * 8));
     }
 
-    public static Result layered(JsonNode model) {
-        var ctx = new Ctx(model);
+    public static Result layered(JsonNode model) { return layered(model, null); }
+
+    /** `detail` is the file's layout.detail map (node id → compact | expanded); may be null. */
+    public static Result layered(JsonNode model, JsonNode detail) {
+        var ctx = new Ctx(model, detail);
         var root = ctx.level(null);
         ctx.shiftAll(ORIGIN_X - root[0], ORIGIN_Y - root[1]);
         return new Result(ctx.positions, ctx.frames);
@@ -42,9 +82,10 @@ public final class Layout {
         final Map<String, double[]> frm = new LinkedHashMap<>();      // container → [x,y,w,h]
         final Map<String, Point> positions = new LinkedHashMap<>();
         final Map<String, Frame> frames = new LinkedHashMap<>();
+        final JsonNode detail;
 
-        Ctx(JsonNode model) {
-            this.model = model;
+        Ctx(JsonNode model, JsonNode detail) {
+            this.model = model; this.detail = detail;
             for (JsonNode n : model.path("nodes")) nodes.put(n.path("id").asText(), n);
             for (JsonNode c : model.path("containers")) containers.put(c.path("id").asText(), c);
         }
@@ -60,7 +101,7 @@ public final class Layout {
 
             List<String> itemIds = new ArrayList<>(own); itemIds.addAll(children);
             Map<String, double[]> size = new HashMap<>();
-            for (String id : own) size.put(id, new double[]{ nodeWidth(nodes.get(id)), NODE_H });
+            for (String id : own) { boolean exp = detail != null && "expanded".equals(detail.path(id).asText("")); size.put(id, new double[]{ nodeWidthFor(nodes.get(id), exp), nodeHeight(nodes.get(id), exp) }); }
             for (String c : children) size.put(c, blocks.get(c));
 
             List<String[]> edges = new ArrayList<>();

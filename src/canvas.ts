@@ -1,4 +1,4 @@
-import { KINDS, NODE_H, ICON, nodeWidth, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
+import { KINDS, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
 import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
 
 const stage = document.getElementById('stage') as HTMLElement;
@@ -9,6 +9,7 @@ const gE = document.getElementById('edges') as unknown as SVGGElement;
 const gF = document.getElementById('frames') as unknown as SVGGElement;
 const gO = document.getElementById('overlay') as unknown as SVGGElement;
 const gL = document.getElementById('labels') as unknown as SVGGElement;
+const gFk = document.getElementById('fks') as unknown as SVGGElement;
 const hintEl = document.getElementById('hint') as HTMLElement;
 const emptyEl = document.getElementById('emptyState') as HTMLElement;
 const renameBox = document.getElementById('renameBox') as HTMLInputElement;
@@ -42,14 +43,19 @@ function toScreen(x: number, y: number) {
 
 // ---------- geometry ----------
 type Side = 'n' | 'e' | 's' | 'w';
+const detailOf = (n: Node) => state.doc.detail?.[n.id];
+const W = (n: Node) => nodeWidthFor(n, detailOf(n));
+const H = (n: Node) => nodeHeight(n, detailOf(n));
 function port(n: Node, side: Side) {
-  const w = nodeWidth(n);
-  return side === 'e' ? { x: n.x + w, y: n.y + NODE_H / 2 } : side === 'w' ? { x: n.x, y: n.y + NODE_H / 2 }
-    : side === 'n' ? { x: n.x + w / 2, y: n.y } : { x: n.x + w / 2, y: n.y + NODE_H };
+  const w = W(n), h = H(n);
+  // side ports sit at the compact header height so expanded nodes still connect near the title
+  const py = n.y + Math.min(h, NODE_H) / 2;
+  return side === 'e' ? { x: n.x + w, y: py } : side === 'w' ? { x: n.x, y: py }
+    : side === 'n' ? { x: n.x + w / 2, y: n.y } : { x: n.x + w / 2, y: n.y + h };
 }
 /** Choose sides so the edge leaves/enters along the dominant direction. */
 function routeSides(a: Node, b: Node): [Side, Side] {
-  const ac = { x: a.x + nodeWidth(a) / 2, y: a.y + NODE_H / 2 }, bc = { x: b.x + nodeWidth(b) / 2, y: b.y + NODE_H / 2 };
+  const ac = { x: a.x + W(a) / 2, y: a.y + NODE_H / 2 }, bc = { x: b.x + W(b) / 2, y: b.y + NODE_H / 2 };
   const dx = bc.x - ac.x, dy = bc.y - ac.y;
   if (Math.abs(dx) * 1.2 >= Math.abs(dy)) return dx >= 0 ? ['e', 'w'] : ['w', 'e'];
   return dy >= 0 ? ['s', 'n'] : ['n', 's'];
@@ -85,7 +91,7 @@ export function computeFrames(): Record<string, Frame> {
   const order = [...doc.containers].sort((a, b) => depth(b.id) - depth(a.id)); // deepest first
   for (const c of order) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + nodeWidth(n)); y1 = Math.max(y1, n.y + NODE_H); }
+    for (const n of doc.nodes) if ((n.container ?? null) === c.id) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + W(n)); y1 = Math.max(y1, n.y + H(n)); }
     for (const k of doc.containers) if ((k.parent ?? null) === c.id && out[k.id]) { const f = out[k.id]; x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); }
     if (x0 === Infinity) { const st = doc.frames[c.id]; out[c.id] = st ? { ...st } : { x: 40, y: 40, w: 260, h: 140 }; continue; }
     out[c.id] = { x: x0 - FRAME_PAD, y: y0 - FRAME_PAD - FRAME_HEAD, w: x1 - x0 + FRAME_PAD * 2, h: y1 - y0 + FRAME_PAD * 2 + FRAME_HEAD };
@@ -159,19 +165,84 @@ function buildNode(n: Node): SVGGElement {
     g.appendChild(el('rect', { class: 'fill ok', x: 12, y: 78, width: 0, height: 6, rx: 3 }));
     g.appendChild(el('text', { class: 'stat pct', x: w - 12, y: 71, 'text-anchor': 'end' }));
   }
+  g.appendChild(el('g', { class: 'detail' }));
+  if (n.kind === 'db' || n.kind === 'service' || n.kind === 'queue') {
+    const c = el('g', { class: 'chev', 'data-toggle': n.id });
+    c.appendChild(el('rect', { x: -10, y: -10, width: 20, height: 20, rx: 5 }));
+    c.appendChild(el('path', { d: 'M-4 -2 L0 2 L4 -2' }));
+    g.appendChild(c);
+  }
   (['n', 'e', 's', 'w'] as Side[]).forEach(s => {
     const p = port({ ...n, x: 0, y: 0 } as Node, s);
     g.appendChild(el('circle', { class: 'handle', 'data-handle': s, cx: p.x, cy: p.y, r: 5 }));
   });
   return g;
 }
+
+const tag = (g: SVGGElement, x: number, y: number, label: string, cls: string) => {
+  const r = el('rect', { class: 'tag ' + cls, x, y: y - 9, width: label.length * 6 + 8, height: 12, rx: 3 }); g.appendChild(r);
+  const t = el('text', { class: 'tagt', x: x + 4, y: y }); t.textContent = label; g.appendChild(t);
+  return label.length * 6 + 8;
+};
+/** Where a table's column row sits, in node-local coordinates (for FK lines). */
+const rowAnchors = new Map<string, { x: number; y: number; w: number }>(); // key: node|table|col
+function drawDetail(g: SVGGElement, n: Node, w: number) {
+  const d = g.querySelector('.detail') as SVGGElement; d.innerHTML = '';
+  if (detailOf(n) !== 'expanded') return;
+  let y = NODE_H + EXP.sectionPad;
+  d.appendChild(el('line', { class: 'sep', x1: 12, y1: NODE_H + 2, x2: w - 12, y2: NODE_H + 2 }));
+  if (n.kind === 'db') {
+    for (const t of n.tables ?? []) {
+      d.appendChild(el('rect', { class: 'tbl', x: 12, y, width: w - 24, height: EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, rx: 5 }));
+      d.appendChild(el('rect', { class: 'tblhead', x: 12, y, width: w - 24, height: EXP.tableHead, rx: 5 }));
+      const th = el('text', { class: 'tname', x: 20, y: y + 15 }); th.textContent = t.name; d.appendChild(th);
+      const cnt = el('text', { class: 'tcount', x: w - 20, y: y + 15, 'text-anchor': 'end' }); cnt.textContent = `${t.columns?.length ?? 0} cols`; d.appendChild(cnt);
+      let ry = y + EXP.tableHead + 12;
+      for (const c of t.columns ?? []) {
+        rowAnchors.set(`${n.id}|${t.name}|${c.name}`, { x: n.x + 12, y: n.y + ry - 4, w: w - 24 });
+        let x = 20;
+        if (c.pk) x += tag(d, x, ry, 'PK', 'pk') + 4;
+        if (c.references) x += tag(d, x, ry, 'FK', 'fk') + 4;
+        if (c.unique && !c.pk) x += tag(d, x, ry, 'UQ', 'uq') + 4;
+        if (c.index && !c.pk && !c.unique) x += tag(d, x, ry, 'IX', 'ix') + 4;
+        const cn = el('text', { class: 'col' + (c.pk ? ' pkcol' : ''), x, y: ry }); cn.textContent = trunc(c.name, Math.max(6, (w - x - 90) / 6.4)); d.appendChild(cn);
+        const ct = el('text', { class: 'ctype', x: w - 20, y: ry, 'text-anchor': 'end' }); ct.textContent = c.type + (c.nullable ? '?' : ''); d.appendChild(ct);
+        ry += EXP.row;
+      }
+      y += EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad + EXP.tableGap;
+    }
+  } else if (n.kind === 'service') {
+    for (const ep of n.endpoints ?? []) {
+      const m = el('text', { class: 'method m-' + ep.method.toLowerCase(), x: 14, y: y + 12 }); m.textContent = ep.method; d.appendChild(m);
+      const pth = el('text', { class: 'path', x: 62, y: y + 12 }); pth.textContent = trunc(ep.path, (w - 74 - 40) / 6.4); d.appendChild(pth);
+      const hc = (ep.headers?.length ?? 0);
+      const meta = el('text', { class: 'ctype', x: w - 14, y: y + 12, 'text-anchor': 'end' }); meta.textContent = [hc ? `${hc}h` : '', ep.req ? 'req' : '', ep.res ? 'res' : ''].filter(Boolean).join(' '); d.appendChild(meta);
+      y += EXP.endpointRow;
+    }
+  } else if (n.kind === 'queue') {
+    for (const t of n.topics ?? []) {
+      const tn = el('text', { class: 'tname', x: 14, y: y + 13 }); tn.textContent = trunc(t.name, (w - 90) / 7); d.appendChild(tn);
+      const pc = el('text', { class: 'tcount', x: w - 14, y: y + 13, 'text-anchor': 'end' }); pc.textContent = `${t.partitions ?? '?'} partitions`; d.appendChild(pc);
+      y += EXP.topicHead;
+      for (const [fname, ftype] of topicFields(t)) {
+        const f = el('text', { class: 'col', x: 22, y: y + 10 }); f.textContent = fname; d.appendChild(f);
+        const ft = el('text', { class: 'ctype', x: w - 14, y: y + 10, 'text-anchor': 'end' }); ft.textContent = ftype; d.appendChild(ft);
+        y += EXP.topicRow;
+      }
+      y += 6;
+    }
+  }
+}
 function updateNode(g: SVGGElement, n: Node) {
-  const r = state.results.nodes[n.id], w = nodeWidth(n);
-  set(g.querySelector('rect.body')!, { width: w });
+  const r = state.results.nodes[n.id], w = W(n), h = H(n), expanded = detailOf(n) === 'expanded';
+  set(g.querySelector('rect.body')!, { width: w, height: h });
+  set(g.querySelector('rect.accent')!, { height: h });
   if (n.kind !== 'entry') { set(g.querySelector('rect.bar')!, { width: w - 24 }); set(g.querySelector('.pct')!, { x: w - 12 }); }
-  (['e', 'n', 's'] as Side[]).forEach(sd => { const p = port({ ...n, x: 0, y: 0 } as Node, sd); set(g.querySelector(`[data-handle="${sd}"]`)!, { cx: p.x, cy: p.y }); });
+  (['e', 'n', 's', 'w'] as Side[]).forEach(sd => { const p = port({ ...n, x: 0, y: 0 } as Node, sd); set(g.querySelector(`[data-handle="${sd}"]`)!, { cx: p.x, cy: p.y }); });
+  const chev = g.querySelector('.chev'); if (chev) { chev.setAttribute('transform', `translate(${w - 20} 20)${expanded ? ' rotate(180 0 0)' : ''}`); }
+  drawDetail(g, n, w);
   const isSel = (state.sel?.type === 'node' && state.sel.id === n.id) || state.multi.has(n.id);
-  g.setAttribute('class', 'node k-' + n.kind + (isSel ? ' sel' : '') + (r.status === 'crit' ? ' crit' : '') + (g.classList.contains('enter') ? ' enter' : '') + (g.classList.contains('dragging') ? ' dragging' : ''));
+  g.setAttribute('class', 'node k-' + n.kind + (isSel ? ' sel' : '') + (expanded ? ' expanded' : '') + (r.status === 'crit' ? ' crit' : '') + (g.classList.contains('enter') ? ' enter' : '') + (g.classList.contains('dragging') ? ' dragging' : ''));
   g.setAttribute('transform', `translate(${n.x} ${n.y})`);
   g.style.setProperty('--nx', n.x + 'px'); g.style.setProperty('--ny', n.y + 'px');
   const tx = 12 + ICON + 9;
@@ -215,7 +286,10 @@ function updateEdge(g: SVGGElement, e: Edge, a: Node, b: Node) {
   const tw = txt.length * 6.1 + 12;
   const l = labelEls.get(e.id)!;
   const tooShort = line.getTotalLength() < tw + 36 && !isSel;
-  l.setAttribute('class', 'edge-label' + (isSel ? ' sel' : '') + (tooShort ? ' hidden' : ''));
+  // hide a label that would land on a node (labels are decoration; the inspector has the number)
+  const lx = mid.x - tw / 2, ly = mid.y - 9, lw = tw, lh = 18;
+  const onNode = !isSel && state.doc.nodes.some(n => { const nw = W(n), nh = H(n); return lx < n.x + nw && lx + lw > n.x && ly < n.y + nh && ly + lh > n.y; });
+  l.setAttribute('class', 'edge-label' + (isSel ? ' sel' : '') + (tooShort || onNode ? ' hidden' : ''));
   set(l.querySelector('.lbl')!, { x: mid.x - tw / 2, y: mid.y - 9, width: tw, height: 18 });
   const t = l.querySelector('text')!; set(t, { x: mid.x, y: mid.y + 3.5 }); t.textContent = txt;
 }
@@ -226,6 +300,7 @@ export function draw() {
   const byId = Object.fromEntries(doc.nodes.map(n => [n.id, n]));
   const animate = !firstDraw && !reduceMotion();
 
+  rowAnchors.clear();
   // frames (parents drawn before children so children sit on top)
   frames = computeFrames();
   const liveC = new Set(doc.containers.map(c => c.id));
@@ -255,6 +330,23 @@ export function draw() {
   // keep selected node on top
   const top = state.sel?.type === 'node' ? nodeEls.get(state.sel.id) : null;
   if (top && gN.lastElementChild !== top) gN.appendChild(top);
+
+  // foreign-key lines between table rows (only where both ends are drawn expanded)
+  gFk.innerHTML = '';
+  for (const fk of foreignKeys(doc)) {
+    const a = rowAnchors.get(`${fk.from.node}|${fk.from.table}|${fk.from.col}`);
+    const b = rowAnchors.get(`${fk.to.node}|${fk.to.table}|${fk.to.col}`);
+    if (!a || !b) continue;
+    const sameNode = fk.from.node === fk.to.node;
+    // leave from the right edge of the row, arrive at the right edge of the target row, loop outside the box
+    const ax = a.x + a.w, bx = b.x + b.w;
+    const bulge = sameNode ? 22 : Math.max(40, Math.abs(bx - ax) / 2);
+    const d = sameNode
+      ? `M${ax} ${a.y} C${ax + bulge} ${a.y} ${bx + bulge} ${b.y} ${bx} ${b.y}`
+      : `M${ax} ${a.y} C${ax + bulge} ${a.y} ${b.x - bulge} ${b.y} ${b.x} ${b.y}`;
+    const p = el('path', { class: 'fk', d, 'marker-end': 'url(#crow)' });
+    gFk.appendChild(p);
+  }
 
   // edges
   const liveE = new Set(doc.edges.map(e => e.id));
@@ -319,6 +411,8 @@ svg.addEventListener('pointerdown', ev => {
   const edgeEl = target.closest('[data-edge]') as SVGGElement | null;
   const additive = ev.shiftKey || ev.metaKey || ev.ctrlKey;
 
+  const toggle = target.closest('[data-toggle]') as SVGGElement | null;
+  if (toggle) { toggleDetail(toggle.dataset.toggle!); return; }
   if (handle && nodeEl) {
     const path = el('path'); gO.appendChild(path);
     drag = { type: 'connect', from: nodeEl.dataset.node!, side: handle.dataset.handle as Side, path, target: null };
@@ -424,7 +518,7 @@ svg.addEventListener('pointermove', ev => {
       const x = Math.min(drag.x0, w.x), y = Math.min(drag.y0, w.y), wd = Math.abs(w.x - drag.x0), ht = Math.abs(w.y - drag.y0);
       set(drag.rect, { x, y, width: wd, height: ht });
       state.multi.clear(); if (!drag.additive) state.sel = null;
-      state.doc.nodes.forEach(n => { const nw = nodeWidth(n); if (n.x < x + wd && n.x + nw > x && n.y < y + ht && n.y + NODE_H > y) state.multi.add(n.id); });
+      state.doc.nodes.forEach(n => { const nw = W(n), nh = H(n); if (n.x < x + wd && n.x + nw > x && n.y < y + ht && n.y + nh > y) state.multi.add(n.id); });
       renderCanvas(); break;
     }
   }
@@ -444,7 +538,7 @@ function up(ev: PointerEvent) {
         // re-home each dropped node by its centre; use the pointer for the primary node
         d.ids.forEach(id => {
           const n = state.doc.nodes.find(x => x.id === id)!;
-          const cx = n.x + nodeWidth(n) / 2, cy = n.y + NODE_H / 2;
+          const cx = n.x + W(n) / 2, cy = n.y + NODE_H / 2;
           const into = containerAt(cx, cy);
           if ((n.container ?? null) !== into) n.container = into;
         });
@@ -493,7 +587,7 @@ svg.addEventListener('dblclick', ev => {
   const s = toScreen(n.x + 12 + ICON + 9, n.y + 26);
   const r = stage.getBoundingClientRect();
   renameBox.style.left = (s.x - r.left) + 'px'; renameBox.style.top = (s.y - r.top - 12) + 'px';
-  renameBox.style.width = Math.max(120, (nodeWidth(n) - 60) * state.view.k) + 'px';
+  renameBox.style.width = Math.max(120, (W(n) - 60) * state.view.k) + 'px';
   renameBox.value = n.name; renameBox.hidden = false; renameBox.focus(); renameBox.select();
   const commit = () => { if (renameBox.hidden) return; renameBox.hidden = true; if (renameBox.value !== n.name) { mutate(() => (n.name = renameBox.value)); renderAll(); } };
   renameBox.onblur = commit;
@@ -520,7 +614,7 @@ export function fit(animated = true) {
   if (!doc.nodes.length && !doc.containers.length) return;
   const r = svg.getBoundingClientRect();
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  doc.nodes.forEach(n => { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + nodeWidth(n)); y1 = Math.max(y1, n.y + NODE_H); });
+  doc.nodes.forEach(n => { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x + W(n)); y1 = Math.max(y1, n.y + H(n)); });
   Object.values(computeFrames()).forEach(f => { x0 = Math.min(x0, f.x); y0 = Math.min(y0, f.y); x1 = Math.max(x1, f.x + f.w); y1 = Math.max(y1, f.y + f.h); });
   const pad = 48;
   const k = Math.min(1.5, Math.max(0.25, Math.min((r.width - pad * 2) / (x1 - x0), (r.height - pad * 2) / (y1 - y0))));
@@ -582,6 +676,20 @@ document.querySelectorAll<HTMLElement>('#rail [data-add-container]').forEach(b =
   b.setAttribute('draggable', 'true');
   b.addEventListener('click', () => addContainer());
 });
+
+export function toggleDetail(id: string, to?: 'compact' | 'expanded') {
+  const cur = state.doc.detail[id] ?? 'compact';
+  const next = to ?? (cur === 'expanded' ? 'compact' : 'expanded');
+  mutate(() => { if (next === 'compact') delete state.doc.detail[id]; else state.doc.detail[id] = next; });
+  renderAll();
+}
+export function setAllDetail(to: 'compact' | 'expanded') {
+  mutate(() => {
+    state.doc.detail = {};
+    if (to === 'expanded') state.doc.nodes.forEach(n => { if ((n.kind === 'db' && n.tables?.length) || (n.kind === 'service' && n.endpoints?.length) || (n.kind === 'queue' && n.topics?.length)) state.doc.detail[n.id] = 'expanded'; });
+  });
+  renderAll();
+}
 
 export function nudge(dx: number, dy: number) {
   const ids = selectedNodeIds(); if (!ids.length) return;

@@ -98,7 +98,15 @@
          "name": "merchant_id",
          "type": "uuid",
          "pk": false,
-         "nullable": false
+         "nullable": false,
+         "index": true
+        },
+        {
+         "name": "idempotency_key",
+         "type": "text",
+         "pk": false,
+         "nullable": false,
+         "unique": true
         },
         {
          "name": "amount_minor",
@@ -139,7 +147,8 @@
          "name": "payment_id",
          "type": "uuid",
          "pk": false,
-         "nullable": false
+         "nullable": false,
+         "references": "payments.id"
         },
         {
          "name": "amount_minor",
@@ -285,7 +294,10 @@
      "y": 460
     }
    },
-   "frames": {}
+   "frames": {},
+   "detail": {
+    "n5": "expanded"
+   }
   }
  },
  "expected": {
@@ -365,15 +377,15 @@
   "layout": {
    "n2": {
     "x": 416,
-    "y": 220
+    "y": 348
    },
    "n3": {
     "x": 664,
-    "y": 220
+    "y": 348
    },
    "n4": {
     "x": 984,
-    "y": 156
+    "y": 284
    },
    "n5": {
     "x": 1248,
@@ -381,35 +393,35 @@
    },
    "n6": {
     "x": 984,
-    "y": 292
+    "y": 412
    },
    "n7": {
     "x": 1248,
-    "y": 292
+    "y": 540
    },
    "n1": {
     "x": 40,
-    "y": 192
+    "y": 320
    }
   },
   "frames": {
    "c9": {
     "x": 388,
-    "y": 162,
+    "y": 290,
     "w": 506,
     "h": 178
    },
    "c10": {
     "x": 956,
     "y": 98,
-    "w": 516,
-    "h": 310
+    "w": 569.6,
+    "h": 560
    },
    "c8": {
     "x": 360,
     "y": 40,
-    "w": 1138,
-    "h": 396
+    "w": 1191.6,
+    "h": 646
    }
   },
   "crossings": {

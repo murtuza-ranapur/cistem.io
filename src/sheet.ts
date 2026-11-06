@@ -68,7 +68,13 @@ function schemaTab(n: Node): string {
       h += `<div class="sub">Columns <span class="spacer"></span>${addBtn(`add-column:${i}`, 'column')}</div>`;
       (t.columns || []).forEach((c, j) => {
         const types = PG_TYPES.includes(c.type) ? PG_TYPES : [c.type, ...PG_TYPES];
+        // FK targets: every other table.column in this db (ids first), plus other dbs' tables
+        const targets: string[] = [];
+        for (const ot of (n as DbNode).tables || []) if (ot !== t) for (const oc of ot.columns || []) targets.push(`${ot.name}.${oc.name}`);
+        for (const on of state.doc.nodes) if (on.kind === 'db' && on.id !== n.id) for (const ot of on.tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
+        const refOpts = ['', ...(c.references && !targets.includes(c.references) ? [c.references] : []), ...targets];
         h += `<div class="row cols">${inp(`tables.${i}.columns.${j}.name`, 'column', c.name)}${selIn(`tables.${i}.columns.${j}.type`, 'type', c.type, types)}${chk(`tables.${i}.columns.${j}.pk`, 'PK', c.pk)}${chk(`tables.${i}.columns.${j}.nullable`, 'null', c.nullable)}${xBtn(`rm-column:${i}:${j}`)}</div>`;
+        h += `<div class="row colx"><label>references<select data-path="tables.${i}.columns.${j}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${o ? esc(o.includes(':') ? (state.doc.nodes.find(x => x.id === o.split(':')[0])?.name ?? '') + ' › ' + o.split(':')[1] : o) : '—'}</option>`).join('')}</select></label>${chk(`tables.${i}.columns.${j}.unique`, 'unique', !!c.unique)}${chk(`tables.${i}.columns.${j}.index`, 'index', !!c.index)}${inp(`tables.${i}.columns.${j}.default`, 'default', c.default ?? '')}</div>`;
       });
       h += '</div>';
     });

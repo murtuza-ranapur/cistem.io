@@ -1,7 +1,7 @@
 import './style.css';
 import { type Kind } from './model';
 import { state, current, restore, loadExample, loadFile, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
-import { fit, zoomAt, hint, addNode, addContainer, nudge } from './canvas';
+import { fit, zoomAt, hint, addNode, addContainer, nudge, toggleDetail, setAllDetail } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import './sheet';
@@ -105,6 +105,8 @@ $('layoutBtn').onclick = organise;
 $('zin').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
 $('zout').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
 $('zfit').onclick = () => fit();
+let allExpanded = false;
+$('expandAll').onclick = () => { allExpanded = !allExpanded; setAllDetail(allExpanded ? 'expanded' : 'compact'); $('expandAll').classList.toggle('active', allExpanded); };
 $('resetBtn').onclick = () => { loadExample(); setRps(state.doc.targetRps); syncTitle(); fit(); };
 
 // ---------- keyboard ----------
@@ -125,6 +127,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelection(); return; }
   if (ev.key.toLowerCase() === 'o' && !mod) { organise(); return; }
   if (ev.key.toLowerCase() === 'e' && !mod) { addContainer(); return; }
+  if (ev.key === ' ' && !mod) { ev.preventDefault(); if (ev.shiftKey) $('expandAll').click(); else if (state.sel?.type === 'node') toggleDetail(state.sel.id); return; }
   if (ev.key === 'Escape') { select(null); renderAll(); return; }
   const step = ev.shiftKey ? 32 : 8;
   if (ev.key === 'ArrowLeft') { ev.preventDefault(); nudge(-step, 0); }

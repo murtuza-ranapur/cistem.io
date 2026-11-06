@@ -2,7 +2,8 @@ export type Kind = 'entry' | 'lb' | 'service' | 'cache' | 'db' | 'queue';
 
 export interface Header { k: string; v: string }
 export interface Endpoint { method: string; path: string; headers: Header[]; req: string; res: string }
-export interface Column { name: string; type: string; pk: boolean; nullable: boolean }
+export interface Column { name: string; type: string; pk: boolean; nullable: boolean; unique?: boolean; references?: string | null; default?: string; index?: boolean }
+/** `references` is "table.column" within the same database, or "node:table.column" for another database node. */
 export interface Table { name: string; columns: Column[] }
 export interface Topic { name: string; partitions: number; schema: string }
 
@@ -25,7 +26,8 @@ export interface Link { id: string; from: string; to: string; type: string; late
 /** Editor-side frame geometry for a container. */
 export interface Frame { x: number; y: number; w: number; h: number }
 
-export interface Doc { targetRps: number; nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame> }
+export type Detail = 'compact' | 'expanded';
+export interface Doc { targetRps: number; nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame>; detail: Record<string, Detail> }
 
 export const CONTAINER_KINDS: Record<ContainerKind, { label: string; hue: number }> = {
   cloud:      { label: 'Cloud',       hue: 210 },
@@ -54,6 +56,53 @@ export const KINDS: Record<Kind, KindDef> = {
 };
 
 export const NODE_H = 92;
+/** Row heights for the expanded view. Deterministic so Java agrees. */
+export const EXP = { tableHead: 22, row: 16, tablePad: 8, tableGap: 10, endpointRow: 18, topicHead: 20, topicRow: 15, sectionPad: 10, max: 560 };
+/** Expanded node height from its content; compact nodes are NODE_H. */
+export function nodeHeight(n: { kind: Kind; endpoints?: Endpoint[]; tables?: Table[]; topics?: Topic[] }, detail: Detail | undefined): number {
+  if (detail !== 'expanded') return NODE_H;
+  let extra = 0;
+  if (n.kind === 'db') { const ts = n.tables ?? []; extra = ts.reduce((h, t) => h + EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, 0) + Math.max(0, ts.length - 1) * EXP.tableGap; }
+  else if (n.kind === 'service') extra = (n.endpoints?.length ?? 0) * EXP.endpointRow;
+  else if (n.kind === 'queue') { const ts = n.topics ?? []; extra = ts.reduce((h, t) => h + EXP.topicHead + topicFields(t).length * EXP.topicRow, 0) + Math.max(0, ts.length - 1) * 6; }
+  if (extra === 0) return NODE_H;
+  return Math.min(EXP.max, NODE_H + EXP.sectionPad + extra + EXP.sectionPad);
+}
+/** Expanded nodes also widen so table rows fit. */
+export function nodeWidthFor(n: { kind: Kind; name?: string; tables?: Table[] }, detail: Detail | undefined): number {
+  const w = nodeWidth(n);
+  if (detail !== 'expanded') return w;
+  if (n.kind === 'db') { const longest = (n.tables ?? []).reduce((m, t) => Math.max(m, ...(t.columns ?? []).map(c => c.name.length + c.type.length + 3 + (c.references ? 6 : 0))), 0); return Math.min(360, Math.max(w, 40 + longest * 6.4 + 60)); }
+  if (n.kind === 'service') return Math.max(w, 280);
+  if (n.kind === 'queue') return Math.max(w, 280);
+  return w;
+}
+/** Avro record fields as [name, type] pairs, from the schema text; empty if it doesn't parse. */
+export function topicFields(t: Topic): [string, string][] {
+  try {
+    const j = JSON.parse(t.schema || '');
+    if (!j || !Array.isArray(j.fields)) return [];
+    return j.fields.map((f: any) => [String(f.name), avroType(f.type)]);
+  } catch { return []; }
+}
+function avroType(t: any): string {
+  if (typeof t === 'string') return t;
+  if (Array.isArray(t)) return t.filter(x => x !== 'null').map(avroType).join('|') + (t.includes('null') ? '?' : '');
+  if (t && typeof t === 'object') { if (t.logicalType) return t.logicalType; if (t.type === 'array') return `array<${avroType(t.items)}>`; if (t.type === 'map') return `map<${avroType(t.values)}>`; if (t.type === 'enum') return `enum(${(t.symbols || []).length})`; if (t.type === 'record') return t.name || 'record'; return String(t.type); }
+  return String(t);
+}
+/** Foreign keys: [fromNode, fromTable, fromCol, toNode, toTable, toCol]. */
+export function foreignKeys(doc: Doc): Array<{ from: { node: string; table: string; col: string }; to: { node: string; table: string; col: string } }> {
+  const out: Array<{ from: { node: string; table: string; col: string }; to: { node: string; table: string; col: string } }> = [];
+  for (const n of doc.nodes) if (n.kind === 'db') for (const t of n.tables ?? []) for (const c of t.columns ?? []) {
+    if (!c.references) continue;
+    let ref = c.references, node = n.id;
+    if (ref.includes(':')) { const [nid, rest] = ref.split(':'); node = nid; ref = rest; }
+    const [table, col] = ref.split('.');
+    if (table) out.push({ from: { node: n.id, table: t.name, col: c.name }, to: { node, table, col: col || 'id' } });
+  }
+  return out;
+}
 /** Node width follows the name so long names aren't clipped; deterministic (no font metrics) so Java agrees. */
 export function nodeWidth(n: { kind: Kind; name?: string }): number {
   const base = KINDS[n.kind].w;
@@ -115,7 +164,7 @@ export function adopt(d: unknown): Doc {
     Object.keys(defs).forEach(k => { if ((n as any)[k] === undefined) (n as any)[k] = clone(defs[k]); });
     if (n.container === undefined) n.container = null;
   });
-  doc.containers = doc.containers ?? []; doc.links = doc.links ?? []; doc.frames = doc.frames ?? {};
+  doc.containers = doc.containers ?? []; doc.links = doc.links ?? []; doc.frames = doc.frames ?? {}; doc.detail = doc.detail ?? {};
   // drop dangling references rather than failing
   const cids = new Set(doc.containers.map(c => c.id));
   doc.nodes.forEach(n => { if (n.container && !cids.has(n.container)) n.container = null; });
@@ -140,11 +189,12 @@ export function exampleDoc(): Doc {
   const db = makeNode('db', 960, 260, {
     name: 'payments-db', maxQps: 4000, replicas: 2, readShare: 0.85, latency: 6, tables: [
       { name: 'payments', columns: [
-        { name: 'id', type: 'uuid', pk: true, nullable: false }, { name: 'merchant_id', type: 'uuid', pk: false, nullable: false },
+        { name: 'id', type: 'uuid', pk: true, nullable: false }, { name: 'merchant_id', type: 'uuid', pk: false, nullable: false, index: true },
+        { name: 'idempotency_key', type: 'text', pk: false, nullable: false, unique: true },
         { name: 'amount_minor', type: 'bigint', pk: false, nullable: false }, { name: 'currency', type: 'varchar(255)', pk: false, nullable: false },
         { name: 'status', type: 'text', pk: false, nullable: false }, { name: 'created_at', type: 'timestamptz', pk: false, nullable: false } ] },
       { name: 'refunds', columns: [
-        { name: 'id', type: 'uuid', pk: true, nullable: false }, { name: 'payment_id', type: 'uuid', pk: false, nullable: false },
+        { name: 'id', type: 'uuid', pk: true, nullable: false }, { name: 'payment_id', type: 'uuid', pk: false, nullable: false, references: 'payments.id' },
         { name: 'amount_minor', type: 'bigint', pk: false, nullable: false } ] },
     ] });
   const q = makeNode('queue', 960, 460, {
@@ -157,7 +207,7 @@ export function exampleDoc(): Doc {
   lb.container = edge.id; api.container = edge.id;
   cache.container = core.id; db.container = core.id; q.container = core.id; worker.container = core.id;
   const doc: Doc = {
-    targetRps: 5000, containers: [aws, edge, core], frames: {},
+    targetRps: 5000, containers: [aws, edge, core], frames: {}, detail: { [db.id]: 'expanded' },
     links: [{ id: 'l1', from: edge.id, to: core.id, type: 'privatelink', latencyMs: 2 }],
     nodes: [clients, lb, api, cache, db, q, worker], edges: [
       { id: 'e1', from: clients.id, to: lb.id, calls: 1 },
