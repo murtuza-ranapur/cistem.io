@@ -614,3 +614,14 @@ button.cl-tag.ref{border:none;background:color-mix(in srgb,var(--fk) 16%,transpa
 .cl-types button{flex:1 1 30%;font-size:11.5px}
 .cl-types button:nth-child(4){border-left:none}
 .k-class-ink{color:#2f8a55}.k-class-ink svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;position:relative;top:2px}
+
+/* phones: the toolbar is one strip that scrolls sideways — groups sit in a row, divided by a thin rule */
+@media (max-width:900px){
+  #rail{align-items:center;scrollbar-width:none}
+  #rail::-webkit-scrollbar{display:none}
+  #rail .rail-group,#rail .rail-seq{flex-direction:row;flex:none;padding:0 6px 0 0;margin:0 6px 0 0;border-bottom:none;border-right:1px solid var(--line-2)}
+  #rail .rail-seq{border-right:none}
+  #rail .rail-sep{width:1px;height:28px;margin:0 6px;flex:none}
+  #rail .rail-group-label{display:none}
+  #rail .comp{flex:none}
+}
