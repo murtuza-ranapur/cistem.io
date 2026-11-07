@@ -8,26 +8,30 @@ export interface Table { name: string; columns: Column[] }
 export interface Topic { name: string; partitions: number; schema: string; key?: string }
 
 export interface NodeBase { id: string; kind: Kind; x: number; y: number; name: string; latency?: number; container?: string | null }
-export interface EntryNode extends NodeBase { kind: 'entry'; platforms: string[] }
+/** A source of traffic. `rps` is its peak requests per second — the load the diagram is tested against. */
+export interface EntryNode extends NodeBase { kind: 'entry'; platforms: string[]; rps: number }
 export interface LbNode extends NodeBase { kind: 'lb'; maxRps: number; latency: number }
 export interface ServiceNode extends NodeBase { kind: 'service'; rpsPerInstance: number; instances: number; latency: number; endpoints: Endpoint[] }
 export interface CacheNode extends NodeBase { kind: 'cache'; maxOps: number; hitRatio: number; latency: number; eviction: string }
 export interface DbNode extends NodeBase { kind: 'db'; maxQps: number; readShare: number; replicas: number; latency: number; tables: Table[] }
-export interface QueueNode extends NodeBase { kind: 'queue'; maxThroughput: number; latency: number; topics: Topic[] }
+/** One Kafka topic. `name` is the topic name; `cluster` an optional label for the cluster it lives on. */
+export interface QueueNode extends NodeBase { kind: 'queue'; maxThroughput: number; latency: number; partitions: number; schema: string; key?: string; cluster?: string }
 export type Node = EntryNode | LbNode | ServiceNode | CacheNode | DbNode | QueueNode;
 
 export interface Edge { id: string; from: string; to: string; calls: number; endpoint?: number | null }
 
 /** A boundary that components live in: a cloud, an account, a VPC... Nested via `parent`. */
 export type ContainerKind = 'cloud' | 'account' | 'vpc' | 'region' | 'datacentre' | 'team';
-export interface Container { id: string; kind: ContainerKind; name: string; parent: string | null; provider?: string; owner?: string; note?: string }
+export type ContainerColor = 'blue' | 'violet' | 'teal' | 'green' | 'amber' | 'orange' | 'red' | 'pink' | 'slate';
+export type ContainerFill = 'tint' | 'solid' | 'outline';
+export interface Container { id: string; kind: ContainerKind; name: string; parent: string | null; provider?: string; owner?: string; note?: string; color?: ContainerColor; fill?: ContainerFill; border?: 'dashed' | 'solid' }
 /** How two containers talk; adds latency to every edge crossing between them (or their descendants). */
 export interface Link { id: string; from: string; to: string; type: string; latencyMs: number }
 /** Editor-side frame geometry for a container. */
 export interface Frame { x: number; y: number; w: number; h: number }
 
 export type Detail = 'compact' | 'expanded';
-export interface Doc { targetRps: number; nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame>; detail: Record<string, Detail> }
+export interface Doc { nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame>; detail: Record<string, Detail> }
 
 export const CONTAINER_KINDS: Record<ContainerKind, { label: string; hue: number }> = {
   cloud:      { label: 'Cloud',       hue: 210 },
@@ -37,6 +41,13 @@ export const CONTAINER_KINDS: Record<ContainerKind, { label: string; hue: number
   datacentre: { label: 'Data centre', hue: 350 },
   team:       { label: 'Team',        hue: 90 },
 };
+/** Frame colours: hue and saturation (slate is the near-neutral one). */
+export const CONTAINER_COLORS: Record<ContainerColor, { h: number; s: number }> = {
+  blue: { h: 212, s: 60 }, violet: { h: 262, s: 45 }, teal: { h: 176, s: 45 }, green: { h: 140, s: 40 }, amber: { h: 42, s: 75 },
+  orange: { h: 24, s: 70 }, red: { h: 356, s: 60 }, pink: { h: 326, s: 50 }, slate: { h: 215, s: 14 },
+};
+/** The colour a frame shows: its own, or its kind's default. */
+export const frameColor = (c: Container) => c.color && CONTAINER_COLORS[c.color] ? CONTAINER_COLORS[c.color] : { h: CONTAINER_KINDS[c.kind].hue, s: 45 };
 export const LINK_TYPES: Record<string, number> = {
   'same-network': 0, 'vpc-peering': 1, 'privatelink': 2, 'transit-gateway': 3, 'vpn': 20, 'direct-connect': 10, 'public-internet': 40,
 };
@@ -47,24 +58,26 @@ export const FRAME_PAD = 28, FRAME_HEAD = 30;
 export interface KindDef { label: string; w: number; defaults: Record<string, unknown>; fields: [string, string][] }
 
 export const KINDS: Record<Kind, KindDef> = {
-  entry:   { label: 'Clients',       w: 190, defaults: { name: 'Clients', platforms: ['web', 'app'] }, fields: [] },
-  lb:      { label: 'Load balancer', w: 190, defaults: { name: 'LB', maxRps: 50000, latency: 1 }, fields: [['maxRps', 'max rps'], ['latency', 'latency ms']] },
-  service: { label: 'Microservice',  w: 200, defaults: { name: 'api', rpsPerInstance: 800, instances: 3, latency: 20, endpoints: [] }, fields: [['instances', 'instances'], ['rpsPerInstance', 'rps / instance'], ['latency', 'latency ms']] },
-  cache:   { label: 'Redis',         w: 190, defaults: { name: 'redis', maxOps: 100000, hitRatio: 0.9, latency: 1, eviction: 'allkeys-lru' }, fields: [['maxOps', 'max ops/s'], ['hitRatio', 'hit ratio 0-1'], ['latency', 'latency ms']] },
-  db:      { label: 'Postgres',      w: 200, defaults: { name: 'postgres', maxQps: 5000, readShare: 0.8, replicas: 1, latency: 8, tables: [] }, fields: [['maxQps', 'max qps / node'], ['replicas', 'read replicas'], ['readShare', 'read share 0-1'], ['latency', 'latency ms']] },
-  queue:   { label: 'Kafka',         w: 200, defaults: { name: 'kafka', maxThroughput: 20000, latency: 5, topics: [] }, fields: [['maxThroughput', 'max msg/s'], ['latency', 'latency ms']] },
+  entry:   { label: 'Clients',       w: 190, defaults: { name: 'Clients', platforms: ['web', 'app'], rps: 1000 }, fields: [['rps', 'Peak rps']] },
+  lb:      { label: 'Load balancer', w: 190, defaults: { name: 'LB', maxRps: 50000, latency: 1 }, fields: [['maxRps', 'Max rps'], ['latency', 'Latency (ms)']] },
+  service: { label: 'Microservice',  w: 200, defaults: { name: 'api', rpsPerInstance: 800, instances: 3, latency: 20, endpoints: [] }, fields: [['instances', 'Instances'], ['rpsPerInstance', 'Rps per instance'], ['latency', 'Latency (ms)']] },
+  cache:   { label: 'Redis',         w: 190, defaults: { name: 'redis', maxOps: 100000, hitRatio: 0.9, latency: 1, eviction: 'allkeys-lru' }, fields: [['maxOps', 'Max ops/s'], ['hitRatio', 'Hit ratio (0–1)'], ['latency', 'Latency (ms)']] },
+  db:      { label: 'Postgres',      w: 200, defaults: { name: 'postgres', maxQps: 5000, readShare: 0.8, replicas: 1, latency: 8, tables: [] }, fields: [['maxQps', 'Max qps per node'], ['replicas', 'Read replicas'], ['readShare', 'Read share (0–1)'], ['latency', 'Latency (ms)']] },
+  queue:   { label: 'Kafka topic',   w: 200, defaults: { name: 'domain.events', maxThroughput: 20000, latency: 5, partitions: 6, schema: '' }, fields: [['maxThroughput', 'Max msg/s'], ['latency', 'Latency (ms)']] },
 };
 
 export const NODE_H = 92;
+/** Sum of every client's peak rps: the load the whole diagram is tested at. */
+export const totalRps = (doc: { nodes: Node[] }) => doc.nodes.reduce((a, n) => a + (n.kind === 'entry' ? Number(n.rps) || 0 : 0), 0);
 /** Row heights for the expanded view. Deterministic so Java agrees. */
 export const EXP = { tableHead: 22, row: 16, tablePad: 8, tableGap: 10, endpointRow: 18, topicHead: 20, topicRow: 15, sectionPad: 10, max: 560 };
 /** Expanded node height from its content; compact nodes are NODE_H. */
-export function nodeHeight(n: { kind: Kind; endpoints?: Endpoint[]; tables?: Table[]; topics?: Topic[] }, detail: Detail | undefined): number {
+export function nodeHeight(n: { kind: Kind; endpoints?: Endpoint[]; tables?: Table[]; schema?: string }, detail: Detail | undefined): number {
   if (detail !== 'expanded') return NODE_H;
   let extra = 0;
   if (n.kind === 'db') { const ts = n.tables ?? []; extra = ts.reduce((h, t) => h + EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, 0) + Math.max(0, ts.length - 1) * EXP.tableGap; }
   else if (n.kind === 'service') extra = (n.endpoints?.length ?? 0) * EXP.endpointRow;
-  else if (n.kind === 'queue') { const ts = n.topics ?? []; extra = ts.reduce((h, t) => h + EXP.topicHead + topicFields(t).length * EXP.topicRow, 0) + Math.max(0, ts.length - 1) * 6; }
+  else if (n.kind === 'queue') { const f = topicFields({ schema: n.schema ?? '' }).length; extra = f ? EXP.topicHead + f * EXP.topicRow : 0; }
   if (extra === 0) return NODE_H;
   return Math.min(EXP.max, NODE_H + EXP.sectionPad + extra + EXP.sectionPad);
 }
@@ -78,7 +91,7 @@ export function nodeWidthFor(n: { kind: Kind; name?: string; tables?: Table[] },
   return w;
 }
 /** Avro record fields as [name, type] pairs, from the schema text; empty if it doesn't parse. */
-export function topicFields(t: Topic): [string, string][] {
+export function topicFields(t: { schema: string }): [string, string][] {
   try {
     const j = JSON.parse(t.schema || '');
     if (!j || !Array.isArray(j.fields)) return [];
@@ -176,7 +189,7 @@ export function adopt(d: unknown): Doc {
 
 export function exampleDoc(): Doc {
   uid = 1;
-  const clients = makeNode('entry', 20, 200, { name: 'Checkout clients' });
+  const clients = makeNode('entry', 20, 200, { name: 'Checkout clients', rps: 5000 });
   const lb = makeNode('lb', 330, 200, { name: 'ALB' });
   const api = makeNode('service', 640, 200, {
     name: 'checkout-api', rpsPerInstance: 600, instances: 10, latency: 25, endpoints: [
@@ -198,8 +211,8 @@ export function exampleDoc(): Doc {
         { name: 'amount_minor', type: 'bigint', pk: false, nullable: false } ] },
     ] });
   const q = makeNode('queue', 960, 460, {
-    name: 'events', topics: [{ name: 'payments.authorised', partitions: 12,
-      schema: '{\n  "type": "record",\n  "name": "PaymentAuthorised",\n  "namespace": "com.example.payments",\n  "fields": [\n    {"name": "paymentId", "type": "string"},\n    {"name": "amountMinor", "type": "long"},\n    {"name": "currency", "type": "string"}\n  ]\n}' }] });
+    name: 'payments.authorised', cluster: 'events', partitions: 12, key: 'paymentId',
+    schema: '{\n  "type": "record",\n  "name": "PaymentAuthorised",\n  "namespace": "com.example.payments",\n  "fields": [\n    {"name": "paymentId", "type": "string"},\n    {"name": "amountMinor", "type": "long"},\n    {"name": "currency", "type": "string"}\n  ]\n}' });
   const worker = makeNode('service', 1280, 460, { name: 'ledger-worker', rpsPerInstance: 400, instances: 8, latency: 40 });
   const aws = makeContainer('cloud', 'AWS'); aws.provider = 'aws';
   const edge = makeContainer('account', 'acq-edge', aws.id);
@@ -210,7 +223,7 @@ export function exampleDoc(): Doc {
   lb.container = edge.id; api.container = edge.id;
   cache.container = core.id; db.container = core.id; q.container = core.id; worker.container = core.id;
   const doc: Doc = {
-    targetRps: 5000, containers: [aws, edge, core], frames: {}, detail: { [db.id]: 'expanded' },
+    containers: [aws, edge, core], frames: {}, detail: { [db.id]: 'expanded' },
     links: [{ id: 'l1', from: edge.id, to: core.id, type: 'privatelink', latencyMs: 2 }],
     nodes: [clients, lb, api, cache, db, q, worker], edges: [
       { id: 'e1', from: clients.id, to: lb.id, calls: 1 },

@@ -11,7 +11,7 @@
  */
 import { adopt, type Doc, type Node, type Edge, type Container, type Link, type Frame } from './model';
 
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 export type DiagramKind = 'system';
 
 export interface DiagramFile {
@@ -19,7 +19,6 @@ export interface DiagramFile {
   kind: DiagramKind;
   meta: { title: string; created: string; updated: string; tags?: string[] };
   model: {
-    targetRps: number;
     nodes: Array<Omit<Node, 'x' | 'y'>>;
     edges: Edge[];
     containers: Container[];
@@ -40,7 +39,7 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
     version: FORMAT_VERSION,
     kind: 'system',
     meta: { title: meta?.title ?? 'Untitled system', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
-    model: { targetRps: doc.targetRps, nodes, edges: doc.edges, containers: doc.containers ?? [], links: doc.links ?? [] },
+    model: { nodes, edges: doc.edges, containers: doc.containers ?? [], links: doc.links ?? [] },
     layout: { positions, frames: doc.frames ?? {}, ...(Object.keys(doc.detail ?? {}).length ? { detail: doc.detail } : {}) },
   };
 }
@@ -49,7 +48,7 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {
   const f = migrate(input);
   const nodes = f.model.nodes.map(n => ({ ...n, ...(f.layout.positions[n.id] ?? { x: 0, y: 0 }) })) as Node[];
-  const doc = adopt({ targetRps: f.model.targetRps, nodes, edges: f.model.edges, containers: f.model.containers, links: f.model.links, frames: f.layout.frames, detail: f.layout.detail ?? {} });
+  const doc = adopt({ nodes, edges: f.model.edges, containers: f.model.containers, links: f.model.links, frames: f.layout.frames, detail: f.layout.detail ?? {} });
   return { doc, meta: f.meta };
 }
 
@@ -64,7 +63,44 @@ const migrations: Record<number, Migration> = {
   },
   // v2 → v3: containers (environments) and links between them. Nothing is placed in a container.
   2: (d) => ({ ...d, version: 3, model: { ...d.model, containers: [], links: [] }, layout: { ...d.layout, frames: {} } }),
+  3: v3to4,
 };
+
+/**
+ * v3 → v4:
+ *  - load moves from one diagram-wide `targetRps` onto each Clients node (`rps`). Every client used to receive
+ *    the full target, so each gets that number — results are unchanged.
+ *  - a Kafka node is one topic. A node with topics [a, b, c] becomes the topic `a` (keeping its id, so edges and
+ *    positions stay), plus new nodes for b and c below it, wired to the same neighbours. The old node name is
+ *    kept as `cluster`.
+ */
+export function v3to4(d: any): any {
+  const model = d.model ?? {}, layout = d.layout ?? {};
+  const target = typeof model.targetRps === 'number' ? model.targetRps : 1000;
+  const positions = { ...(layout.positions ?? {}) };
+  const ids = new Set<string>((model.nodes ?? []).map((n: any) => n.id));
+  let seq = 1; const freshId = (base: string) => { let id; do id = `${base}t${seq++}`; while (ids.has(id)); ids.add(id); return id; };
+  const nodes: any[] = [], edges: any[] = [...(model.edges ?? [])];
+  for (const n of model.nodes ?? []) {
+    if (n.kind === 'entry') { nodes.push({ ...n, rps: typeof n.rps === 'number' ? n.rps : target }); continue; }
+    if (n.kind !== 'queue' || !Array.isArray(n.topics)) { nodes.push(n); continue; }
+    const { topics, ...rest } = n;
+    const asTopic = (t: any) => ({ name: t?.name || n.name, partitions: t?.partitions ?? 6, schema: t?.schema ?? '', ...(t?.key ? { key: t.key } : {}), ...(t?.name && n.name && t.name !== n.name ? { cluster: n.name } : {}) });
+    nodes.push({ ...rest, ...asTopic(topics[0]) });
+    const p = positions[n.id] ?? { x: 0, y: 0 };
+    topics.slice(1).forEach((t: any, i: number) => {
+      const id = freshId(n.id);
+      nodes.push({ ...rest, id, ...asTopic(t) });
+      positions[id] = { x: p.x, y: p.y + (i + 1) * 132 };
+      for (const e of model.edges ?? []) {
+        if (e.from === n.id) edges.push({ ...e, id: freshId(e.id), from: id });
+        else if (e.to === n.id) edges.push({ ...e, id: freshId(e.id), to: id });
+      }
+    });
+  }
+  const { targetRps: _drop, ...restModel } = model;
+  return { ...d, version: 4, model: { ...restModel, nodes, edges }, layout: { ...layout, positions } };
+}
 
 export function detectVersion(d: any): number {
   if (d && typeof d === 'object' && typeof d.version === 'number') return d.version;

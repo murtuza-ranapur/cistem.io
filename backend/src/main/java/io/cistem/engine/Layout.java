@@ -30,7 +30,7 @@ public final class Layout {
         int extra = 0;
         if ("db".equals(kind)) { JsonNode ts = n.path("tables"); for (JsonNode t : ts) extra += TABLE_HEAD + t.path("columns").size() * ROW + TABLE_PAD; extra += Math.max(0, ts.size() - 1) * TABLE_GAP; }
         else if ("service".equals(kind)) extra = n.path("endpoints").size() * ENDPOINT_ROW;
-        else if ("queue".equals(kind)) { JsonNode ts = n.path("topics"); for (JsonNode t : ts) extra += TOPIC_HEAD + topicFieldCount(t) * TOPIC_ROW; extra += Math.max(0, ts.size() - 1) * 6; }
+        else if ("queue".equals(kind)) { int f = topicFieldCount(n); extra = f > 0 ? TOPIC_HEAD + f * TOPIC_ROW : 0; }   // one topic per node (v4)
         if (extra == 0) return NODE_H;
         return Math.min(MAX_H, NODE_H + SECTION_PAD + extra + SECTION_PAD);
     }

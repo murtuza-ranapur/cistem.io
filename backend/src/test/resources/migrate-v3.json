@@ -1,0 +1,234 @@
+{
+ "input": {
+  "version": 3,
+  "kind": "system",
+  "meta": {
+   "title": "v3",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "targetRps": 2000,
+   "containers": [],
+   "links": [],
+   "nodes": [
+    {
+     "id": "n1",
+     "kind": "entry",
+     "name": "web",
+     "platforms": [
+      "web"
+     ],
+     "container": null
+    },
+    {
+     "id": "n3",
+     "kind": "service",
+     "name": "api",
+     "rpsPerInstance": 500,
+     "instances": 4,
+     "latency": 10,
+     "endpoints": [],
+     "container": null
+    },
+    {
+     "id": "n4",
+     "kind": "queue",
+     "name": "events",
+     "maxThroughput": 20000,
+     "latency": 5,
+     "container": null,
+     "topics": [
+      {
+       "name": "payments.authorised",
+       "partitions": 12,
+       "schema": "{\"type\":\"record\",\"name\":\"A\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}",
+       "key": "id"
+      },
+      {
+       "name": "payments.refunded",
+       "partitions": 3,
+       "schema": ""
+      }
+     ]
+    },
+    {
+     "id": "n5",
+     "kind": "service",
+     "name": "worker",
+     "rpsPerInstance": 500,
+     "instances": 2,
+     "latency": 10,
+     "endpoints": [],
+     "container": null
+    }
+   ],
+   "edges": [
+    {
+     "id": "e1",
+     "from": "n1",
+     "to": "n3",
+     "calls": 1
+    },
+    {
+     "id": "e3",
+     "from": "n3",
+     "to": "n4",
+     "calls": 1
+    },
+    {
+     "id": "e4",
+     "from": "n4",
+     "to": "n5",
+     "calls": 1
+    }
+   ]
+  },
+  "layout": {
+   "positions": {
+    "n1": {
+     "x": 0,
+     "y": 0
+    },
+    "n3": {
+     "x": 300,
+     "y": 0
+    },
+    "n4": {
+     "x": 600,
+     "y": 0
+    },
+    "n5": {
+     "x": 900,
+     "y": 0
+    }
+   },
+   "frames": {}
+  }
+ },
+ "expected": {
+  "version": 4,
+  "kind": "system",
+  "meta": {
+   "title": "v3",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "containers": [],
+   "links": [],
+   "nodes": [
+    {
+     "id": "n1",
+     "kind": "entry",
+     "name": "web",
+     "platforms": [
+      "web"
+     ],
+     "container": null,
+     "rps": 2000
+    },
+    {
+     "id": "n3",
+     "kind": "service",
+     "name": "api",
+     "rpsPerInstance": 500,
+     "instances": 4,
+     "latency": 10,
+     "endpoints": [],
+     "container": null
+    },
+    {
+     "id": "n4",
+     "kind": "queue",
+     "name": "payments.authorised",
+     "maxThroughput": 20000,
+     "latency": 5,
+     "container": null,
+     "partitions": 12,
+     "schema": "{\"type\":\"record\",\"name\":\"A\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}",
+     "key": "id",
+     "cluster": "events"
+    },
+    {
+     "id": "n4t1",
+     "kind": "queue",
+     "name": "payments.refunded",
+     "maxThroughput": 20000,
+     "latency": 5,
+     "container": null,
+     "partitions": 3,
+     "schema": "",
+     "cluster": "events"
+    },
+    {
+     "id": "n5",
+     "kind": "service",
+     "name": "worker",
+     "rpsPerInstance": 500,
+     "instances": 2,
+     "latency": 10,
+     "endpoints": [],
+     "container": null
+    }
+   ],
+   "edges": [
+    {
+     "id": "e1",
+     "from": "n1",
+     "to": "n3",
+     "calls": 1
+    },
+    {
+     "id": "e3",
+     "from": "n3",
+     "to": "n4",
+     "calls": 1
+    },
+    {
+     "id": "e4",
+     "from": "n4",
+     "to": "n5",
+     "calls": 1
+    },
+    {
+     "id": "e3t2",
+     "from": "n3",
+     "to": "n4t1",
+     "calls": 1
+    },
+    {
+     "id": "e4t3",
+     "from": "n4t1",
+     "to": "n5",
+     "calls": 1
+    }
+   ]
+  },
+  "layout": {
+   "positions": {
+    "n1": {
+     "x": 0,
+     "y": 0
+    },
+    "n3": {
+     "x": 300,
+     "y": 0
+    },
+    "n4": {
+     "x": 600,
+     "y": 0
+    },
+    "n5": {
+     "x": 900,
+     "y": 0
+    },
+    "n4t1": {
+     "x": 600,
+     "y": 132
+    }
+   },
+   "frames": {}
+  }
+ }
+}

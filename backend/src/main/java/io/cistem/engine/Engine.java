@@ -93,7 +93,8 @@ public final class Engine {
 
     public static Results compute(JsonNode model) {
         JsonNode nodes = model.path("nodes"), edges = model.path("edges");
-        double target = num(model, "targetRps");
+        // v4: each Clients node carries its own peak rps; a v3 model's diagram-wide target still works as a fallback
+        double legacyTarget = model.has("targetRps") ? num(model, "targetRps") : 0;
         Map<String, JsonNode> byId = new LinkedHashMap<>();
         for (JsonNode n : nodes) byId.put(n.path("id").asText(), n);
         Map<String, Integer> outs = new HashMap<>();
@@ -112,7 +113,7 @@ public final class Engine {
             Map<String, Map<String, Double>> next = new HashMap<>(); Map<String, Double> ncum = new HashMap<>();
             for (var en : byId.entrySet()) {
                 Map<String, Double> m = new HashMap<>();
-                if ("entry".equals(kind(en.getValue()))) m.put("sync", target);
+                if ("entry".equals(kind(en.getValue()))) m.put("sync", en.getValue().has("rps") ? num(en.getValue(), "rps") : legacyTarget);
                 next.put(en.getKey(), m); ncum.put(en.getKey(), 0.0);
             }
             for (JsonNode e : edges) {
@@ -168,7 +169,8 @@ public final class Engine {
         Map<String, String> names = new HashMap<>(), cnames = new HashMap<>(), nodeContainer = new HashMap<>();
         for (JsonNode c : model.path("containers")) cnames.put(c.path("id").asText(), c.path("name").asText());
         for (JsonNode n : model.path("nodes")) { names.put(n.path("id").asText(), n.path("name").asText()); if (containerOf(n) != null) nodeContainer.put(n.path("id").asText(), cnames.getOrDefault(containerOf(n), containerOf(n))); }
-        out.put("targetRps", num(model, "targetRps"));
+        double total = 0; for (JsonNode n : model.path("nodes")) if ("entry".equals(n.path("kind").asText())) total += n.has("rps") ? num(n, "rps") : num(model, "targetRps");
+        out.put("totalRps", total);
         out.put("verdict", switch (r.verdict().status()) { case ok -> "handles it"; case warn -> "near limit"; case crit -> "breaks"; });
         if (r.verdict().nodeId() != null) { out.put("bottleneck", names.get(r.verdict().nodeId())); out.put("bottleneckId", r.verdict().nodeId()); }
         out.put("p50PathLatencyMs", Math.round(r.verdict().lat()));

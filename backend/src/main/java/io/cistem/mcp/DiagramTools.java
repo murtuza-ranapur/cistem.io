@@ -3,6 +3,7 @@ package io.cistem.mcp;
 import io.cistem.api.Diagram;
 import io.cistem.api.DiagramRepository;
 import io.cistem.engine.Engine;
+import io.cistem.engine.Migrate;
 import io.cistem.engine.Layout;
 import org.springframework.ai.mcp.annotation.McpResource;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -29,12 +30,12 @@ public class DiagramTools {
 
     static final Set<String> KINDS = Set.of("entry", "lb", "service", "cache", "db", "queue");
     static final Map<String, Map<String, Object>> DEFAULTS = Map.of(
-            "entry", Map.of("platforms", List.of("web", "app")),
+            "entry", Map.of("platforms", List.of("web", "app"), "rps", 1000),
             "lb", Map.of("maxRps", 50000, "latency", 1),
             "service", Map.of("rpsPerInstance", 800, "instances", 3, "latency", 20, "endpoints", List.of()),
             "cache", Map.of("maxOps", 100000, "hitRatio", 0.9, "latency", 1, "eviction", "allkeys-lru"),
             "db", Map.of("maxQps", 5000, "readShare", 0.8, "replicas", 1, "latency", 8, "tables", List.of()),
-            "queue", Map.of("maxThroughput", 20000, "latency", 5, "topics", List.of()));
+            "queue", Map.of("maxThroughput", 20000, "latency", 5, "partitions", 6, "schema", ""));
 
     private final DiagramRepository repo;
     private final CurrentUser user;
@@ -59,14 +60,25 @@ public class DiagramTools {
     }
 
     @McpTool(name = "evaluate", description = """
-            Run the capacity model: propagate the target RPS through the system and report, per component, load vs capacity,
-            utilisation %, status (ok / warn ≥70% / crit ≥100%) and effective latency, plus the bottleneck and p50 path latency.
-            Optionally override the target RPS for a what-if without saving.""")
+            Run the capacity model: inject each Clients node's peak rps, propagate it through the system and report, per
+            component, load vs capacity, utilisation %, status (ok / warn ≥70% / crit ≥100%) and effective latency, plus the
+            bottleneck, total rps and p50 path latency. Optionally test a different total load (clients scaled
+            proportionally) as a what-if, without saving.""")
     public ObjectNode evaluate(@McpToolParam(description = "Diagram id") String diagramId,
-                               @McpToolParam(description = "Target requests/sec to test; omit to use the diagram's own", required = false) Double targetRps) {
-        JsonNode file = load(diagramId).document();
-        if (targetRps != null) { file = file.deepCopy(); ((ObjectNode) file.path("model")).put("targetRps", targetRps); }
+                               @McpToolParam(description = "What-if total requests/sec across all clients; omit to use the clients' own", required = false) Double targetRps) {
+        ObjectNode file = (ObjectNode) load(diagramId).document().deepCopy();
+        normalise(file);
+        if (targetRps != null) scaleClients(file, targetRps);
         return Engine.report(file, Engine.compute(file.path("model")), om);
+    }
+
+    /** Set the clients' peak rps so they add up to `total`, keeping their proportions (equal split if all are 0). */
+    private static void scaleClients(JsonNode file, double total) {
+        List<ObjectNode> clients = new java.util.ArrayList<>();
+        for (JsonNode n : file.path("model").path("nodes")) if ("entry".equals(n.path("kind").asText())) clients.add((ObjectNode) n);
+        if (clients.isEmpty()) throw new IllegalArgumentException("This diagram has no Clients component to carry the load");
+        double sum = clients.stream().mapToDouble(c -> c.path("rps").asDouble(0)).sum();
+        for (ObjectNode c : clients) c.put("rps", sum > 0 ? c.path("rps").asDouble(0) * total / sum : total / clients.size());
     }
 
     @McpResource(uri = "cistem://schema", name = "cistem.io diagram schema", description = "JSON Schema (2020-12) for diagram files", mimeType = "application/schema+json")
@@ -83,17 +95,16 @@ public class DiagramTools {
 
     // ---------- create / delete ----------
 
-    @McpTool(name = "create_diagram", description = "Create a new, empty system diagram with a Clients entry node. Returns its id.")
+    @McpTool(name = "create_diagram", description = "Create a new, empty system diagram with one Clients node. Returns its id.")
     public Diagram.Summary createDiagram(@McpToolParam(description = "Title") String title,
-                                         @McpToolParam(description = "Target requests/sec (default 1000)", required = false) Double targetRps) {
+                                         @McpToolParam(description = "Peak requests/sec of the Clients node (default 1000)", required = false) Double targetRps) {
         ObjectNode file = om.createObjectNode();
-        file.put("version", 3).put("kind", "system");
+        file.put("version", Migrate.VERSION).put("kind", "system");
         String now = Instant.now().toString();
         file.putObject("meta").put("title", title).put("created", now).put("updated", now);
         ObjectNode model = file.putObject("model");
-        model.put("targetRps", targetRps == null ? 1000 : targetRps);
         ArrayNode nodes = model.putArray("nodes"); model.putArray("edges"); model.putArray("containers"); model.putArray("links");
-        ObjectNode entry = nodes.addObject(); entry.put("id", "n1").put("kind", "entry").put("name", "Clients").putNull("container"); entry.putArray("platforms").add("web").add("app");
+        ObjectNode entry = nodes.addObject(); entry.put("id", "n1").put("kind", "entry").put("name", "Clients").put("rps", targetRps == null ? 1000 : targetRps).putNull("container"); entry.putArray("platforms").add("web").add("app");
         ObjectNode layout = file.putObject("layout"); layout.putObject("positions").putObject("n1").put("x", 40).put("y", 40); layout.putObject("frames");
         return repo.insert(user.id(), title, "system", file).summary();
     }
@@ -106,10 +117,23 @@ public class DiagramTools {
 
     // ---------- edit ----------
 
-    @McpTool(name = "set_target_rps", description = "Set the load injected at the entry node.")
+    @McpTool(name = "set_client_rps", description = "Set one Clients component's peak requests/sec (the load it sends into the system).")
+    public ObjectNode setClientRps(@McpToolParam(description = "Diagram id") String diagramId,
+                                   @McpToolParam(description = "Clients component id") String componentId,
+                                   @McpToolParam(description = "Peak requests per second") double rps) {
+        return edit(diagramId, f -> {
+            ObjectNode n = node(f, componentId);
+            if (!"entry".equals(n.path("kind").asText())) throw new IllegalArgumentException(componentId + " is not a Clients component");
+            n.put("rps", rps);
+        });
+    }
+
+    @McpTool(name = "set_target_rps", description = """
+            Set the total peak load: with one Clients component it gets this rps; with several they're scaled to add up to it,
+            keeping their proportions. (Use set_client_rps to set one client.)""")
     public ObjectNode setTargetRps(@McpToolParam(description = "Diagram id") String diagramId,
-                                   @McpToolParam(description = "Requests per second") double rps) {
-        return edit(diagramId, f -> ((ObjectNode) f.path("model")).put("targetRps", rps));
+                                   @McpToolParam(description = "Total requests per second") double rps) {
+        return edit(diagramId, f -> scaleClients(f, rps));
     }
 
     @McpTool(name = "rename_diagram", description = "Change the diagram title.")
@@ -118,10 +142,11 @@ public class DiagramTools {
     }
 
     @McpTool(name = "add_component", description = """
-            Add a component. kind: entry | lb (load balancer) | service | cache (Redis) | db (Postgres) | queue (Kafka).
-            properties (optional JSON object) override defaults, e.g. service: {"instances":6,"rpsPerInstance":600,"latency":25};
-            cache: {"maxOps":100000,"hitRatio":0.85}; db: {"maxQps":4000,"replicas":2,"readShare":0.85}; queue: {"maxThroughput":20000};
-            lb: {"maxRps":50000}. Services may carry "endpoints", dbs "tables", queues "topics" (see the cistem://schema resource).
+            Add a component. kind: entry (Clients) | lb (load balancer) | service | cache (Redis) | db (Postgres) | queue (one Kafka topic).
+            properties (optional JSON object) override defaults, e.g. entry: {"rps":2000}; service: {"instances":6,"rpsPerInstance":600,"latency":25};
+            cache: {"maxOps":100000,"hitRatio":0.85}; db: {"maxQps":4000,"replicas":2,"readShare":0.85};
+            queue: {"partitions":12,"key":"paymentId","cluster":"msk-payments","schema":"<Avro JSON>","maxThroughput":20000} — name it with the topic name;
+            lb: {"maxRps":50000}. Services may carry "endpoints", dbs "tables" (see the cistem://schema resource).
             Returns the new component id. Position is chosen automatically.""")
     public ObjectNode addComponent(@McpToolParam(description = "Diagram id") String diagramId,
                                    @McpToolParam(description = "Component kind") String kind,
@@ -265,15 +290,22 @@ public class DiagramTools {
         return result;
     }
 
-    @McpTool(name = "set_container", description = "Update a container: name, kind, parentId (null/empty = top level), provider, owner, note.")
+    static final Set<String> CONTAINER_COLORS = Set.of("blue", "violet", "teal", "green", "amber", "orange", "red", "pink", "slate");
+
+    @McpTool(name = "set_container", description = """
+            Update a container: name, kind, parent (null/empty = top level), provider, owner, note, and its look:
+            color (blue | violet | teal | green | amber | orange | red | pink | slate), fill (tint | solid | outline), border (dashed | solid).""")
     public ObjectNode setContainer(@McpToolParam(description = "Diagram id") String diagramId,
                                    @McpToolParam(description = "Container id") String containerId,
-                                   @McpToolParam(description = "Properties to set, as a JSON object (name, kind, parent, provider, owner, note)") Map<String, Object> properties) {
+                                   @McpToolParam(description = "Properties to set, as a JSON object (name, kind, parent, provider, owner, note, color, fill, border)") Map<String, Object> properties) {
         return edit(diagramId, f -> {
             ObjectNode c = container(f, containerId);
             properties.forEach((k, v) -> {
                 if (k.equals("id")) throw new IllegalArgumentException("id can't be changed");
                 if (k.equals("kind") && !CONTAINER_KINDS.contains(String.valueOf(v))) throw new IllegalArgumentException("kind must be one of " + CONTAINER_KINDS);
+                if (k.equals("color") && v != null && !CONTAINER_COLORS.contains(String.valueOf(v))) throw new IllegalArgumentException("color must be one of " + CONTAINER_COLORS);
+                if (k.equals("fill") && v != null && !Set.of("tint", "solid", "outline").contains(String.valueOf(v))) throw new IllegalArgumentException("fill must be tint, solid or outline");
+                if (k.equals("border") && v != null && !Set.of("dashed", "solid").contains(String.valueOf(v))) throw new IllegalArgumentException("border must be dashed or solid");
                 if (k.equals("parent")) {
                     String p = v == null || String.valueOf(v).isBlank() ? null : String.valueOf(v);
                     if (p != null) { container(f, p); if (Engine.ancestry(f.path("model"), p).contains(containerId)) throw new IllegalArgumentException("A container can't be inside itself"); }
@@ -372,15 +404,9 @@ public class DiagramTools {
         return out;
     }
 
-    /** Bring a stored v2 document up to v3 shape in memory (the browser does the same on load). */
+    /** Bring a stored document up to the current version in memory (the browser does the same on load). */
     private static void normalise(ObjectNode file) {
-        ObjectNode model = (ObjectNode) file.path("model");
-        if (!model.has("containers")) model.putArray("containers");
-        if (!model.has("links")) model.putArray("links");
-        ObjectNode layout = file.has("layout") ? (ObjectNode) file.path("layout") : file.putObject("layout");
-        if (!layout.has("positions")) layout.putObject("positions");
-        if (!layout.has("frames")) layout.putObject("frames");
-        if (file.path("version").asInt(0) < 3) file.put("version", 3);
+        Migrate.toCurrent(file);
     }
 
     private static ObjectNode node(JsonNode file, String id) {

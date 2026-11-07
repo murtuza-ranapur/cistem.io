@@ -241,7 +241,7 @@ class T {
   await test('JSON export/import round-trips the diagram', async t => {
     await t.page.click('#ioBtn'); await t.page.waitForTimeout(150);
     const text = await t.page.inputValue('#json');
-    const parsed = JSON.parse(text); eq(parsed.version, 3, 'v3 file');
+    const parsed = JSON.parse(text); eq(parsed.version, 4, 'current file version');
     parsed.meta.title = 'Imported'; await t.page.fill('#json', JSON.stringify(parsed));
     await t.page.click('#loadJson'); await t.page.waitForTimeout(300);
     eq((await t.doc()).meta.title, 'Imported', 'imported title');
@@ -311,6 +311,56 @@ class T {
     eq(JSON.stringify((await t.doc()).layout.positions.n4), JSON.stringify(n4), 'collapsing put it back');
     await t.page.keyboard.press('Shift+Space'); await t.page.waitForTimeout(500);
     eq((await overlaps(t)).join(','), '', 'expand all overlaps nothing');
+  });
+
+  // ---- load on the clients ----
+  await test('load is set on each client; the top bar shows the total', async t => {
+    eq((await t.page.textContent('#totalVal')).trim(), '5.0k', 'example total');
+    await t.page.click('#totalRps'); await t.page.waitForTimeout(500);
+    const focused = await t.page.evaluate(() => document.activeElement?.dataset?.path);
+    eq(focused, 'rps', 'the chip takes you to the client\'s rps');
+    await t.page.keyboard.type('2000'); await t.page.waitForTimeout(200);
+    eq((await t.node('n1')).rps, 2000);
+    eq((await t.page.textContent('#totalVal')).trim(), '2.0k', 'total follows');
+    assert(!/Breaks/.test(await t.page.textContent('#verdict')), 'at 2k the example no longer breaks: ' + await t.page.textContent('#verdict'));
+    // a second client adds to the load
+    await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Escape');
+    await t.page.keyboard.press('1'); await t.page.waitForTimeout(300); // add Clients
+    const doc = await t.doc(); const added = doc.model.nodes.find(n => n.kind === 'entry' && n.id !== 'n1');
+    assert(added && added.rps === 1000, 'new clients start at 1000 rps');
+    eq((await t.page.textContent('#totalVal')).trim(), '3.0k', 'total is the sum');
+    assert((await t.page.textContent('[data-node="n1"]')).includes('2.0k rps peak'), 'client shows its peak on the canvas');
+  });
+
+  await test('environments can be recoloured, filled solid or outlined', async t => {
+    const f = await t.box('[data-container="c9"] rect.fhead'); await t.page.mouse.click(f.x + 120, f.y + 10); await t.page.waitForTimeout(400);
+    await t.page.click('[data-cstyle="color:teal"]'); await t.page.click('[data-cstyle="fill:solid"]'); await t.page.click('[data-cstyle="border:solid"]'); await t.page.waitForTimeout(150);
+    const c = (await t.doc()).model.containers.find(c => c.id === 'c9');
+    eq(c.color, 'teal'); eq(c.fill, 'solid'); eq(c.border, 'solid');
+    const cls = await t.page.$eval('[data-container="c9"]', g => g.getAttribute('class'));
+    assert(cls.includes('fill-solid') && cls.includes('border-solid'), cls);
+    await t.page.click('[data-cstyle="fill:outline"]'); await t.page.click('[data-cstyle="color:"]'); await t.page.waitForTimeout(150);
+    const c2 = (await t.doc()).model.containers.find(c => c.id === 'c9');
+    eq(c2.fill, 'outline'); eq(c2.color, undefined, 'back to the kind\'s default colour');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(150);
+    eq((await t.doc()).model.containers.find(c => c.id === 'c9').color, 'teal', 'undo');
+  });
+
+  await test('a Kafka node is one topic', async t => {
+    const q = await t.node('n6');
+    eq(q.name, 'payments.authorised'); eq(q.partitions, 12); assert(!('topics' in q), 'no topic list');
+    assert((await t.page.textContent('[data-node="n6"]')).includes('12 partitions'), 'partitions on the node');
+  });
+
+  await test('labels are sentence case and fields look editable', async t => {
+    await t.clickNode('n3');
+    const upper = await t.page.evaluate(() => [...document.querySelectorAll('#inspector *')].filter(e => getComputedStyle(e).textTransform === 'uppercase').map(e => e.className).slice(0, 5));
+    eq(upper.length, 0, 'nothing forced to uppercase: ' + upper);
+    const lower = await t.page.$$eval('#sheetBody label', ls => ls.map(l => (l.childNodes[0]?.textContent || '').trim()).filter(x => x && /^[a-z]/.test(x)));
+    eq(lower.join(','), '', 'labels start with a capital');
+    const bg = await t.page.$eval('#sheetBody input[data-path="name"]', e => getComputedStyle(e).backgroundColor);
+    const panel = await t.page.$eval('#inspector', e => getComputedStyle(e).backgroundColor);
+    eq(bg, panel, 'inputs are the panel colour, not the grey page colour');
   });
 
   // ---- details panel ----
@@ -553,7 +603,7 @@ class T {
 
   await test('Avro code editor suggests keys and types, and inserts them', async t => {
     await openSchema(t, 'n6');
-    const p = 'topics.0.schema';
+    const p = 'schema';
     await setCode(t, p, '{\n  "type": "record",\n  "name": "E",\n  "fields": [\n    { "name": "a", "type": ');
     await t.page.keyboard.press('Control+Space'); await t.page.waitForSelector('.cm-tooltip-autocomplete');
     const l = await completions(t);
@@ -561,7 +611,7 @@ class T {
     await t.page.keyboard.type('"lo'); await t.page.waitForTimeout(150);
     eq((await completions(t))[0], 'long', 'narrowed by what was typed');
     await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(120);
-    const text = (await t.node('n6')).topics[0].schema;
+    const text = (await t.node('n6')).schema;
     assert(/"type": "long"/.test(text), 'inserted the type: ' + text);
     // key suggestions in a fresh field object
     await t.page.keyboard.insertText(' }, '); await t.page.keyboard.type('{ "'); await t.page.waitForSelector('.cm-tooltip-autocomplete');
@@ -571,10 +621,10 @@ class T {
 
   await test('Avro problems are underlined with an explanation', async t => {
     await openSchema(t, 'n6');
-    await setCode(t, 'topics.0.schema', JSON.stringify({ type: 'record', name: 'E', fields: [{ name: 'a', type: 'lnog' }, { name: 'b', type: ['null', 'string'] }] }, null, 2));
+    await setCode(t, 'schema', JSON.stringify({ type: 'record', name: 'E', fields: [{ name: 'a', type: 'lnog' }, { name: 'b', type: ['null', 'string'] }] }, null, 2));
     await t.page.waitForTimeout(700);
-    assert(await t.page.$(fe('topics.0.schema') + ' .cm-lintRange-error'), 'unknown type underlined');
-    assert(await t.page.$(fe('topics.0.schema') + ' .cm-lintRange-warning'), 'nullable without default warned');
+    assert(await t.page.$(fe('schema') + ' .cm-lintRange-error'), 'unknown type underlined');
+    assert(await t.page.$(fe('schema') + ' .cm-lintRange-warning'), 'nullable without default warned');
   });
 
   await test('body suggestions come from connected tables and other bodies', async t => {
@@ -610,7 +660,7 @@ class T {
 
   await test('Avro editor: nullable, logical type, enum symbols and a nested record', async t => {
     await openSchema(t, 'n6');
-    const p = 'topics.0.schema'; await fieldsMode(t, p);
+    const p = 'schema'; await fieldsMode(t, p);
     await t.page.check(fe(p) + ' [data-fpath="2"] input[data-fk="nullable"]'); await t.page.waitForTimeout(100); // currency nullable
     await t.page.selectOption(fe(p) + ' [data-fpath="0"] select[data-fk="type"]', 'uuid'); await t.page.waitForTimeout(150);
     await t.page.click(fe(p) + ' [data-feact="add"][data-flist=""]'); await t.page.waitForTimeout(100); await t.page.keyboard.type('status');
@@ -620,7 +670,7 @@ class T {
     await t.page.selectOption(fe(p) + ' [data-fpath="4"] select[data-fk="type"]', 'array'); await t.page.waitForTimeout(150);
     await t.page.selectOption(fe(p) + ' [data-fpath="4"] select[data-fk="items"]', 'record'); await t.page.waitForTimeout(150);
     await t.page.click(fe(p) + ' [data-feact="add"][data-flist="4"]'); await t.page.waitForTimeout(100); await t.page.keyboard.type('sku');
-    const s = JSON.parse((await t.node('n6')).topics[0].schema);
+    const s = JSON.parse((await t.node('n6')).schema);
     eq(s.type, 'record'); eq(s.name, 'PaymentAuthorised');
     assert(Array.isArray(s.fields[2].type) && s.fields[2].type[0] === 'null' && s.fields[2].default === null, 'nullable union with default null');
     eq(s.fields[0].type.logicalType, 'uuid', 'logical type');
@@ -634,10 +684,10 @@ class T {
 
   await test('topic partition key is saved and tagged on the expanded node', async t => {
     await openSchema(t, 'n6');
-    const opts = await t.page.$$eval('#tk-0 option', os => os.map(o => o.value));
+    const opts = await t.page.$$eval('#tkeys option', os => os.map(o => o.value));
     assert(opts.includes('paymentId'), 'key suggestions come from the schema fields: ' + opts);
-    await t.page.fill('input[data-path="topics.0.key"]', 'paymentId'); await t.page.waitForTimeout(100);
-    eq((await t.node('n6')).topics[0].key, 'paymentId');
+    await t.page.fill('input[data-path="key"]', 'paymentId'); await t.page.waitForTimeout(100);
+    eq((await t.node('n6')).key, 'paymentId');
     await t.page.keyboard.press('Escape'); await t.clickNode('n6'); await t.page.keyboard.press('Space'); await t.page.waitForTimeout(300);
     assert((await t.page.$eval('[data-node="n6"]', g => g.textContent)).includes('KEY'), 'KEY tag drawn');
   });

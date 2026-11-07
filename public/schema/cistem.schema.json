@@ -14,7 +14,7 @@
   "additionalProperties": false,
   "properties": {
     "version": {
-      "const": 3
+      "const": 4
     },
     "kind": {
       "enum": [
@@ -122,16 +122,10 @@
     "systemModel": {
       "type": "object",
       "required": [
-        "targetRps",
         "nodes",
         "edges"
       ],
       "properties": {
-        "targetRps": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Load injected at every entry node."
-        },
         "nodes": {
           "type": "array",
           "items": {
@@ -226,8 +220,16 @@
                   "app"
                 ]
               }
+            },
+            "rps": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Peak requests per second these clients send. The diagram is tested at the sum over all clients."
             }
-          }
+          },
+          "required": [
+            "rps"
+          ]
         }
       ]
     },
@@ -375,11 +377,25 @@
               "type": "number",
               "minimum": 0
             },
-            "topics": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/topic"
-              }
+            "name": {
+              "type": "string",
+              "description": "The topic name."
+            },
+            "partitions": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "schema": {
+              "type": "string",
+              "description": "Avro schema of the message value, JSON text."
+            },
+            "key": {
+              "type": "string",
+              "description": "Field (or expression) used as the message/partition key."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "Optional label for the Kafka cluster the topic lives on."
             }
           }
         }
@@ -517,29 +533,6 @@
         }
       }
     },
-    "topic": {
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "partitions": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "schema": {
-          "type": "string",
-          "description": "Avro schema, JSON text."
-        },
-        "key": {
-          "type": "string",
-          "description": "Field (or expression) used as the message/partition key."
-        }
-      }
-    },
     "container": {
       "type": "object",
       "required": [
@@ -581,6 +574,35 @@
         },
         "note": {
           "type": "string"
+        },
+        "color": {
+          "enum": [
+            "blue",
+            "violet",
+            "teal",
+            "green",
+            "amber",
+            "orange",
+            "red",
+            "pink",
+            "slate"
+          ],
+          "description": "Frame colour; omitted = the kind's default."
+        },
+        "fill": {
+          "enum": [
+            "tint",
+            "solid",
+            "outline"
+          ],
+          "description": "tint = translucent (default), solid = opaque, outline = border only."
+        },
+        "border": {
+          "enum": [
+            "dashed",
+            "solid"
+          ],
+          "description": "Frame border style (default dashed)."
         }
       }
     },

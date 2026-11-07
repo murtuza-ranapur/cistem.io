@@ -27,7 +27,7 @@ assert.equal(parseJsonFields('{ nope'), null, 'invalid stays raw');
 assert.equal(jsonFieldsToText([]), '');
 
 // Avro
-const avro = exampleDoc().nodes.find(n => n.kind === 'queue')!.topics[0].schema;
+const avro = (exampleDoc().nodes.find(n => n.kind === 'queue') as any).schema;
 const rec = parseAvro(avro)!;
 assert.equal(rec.name, 'PaymentAuthorised'); assert.equal(rec.namespace, 'com.example.payments');
 assert.deepEqual(rec.fields.map(f => [f.name, f.type, f.nullable]), [['paymentId', 'string', false], ['amountMinor', 'long', false], ['currency', 'string', false]]);

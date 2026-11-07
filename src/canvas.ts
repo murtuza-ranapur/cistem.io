@@ -1,4 +1,4 @@
-import { KINDS, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
+import { KINDS, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, frameColor, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
 import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
 import { holdPanel, releasePanel } from './sheet';
 
@@ -84,7 +84,7 @@ function summary(n: Node): string {
     case 'service': { const e = n.endpoints || []; return e.length ? e.slice(0, 2).map(x => `${x.method} ${x.path}`).join('  ') + (e.length > 2 ? `  +${e.length - 2}` : '') : 'no endpoints'; }
     case 'cache': return n.eviction || '';
     case 'db': { const t = n.tables || []; return t.length ? t.slice(0, 3).map(x => x.name).join(', ') + (t.length > 3 ? ` +${t.length - 3}` : '') : 'no tables'; }
-    case 'queue': { const t = n.topics || []; return t.length ? t.slice(0, 2).map(x => x.name).join(', ') + (t.length > 2 ? ` +${t.length - 2}` : '') : 'no topics'; }
+    case 'queue': return [n.cluster, `${n.partitions ?? '?'} partitions`, n.key ? `key ${n.key}` : ''].filter(Boolean).join(' · ');
     default: return '';
   }
 }
@@ -139,8 +139,9 @@ function buildFrame(c: Container): SVGGElement {
 function updateFrame(g: SVGGElement, c: Container, f: Frame) {
   const isSel = state.sel?.type === 'container' && state.sel.id === c.id;
   const d = ancestry(state.doc, c.id).length - 1;
-  g.setAttribute('class', 'frame k-' + c.kind + (isSel ? ' sel' : '') + (g.classList.contains('target') ? ' target' : ''));
-  g.style.setProperty('--h', String(CONTAINER_KINDS[c.kind].hue));
+  g.setAttribute('class', 'frame k-' + c.kind + ` fill-${c.fill ?? 'tint'} border-${c.border ?? 'dashed'}` + (isSel ? ' sel' : '') + (g.classList.contains('target') ? ' target' : ''));
+  const col = frameColor(c);
+  g.style.setProperty('--h', String(col.h)); g.style.setProperty('--s', col.s + '%');
   g.style.setProperty('--depth', String(d));
   set(g.querySelector('.fbody')!, { x: f.x, y: f.y, width: f.w, height: f.h });
   set(g.querySelector('.fhead')!, { x: f.x, y: f.y, width: f.w, rx: 12 });
@@ -149,7 +150,7 @@ function updateFrame(g: SVGGElement, c: Container, f: Frame) {
   const t = g.querySelector('.ftitle') as SVGTextElement; set(t, { x: f.x + 32, y: f.y + 20 });
   t.textContent = c.name; let tw = textWidth(t); if (tw > avail) { t.textContent = trunc(c.name, Math.max(3, Math.floor(c.name.length * avail / tw))); tw = textWidth(t); }
   const k = g.querySelector('.fkind') as SVGTextElement; set(k, { x: f.x + 32 + tw + 8, y: f.y + 20 });
-  k.textContent = CONTAINER_KINDS[c.kind].label.toLowerCase() + (c.provider ? ` · ${c.provider}` : '');
+  k.textContent = CONTAINER_KINDS[c.kind].label + (c.provider ? ` · ${c.provider}` : '');
   const kw = textWidth(k);
   if (tw + 8 + kw > avail) k.textContent = '';
   const m = g.querySelector('.fmeta') as SVGTextElement; set(m, { x: f.x + f.w - 12, y: f.y + 20 }); m.textContent = c.owner ?? '';
@@ -234,18 +235,19 @@ function drawDetail(g: SVGGElement, n: Node, w: number) {
       y += EXP.endpointRow;
     }
   } else if (n.kind === 'queue') {
-    for (const t of n.topics ?? []) {
-      const tn = el('text', { class: 'tname', x: 14, y: y + 13 }); tn.textContent = trunc(t.name, (w - 90) / 7); d.appendChild(tn);
-      const pc = el('text', { class: 'tcount', x: w - 14, y: y + 13, 'text-anchor': 'end' }); pc.textContent = `${t.partitions ?? '?'} partitions`; d.appendChild(pc);
+    const fields = topicFields(n);
+    if (fields.length) {
+      let rec = ''; try { rec = JSON.parse(n.schema).name ?? ''; } catch { /* no record name */ }
+      const tn = el('text', { class: 'tname', x: 14, y: y + 13 }); tn.textContent = trunc(rec || 'value', (w - 110) / 7); d.appendChild(tn);
+      const pc = el('text', { class: 'tcount', x: w - 14, y: y + 13, 'text-anchor': 'end' }); pc.textContent = `${n.partitions ?? '?'} partitions`; d.appendChild(pc);
       y += EXP.topicHead;
-      for (const [fname, ftype] of topicFields(t)) {
+      for (const [fname, ftype] of fields) {
         let fx = 22;
-        if (t.key && t.key === fname) fx += tag(d, fx, y + 10, 'KEY', 'pk') + 4;
+        if (n.key && n.key === fname) fx += tag(d, fx, y + 10, 'KEY', 'pk') + 4;
         const f = el('text', { class: 'col', x: fx, y: y + 10 }); f.textContent = fname; d.appendChild(f);
         const ft = el('text', { class: 'ctype', x: w - 14, y: y + 10, 'text-anchor': 'end' }); ft.textContent = ftype; d.appendChild(ft);
         y += EXP.topicRow;
       }
-      y += 6;
     }
   }
 }
@@ -265,7 +267,7 @@ function updateNode(g: SVGGElement, n: Node) {
   g.querySelector('.kind')!.textContent = KINDS[n.kind].label;
   g.querySelector('.name')!.textContent = trunc(n.name || '', (w - tx - 12) / 7.2);
   g.querySelector('.sum')!.textContent = trunc(summary(n), (w - 24) / 6.3);
-  g.querySelector('.stat')!.textContent = n.kind === 'entry' ? `${fmt(r.load)} rps out` : `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}`;
+  g.querySelector('.stat')!.textContent = n.kind === 'entry' ? `${fmt(n.rps)} rps peak` : `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}`;
   if (n.kind !== 'entry') {
     const u = Math.min(1, isFinite(r.util) ? r.util : 1);
     const fill = g.querySelector('.fill')!;
@@ -781,7 +783,7 @@ export function toggleDetail(id: string, to?: 'compact' | 'expanded') {
 }
 export function setAllDetail(to: 'compact' | 'expanded') {
   mutate(() => {
-    const ids = state.doc.nodes.filter(n => (n.kind === 'db' && n.tables?.length) || (n.kind === 'service' && n.endpoints?.length) || (n.kind === 'queue' && n.topics?.length))
+    const ids = state.doc.nodes.filter(n => (n.kind === 'db' && n.tables?.length) || (n.kind === 'service' && n.endpoints?.length) || (n.kind === 'queue' && topicFields(n).length))
       .sort((a, b) => a.y - b.y || a.x - b.x).map(n => n.id);
     if (to === 'expanded') {
       for (const id of ids) { if (state.doc.detail[id] === 'expanded') continue; const n = state.doc.nodes.find(x => x.id === id)!; const { w, h } = sizeOf(n); state.doc.detail[id] = 'expanded'; makeRoom(id, w, h); }

@@ -1,4 +1,4 @@
-import { KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
+import { totalRps, CONTAINER_COLORS, KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
 import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select } from './state';
 import * as history from './history';
 import { toDbml, parseDbml, quickColumn, PG_TYPE_LIST } from './dbml';
@@ -24,10 +24,11 @@ function tblStatus(n: DbNode) {
 const body = document.getElementById('sheetBody') as HTMLElement;
 
 const icon = (kind: string) => `<svg style="stroke:var(--c-${kind});fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><use href="#ic-${kind}"/></svg>`;
+const cap = (s: string) => s ? s[0].toUpperCase() + s.slice(1) : s;
 const inp = (path: string, label: string, val: unknown, type = 'text', extra = '') =>
-  `<label>${label}<input data-path="${path}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(val)}" ${extra}></label>`;
+  `<label>${cap(label)}<input data-path="${path}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(val)}" ${extra}></label>`;
 const selIn = (path: string, label: string, val: string, opts: string[], cls = '') =>
-  `<label>${label}<select data-path="${path}" class="${cls}">${opts.map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
+  `<label>${cap(label)}<select data-path="${path}" class="${cls}">${opts.map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
 const chk = (path: string, label: string, val: boolean) => `<label class="check"><input data-path="${path}" type="checkbox" ${val ? 'checked' : ''}>${label}</label>`;
 const addBtn = (action: string, label: string) => `<button class="small" data-action="${action}">+ ${label}</button>`;
 const xBtn = (action: string) => `<button class="x" data-action="${action}" aria-label="Remove">×</button>`;
@@ -55,7 +56,7 @@ function fieldEditor(path: string, label: string, text: string, kind: 'json' | '
     h += jsonRows(parsed as JField[], '', 0) + feAdd('', 0);
   } else {
     const r = parsed as ARecord;
-    h += `<div class="row rec"><label>record<input data-fk="recname" value="${esc(r.name)}" placeholder="PaymentAuthorised"></label><label>namespace<input data-fk="namespace" value="${esc(r.namespace)}" placeholder="com.example"></label></div>`;
+    h += `<div class="row rec"><label>Record<input data-fk="recname" value="${esc(r.name)}" placeholder="PaymentAuthorised"></label><label>Namespace<input data-fk="namespace" value="${esc(r.namespace)}" placeholder="com.example"></label></div>`;
     h += avroRows(r.fields, '', 0) + feAdd('', 0);
   }
   return h + '</div>';
@@ -75,7 +76,7 @@ function bodyVocab(nodeId: string) {
   for (const n of doc.nodes) {
     if (!linked.has(n.id)) continue;
     if (n.kind === 'db') for (const t of (n as DbNode).tables || []) for (const c of t.columns || []) if (c.name) keys.push({ name: c.name, from: `${n.name}.${t.name}` });
-    if (n.kind === 'queue') for (const t of (n as QueueNode).topics || []) for (const f of parseAvro(t.schema)?.fields ?? []) if (f.name) keys.push({ name: f.name, from: t.name || n.name });
+    if (n.kind === 'queue') for (const f of parseAvro((n as QueueNode).schema)?.fields ?? []) if (f.name) keys.push({ name: f.name, from: n.name });
   }
   const walk = (v: unknown, from: string) => {
     if (Array.isArray(v)) { v.forEach(x => walk(x, from)); return; }
@@ -227,27 +228,27 @@ function editTree(fe: HTMLElement, fn: (root: any[], rec: ARecord | null) => boo
 const fieldAt = (root: any[], fpath: string) => { const idx = fpath.split('.'); const last = idx.pop()!; return listAt(root, idx.join('.'))[+last]; };
 
 function hasSchema(n: Node) { return n.kind === 'service' || n.kind === 'db' || n.kind === 'queue'; }
-const schemaLabel = (n: Node) => n.kind === 'service' ? 'Endpoints' : n.kind === 'db' ? 'Tables' : 'Topics';
+const schemaLabel = (n: Node) => n.kind === 'service' ? 'Endpoints' : n.kind === 'db' ? 'Tables' : 'Topic';
 
 function capacityTab(n: Node): string {
   const r = state.results.nodes[n.id];
   let h = '<div class="tab"><div class="props">' + inp('name', 'name', n.name).replace('<label>', '<label class="wide">');
-  h += `<label class="wide">in<select data-path="container" data-nullable="1"><option value="" ${!n.container ? 'selected' : ''}>(no environment)</option>${containerOptions(n.container ?? null)}</select></label>`;
+  h += `<label class="wide">Environment<select data-path="container" data-nullable="1"><option value="" ${!n.container ? 'selected' : ''}>No environment</option>${containerOptions(n.container ?? null)}</select></label>`;
   KINDS[n.kind].fields.forEach(([key, lbl]) => { h += inp(key, lbl, (n as any)[key], 'number'); });
-  if (n.kind === 'cache') h += selIn('eviction', 'eviction policy', n.eviction, EVICTIONS).replace('<label>', '<label class="wide">');
+  if (n.kind === 'cache') h += selIn('eviction', 'Eviction policy', n.eviction, EVICTIONS).replace('<label>', '<label class="wide">');
   if (n.kind === 'entry') {
     const ps = (n as EntryNode).platforms || [];
-    h += `<label class="wide">platforms<div class="chips">${['web', 'app'].map(p => `<button data-platform="${p}" class="${ps.includes(p) ? 'on' : ''}">${p === 'web' ? 'Web' : 'App'}</button>`).join('')}</div></label>`;
+    h += `<label class="wide">Platforms<div class="chips">${['web', 'app'].map(p => `<button data-platform="${p}" class="${ps.includes(p) ? 'on' : ''}">${p === 'web' ? 'Web' : 'App'}</button>`).join('')}</div></label>`;
   }
   h += '</div>';
-  if (n.kind === 'entry') h += `<p class="note">Entry point. Every request starts here; set the target in the top bar.</p>`;
+  if (n.kind === 'entry') h += `<p class="note">Peak requests per second these clients send. The diagram is tested at the sum of all clients — ${fmt(totalRps(state.doc))} rps — shown in the top bar.</p>`;
   else {
     const pct = isFinite(r.util) ? Math.round(r.util * 100) : 100;
     h += `<div class="stats">
-      <div class="stat-tile"><div class="l">load</div><div class="v">${fmt(r.load)} <small>rps</small></div></div>
-      <div class="stat-tile"><div class="l">capacity</div><div class="v">${fmt(r.cap)} <small>rps</small></div></div>
-      <div class="stat-tile ${r.status}"><div class="l">utilisation</div><div class="v">${isFinite(r.util) ? pct + '%' : '∞'}</div></div>
-      <div class="stat-tile"><div class="l">eff. latency</div><div class="v">${r.lat.toFixed(1)} <small>ms</small></div></div>
+      <div class="stat-tile"><div class="l">Load</div><div class="v">${fmt(r.load)} <small>rps</small></div></div>
+      <div class="stat-tile"><div class="l">Capacity</div><div class="v">${fmt(r.cap)} <small>rps</small></div></div>
+      <div class="stat-tile ${r.status}"><div class="l">Utilisation</div><div class="v">${isFinite(r.util) ? pct + '%' : '∞'}</div></div>
+      <div class="stat-tile"><div class="l">Effective latency</div><div class="v">${r.lat.toFixed(1)} <small>ms</small></div></div>
       <div class="meter ${r.status}"><i style="width:${Math.min(100, pct)}%"></i></div>
     </div>`;
     h += `<p class="note">Headroom ${isFinite(r.cap) ? fmt(Math.max(0, r.cap - r.load)) + ' rps' : 'unlimited'}. Latency inflates as utilisation climbs (M/M/1 approximation).</p>`;
@@ -304,9 +305,9 @@ function schemaTab(n: Node): string {
           const refOpts = ['', ...(c.references && !targets.includes(c.references) ? [c.references] : []), ...targets];
           const pill = (prop: string, label: string, on: boolean, cls: string) => `<button class="pill ${cls} ${on ? 'on' : ''}" data-flip="${base}.${prop}" aria-pressed="${on}">${label}</button>`;
           h += `<div class="tedit" data-col="${i}:${j}">`;
-          h += `<div class="te2"><label>name<input class="cname" data-path="${base}.name" value="${esc(c.name)}" spellcheck="false"></label><label>type<input class="ctype" data-path="${base}.type" value="${esc(c.type)}" list="pgTypes" spellcheck="false"></label></div>`;
+          h += `<div class="te2"><label>Name<input class="cname" data-path="${base}.name" value="${esc(c.name)}" spellcheck="false"></label><label>Type<input class="ctype" data-path="${base}.type" value="${esc(c.type)}" list="pgTypes" spellcheck="false"></label></div>`;
           h += `<div class="pills">${pill('pk', 'Primary key', c.pk, 'pk')}${`<button class="pill nn ${!c.nullable ? 'on' : ''}" data-flip="${base}.nullable" aria-pressed="${!c.nullable}">Not null</button>`}${pill('unique', 'Unique', !!c.unique, 'uq')}${pill('index', 'Index', !!c.index, 'ix')}</div>`;
-          h += `<div class="te2 wide"><label>references<select data-path="${base}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${o ? esc(refLabel(o)) : 'none'}</option>`).join('')}</select></label><label>default<input data-path="${base}.default" value="${esc(c.default ?? '')}" placeholder="now()" spellcheck="false"></label></div>`;
+          h += `<div class="te2 wide"><label>References<select data-path="${base}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${o ? esc(refLabel(o)) : 'none'}</option>`).join('')}</select></label><label>Default<input data-path="${base}.default" value="${esc(c.default ?? '')}" placeholder="now()" spellcheck="false"></label></div>`;
           h += `<div class="tefoot"><button class="linkish danger" data-action="rm-column:${i}:${j}">Delete column</button><button class="small primary" data-closecol>Done ↵</button></div></div>`;
         });
         h += `<div class="tadd"><span aria-hidden="true">+</span><input data-addcol="${i}" placeholder="add column — e.g. refunded_at timestamptz?" spellcheck="false" aria-label="Add column"></div><p class="tadd-err" data-adderr="${i}" hidden></p></div>`;
@@ -316,16 +317,13 @@ function schemaTab(n: Node): string {
     h += `<datalist id="pgTypes">${PG_TYPE_LIST.map(v => `<option value="${v}">`).join('')}</datalist></section>`;
   }
   if (n.kind === 'queue') {
-    const ts = (n as QueueNode).topics || [];
-    h += `<section class="list"><h3>Topics <span class="spacer"></span>${addBtn('add-topic', 'topic')}</h3>`;
-    ts.forEach((t, i) => {
-      const keyOpts = (parseAvro(t.schema)?.fields ?? []).map(f => f.name).filter(Boolean);
-      h += `<div class="item"><div class="row topic">${inp(`topics.${i}.name`, 'topic', t.name, 'text', 'placeholder="domain.event"')}${inp(`topics.${i}.partitions`, 'partitions', t.partitions, 'number', 'min="1"')}${xBtn(`rm-topic:${i}`)}</div>`;
-      h += `<div class="row one">${inp(`topics.${i}.key`, 'partition key', t.key ?? '', 'text', `list="tk-${i}" placeholder="field that keys the message, e.g. paymentId"`)}<span></span><datalist id="tk-${i}">${keyOpts.map(v => `<option value="${esc(v)}">`).join('')}</datalist></div>`;
-      h += `<div class="row stack">${fieldEditor(`topics.${i}.schema`, 'Avro schema', t.schema, 'avro')}</div></div>`;
-    });
-    if (!ts.length) h += '<p class="empty">No topics yet.</p>';
-    h += '</section>';
+    const q = n as QueueNode;
+    const keyOpts = (parseAvro(q.schema)?.fields ?? []).map(f => f.name).filter(Boolean);
+    h += `<section class="list"><h3>Topic</h3><div class="props">`;
+    h += inp('partitions', 'Partitions', q.partitions, 'number', 'min="1"');
+    h += inp('key', 'Partition key', q.key ?? '', 'text', 'list="tkeys" placeholder="e.g. paymentId"') + `<datalist id="tkeys">${keyOpts.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+    h += inp('cluster', 'Cluster', q.cluster ?? '', 'text', 'placeholder="optional, e.g. msk-payments"').replace('<label>', '<label class="wide">');
+    h += `</div><div class="row stack">${fieldEditor('schema', 'Value schema (Avro)', q.schema, 'avro')}</div></section>`;
   }
   return h + '</div>';
 }
@@ -335,7 +333,7 @@ function containerOptions(selected: string | null, exclude: string | null = null
   const { doc } = state;
   const line = (c: Container) => {
     const d = ancestry(doc, c.id).length - 1;
-    return `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${'\u00a0\u00a0'.repeat(d)}${esc(c.name)} · ${CONTAINER_KINDS[c.kind].label.toLowerCase()}</option>`;
+    return `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${'\u00a0\u00a0'.repeat(d)}${esc(c.name)} · ${CONTAINER_KINDS[c.kind].label}</option>`;
   };
   const walk = (parent: string | null): string => doc.containers.filter(c => (c.parent ?? null) === parent && !(exclude && ancestry(doc, c.id).includes(exclude))).map(c => line(c) + walk(c.id)).join('');
   return walk(null);
@@ -350,17 +348,24 @@ function containerSheet(c: Container): string {
   let h = `<div class="head"><span class="k" style="color:hsl(${CONTAINER_KINDS[c.kind].hue} 45% 45%)">${icon('container').replace('var(--c-container)', `hsl(${CONTAINER_KINDS[c.kind].hue} 45% 45%)`)}${CONTAINER_KINDS[c.kind].label}</span><strong>${esc(c.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-container" title="Delete (members stay)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div>`;
   h += `<div class="tab"><div class="props">${inp('name', 'name', c.name).replace('<label>', '<label class="wide">')}`;
   h += selIn('kind', 'kind', c.kind, Object.keys(CONTAINER_KINDS)).replace(/<option ([^>]*)>([a-z]+)<\/option>/g, (_m, attrs, k) => `<option ${attrs}>${CONTAINER_KINDS[k as ContainerKind].label}</option>`);
-  h += `<label>inside<select data-path="parent" data-nullable="1"><option value="" ${!c.parent ? 'selected' : ''}>(top level)</option>${containerOptions(c.parent ?? null, c.id)}</select></label>`;
+  h += `<label>Inside<select data-path="parent" data-nullable="1"><option value="" ${!c.parent ? 'selected' : ''}>Top level</option>${containerOptions(c.parent ?? null, c.id)}</select></label>`;
   h += inp('provider', 'provider', c.provider ?? '', 'text', 'placeholder="aws · ibm · gcp · on-prem"');
   h += inp('owner', 'owner', c.owner ?? '', 'text', 'placeholder="team or company"');
   h += `${inp('note', 'note', c.note ?? '').replace('<label>', '<label class="wide">')}</div>`;
-  h += `<div class="stats"><div class="stat-tile"><div class="l">components</div><div class="v">${members.length}</div></div><div class="stat-tile"><div class="l">nested</div><div class="v">${children.length}</div></div></div>`;
+  // look: colour, fill, border
+  const kindHue = CONTAINER_KINDS[c.kind].hue;
+  const sw = (key: string, hsl: string, title: string) => `<button class="swatch ${(c.color ?? '') === key ? 'on' : ''}" data-cstyle="color:${key}" style="--sw:${hsl}" title="${title}" aria-label="${title}" aria-pressed="${(c.color ?? '') === key}"></button>`;
+  const seg = (prop: string, cur: string, opts: [string, string][]) => `<span class="seg">${opts.map(([v, l]) => `<button data-cstyle="${prop}:${v}" class="${cur === v ? 'on' : ''}" aria-pressed="${cur === v}">${l}</button>`).join('')}</span>`;
+  h += `<div class="look"><div class="look-row"><span class="look-l">Colour</span><span class="swatches">${sw('', `hsl(${kindHue} 45% 55%)`, `Default for ${CONTAINER_KINDS[c.kind].label}`)}${(Object.keys(CONTAINER_COLORS) as (keyof typeof CONTAINER_COLORS)[]).map(k => sw(k, `hsl(${CONTAINER_COLORS[k].h} ${CONTAINER_COLORS[k].s}% 55%)`, k[0].toUpperCase() + k.slice(1))).join('')}</span></div>`;
+  h += `<div class="look-row"><span class="look-l">Fill</span>${seg('fill', c.fill ?? 'tint', [['tint', 'Tinted'], ['solid', 'Solid'], ['outline', 'Outline']])}</div>`;
+  h += `<div class="look-row"><span class="look-l">Border</span>${seg('border', c.border ?? 'dashed', [['dashed', 'Dashed'], ['solid', 'Solid']])}</div></div>`;
+  h += `<div class="stats"><div class="stat-tile"><div class="l">Components</div><div class="v">${members.length}</div></div><div class="stat-tile"><div class="l">Nested</div><div class="v">${children.length}</div></div></div>`;
   if (c.parent) h += `<p class="note">${esc(pathOf(c.id))}</p>`;
   h += `<section class="list" style="margin-top:14px"><h3>Links to other environments <span class="spacer"></span>${addBtn('add-link', 'link')}</h3>`;
   links.forEach(l => {
     const other = l.from === c.id ? l.to : l.from;
     const i = doc.links.indexOf(l);
-    h += `<div class="item"><div class="row topic"><label>to<select data-path="links.${i}.${l.from === c.id ? 'to' : 'from'}">${containerOptions(other, c.id)}</select></label>${selIn(`links.${i}.type`, 'type', l.type, Object.keys(LINK_TYPES).includes(l.type) ? Object.keys(LINK_TYPES) : [l.type, ...Object.keys(LINK_TYPES)])}${xBtn(`rm-link:${i}`)}</div><div class="row one">${inp(`links.${i}.latencyMs`, 'added latency ms', l.latencyMs, 'number', 'min="0"')}<span></span></div></div>`;
+    h += `<div class="item"><div class="row topic"><label>To<select data-path="links.${i}.${l.from === c.id ? 'to' : 'from'}">${containerOptions(other, c.id)}</select></label>${selIn(`links.${i}.type`, 'type', l.type, Object.keys(LINK_TYPES).includes(l.type) ? Object.keys(LINK_TYPES) : [l.type, ...Object.keys(LINK_TYPES)])}${xBtn(`rm-link:${i}`)}</div><div class="row one">${inp(`links.${i}.latencyMs`, 'Added latency (ms)', l.latencyMs, 'number', 'min="0"')}<span></span></div></div>`;
   });
   if (!links.length) h += `<p class="empty">No links. Calls out of here cost ${CROSSING_DEFAULT_MS.siblings} ms to a sibling and ${CROSSING_DEFAULT_MS.differentRoots} ms to another cloud unless a link says otherwise.</p>`;
   h += '</section></div>';
@@ -378,11 +383,11 @@ function nodeSheet(n: Node): string {
 
 function edgeSheet(e: Edge): string {
   const a = state.doc.nodes.find(n => n.id === e.from)!, b = state.doc.nodes.find(n => n.id === e.to)!;
-  let h = `<div class="head"><span class="k">Edge</span><strong>${esc(a.name)} → ${esc(b.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-edge" title="Delete" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div><div class="tab"><div class="props">${inp('calls', 'calls per incoming request', e.calls, 'number', 'min="0"').replace('<label>', '<label class="wide">')}`;
+  let h = `<div class="head"><span class="k">Edge</span><strong>${esc(a.name)} → ${esc(b.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-edge" title="Delete" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div><div class="tab"><div class="props">${inp('calls', 'Calls per incoming request', e.calls, 'number', 'min="0"').replace('<label>', '<label class="wide">')}`;
   if (b.kind === 'service' && (b.endpoints || []).length) {
-    h += `<label class="wide">endpoint called<select data-path="endpoint" data-int="1"><option value="">(unspecified)</option>${b.endpoints.map((ep, i) => `<option value="${i}" ${e.endpoint === i ? 'selected' : ''}>${esc(ep.method + ' ' + ep.path)}</option>`).join('')}</select></label>`;
+    h += `<label class="wide">Endpoint called<select data-path="endpoint" data-int="1"><option value="">Unspecified</option>${b.endpoints.map((ep, i) => `<option value="${i}" ${e.endpoint === i ? 'selected' : ''}>${esc(ep.method + ' ' + ep.path)}</option>`).join('')}</select></label>`;
   }
-  h += `</div><div class="stats"><div class="stat-tile"><div class="l">carries</div><div class="v">${fmt(state.results.edges[e.id] || 0)} <small>rps</small></div></div></div>${a.kind === 'cache' ? '<p class="note">Only cache misses travel down this edge.</p>' : ''}${a.kind === 'lb' ? '<p class="note">The load balancer splits its traffic evenly across outgoing edges.</p>' : ''}</div>`;
+  h += `</div><div class="stats"><div class="stat-tile"><div class="l">Carries</div><div class="v">${fmt(state.results.edges[e.id] || 0)} <small>rps</small></div></div></div>${a.kind === 'cache' ? '<p class="note">Only cache misses travel down this edge.</p>' : ''}${a.kind === 'lb' ? '<p class="note">The load balancer splits its traffic evenly across outgoing edges.</p>' : ''}</div>`;
   return h;
 }
 
@@ -535,6 +540,15 @@ body.addEventListener('click', ev => {
     if (tb.dataset.tblmode) { const id = (current() as Node).id; tblMode.set(id, tb.dataset.tblmode as 'rows' | 'code'); if (tb.dataset.tblmode === 'rows') dbDrafts.delete(id); openCol = ''; drawSheet(); return; }
     if (tb.dataset.tblexpand !== undefined) { openBigTables(); return; }
   }
+  const cs = (ev.target as Element).closest<HTMLElement>('[data-cstyle]');
+  if (cs) {
+    const c = current() as Container; if (!c || state.sel?.type !== 'container') return;
+    const [prop, val] = cs.dataset.cstyle!.split(':');
+    history.snapshot(state.doc);
+    const defaults: Record<string, string> = { color: '', fill: 'tint', border: 'dashed' };
+    if (!val || val === defaults[prop]) delete (c as any)[prop]; else (c as any)[prop] = val;
+    drawSheet(); renderCanvas(); return;
+  }
   const flip = (ev.target as Element).closest<HTMLElement>('[data-flip]');
   if (flip) {
     const t = current(); if (!t) return;
@@ -589,8 +603,6 @@ body.addEventListener('click', ev => {
     case 'add-table': (n.tables = n.tables || []).push({ name: 'new_table', columns: [{ name: 'id', type: 'uuid', pk: true, nullable: false }] }); focusAfterDraw = `[data-t="${n.tables.length - 1}"] .tname`; break;
     case 'rm-table': n.tables.splice(i, 1); openCol = ''; break;
     case 'rm-column': n.tables[i].columns.splice(j, 1); openCol = ''; break;
-    case 'add-topic': (n.topics = n.topics || []).push({ name: '', partitions: 6, schema: '{\n  "type": "record",\n  "name": "",\n  "fields": []\n}' }); break;
-    case 'rm-topic': n.topics.splice(i, 1); break;
     default: return;
   }
   renderAll();

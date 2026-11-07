@@ -30,6 +30,22 @@ class ParityTest {
         layoutMatches(f);
     }
 
+    /** A v3 document (diagram-wide target, multi-topic Kafka) migrates exactly as src/document.ts v3to4 does. */
+    @Test
+    void migrationMatchesTypeScript() throws Exception {
+        JsonNode f = fixture("/migrate-v3.json");
+        var file = (tools.jackson.databind.node.ObjectNode) f.path("input").deepCopy();
+        Migrate.toCurrent(file);
+        JsonNode exp = f.path("expected");
+        assertEquals(4, file.path("version").asInt());
+        assertFalse(file.path("model").has("targetRps"));
+        assertEquals(exp.path("model").path("nodes"), file.path("model").path("nodes"), "nodes");
+        assertEquals(exp.path("model").path("edges"), file.path("model").path("edges"), "edges");
+        assertEquals(exp.path("layout").path("positions"), file.path("layout").path("positions"), "positions");
+        // and the engine gives the migrated diagram the load the old one had: 2000 rps into the api
+        assertEquals(2000, Engine.compute(file.path("model")).nodes().get("n3").load(), 1e-9);
+    }
+
     void engineMatches(JsonNode f) {
         Engine.Results r = Engine.compute(f.path("file").path("model"));
         JsonNode exp = f.path("expected");

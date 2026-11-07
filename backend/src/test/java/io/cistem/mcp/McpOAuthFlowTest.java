@@ -210,7 +210,7 @@ class McpOAuthFlowTest {
         assertNotNull(org);
         String doc = unwrap(mcp(access, session, """
                 {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(diagramId)));
-        assertEquals(Integer.valueOf(3), JsonPath.read(doc, "$.version"));
+        assertEquals(Integer.valueOf(io.cistem.engine.Migrate.VERSION), JsonPath.read(doc, "$.version"));
         assertNotNull(JsonPath.read(doc, "$.layout.frames." + aws + ".w"));
 
         // the diagram is owned by murtu and visible through the REST API as that user

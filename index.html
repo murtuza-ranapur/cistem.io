@@ -38,8 +38,7 @@
     <button class="icon" id="drawerBtn" title="Diagrams" aria-label="Diagrams"><svg><use href="#ic-menu"/></svg></button>
     <div class="brand"><span class="logo"></span>cistem<span class="tld">.io</span></div>
     <input id="title" class="title" type="text" aria-label="Diagram title" placeholder="Untitled system">
-    <label class="target">Target <input id="rps" type="number" min="1" step="100" value="5000" aria-label="Target requests per second"><span class="unit">rps</span></label>
-    <input id="rpsRange" type="range" min="100" max="50000" step="100" value="5000" aria-label="Target requests per second slider">
+    <button id="totalRps" class="total" title="Peak load: the sum of every client's rps. Click to go to the clients."><span class="tlabel">Load</span><strong id="totalVal">0</strong><span class="unit">rps</span></button>
     <button class="sync" id="sync" title=""><span class="sdot"></span><span id="syncText">local</span></button>
     <div class="verdict" id="verdictWrap"><span class="dot"></span><span id="verdict">—</span><span id="lat" class="lat"></span></div>
     <div class="actions">

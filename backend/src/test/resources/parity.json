@@ -1,6 +1,6 @@
 {
  "file": {
-  "version": 3,
+  "version": 4,
   "kind": "system",
   "meta": {
    "title": "Parity fixture",
@@ -8,16 +8,16 @@
    "updated": "2026-01-01T00:00:00Z"
   },
   "model": {
-   "targetRps": 7000,
    "nodes": [
     {
      "id": "n1",
      "kind": "entry",
-     "name": "Checkout clients",
+     "name": "Web",
      "platforms": [
       "web",
       "app"
-     ]
+     ],
+     "rps": 4500
     },
     {
      "id": "n2",
@@ -164,16 +164,13 @@
     {
      "id": "n6",
      "kind": "queue",
-     "name": "events",
+     "name": "payments.authorised",
      "maxThroughput": 20000,
      "latency": 5,
-     "topics": [
-      {
-       "name": "payments.authorised",
-       "partitions": 12,
-       "schema": "{\n  \"type\": \"record\",\n  \"name\": \"PaymentAuthorised\",\n  \"namespace\": \"com.example.payments\",\n  \"fields\": [\n    {\"name\": \"paymentId\", \"type\": \"string\"},\n    {\"name\": \"amountMinor\", \"type\": \"long\"},\n    {\"name\": \"currency\", \"type\": \"string\"}\n  ]\n}"
-      }
-     ],
+     "partitions": 12,
+     "schema": "{\n  \"type\": \"record\",\n  \"name\": \"PaymentAuthorised\",\n  \"namespace\": \"com.example.payments\",\n  \"fields\": [\n    {\"name\": \"paymentId\", \"type\": \"string\"},\n    {\"name\": \"amountMinor\", \"type\": \"long\"},\n    {\"name\": \"currency\", \"type\": \"string\"}\n  ]\n}",
+     "cluster": "events",
+     "key": "paymentId",
      "container": "c10"
     },
     {
@@ -185,6 +182,16 @@
      "latency": 40,
      "endpoints": [],
      "container": "c10"
+    },
+    {
+     "id": "n20",
+     "kind": "entry",
+     "name": "App",
+     "platforms": [
+      "web",
+      "app"
+     ],
+     "rps": 2500
     }
    ],
    "edges": [
@@ -229,6 +236,12 @@
      "id": "e7",
      "from": "n6",
      "to": "n7",
+     "calls": 1
+    },
+    {
+     "id": "e99",
+     "from": "n20",
+     "to": "n2",
      "calls": 1
     }
    ],
@@ -287,11 +300,15 @@
     },
     "n6": {
      "x": 960,
-     "y": 460
+     "y": 650
     },
     "n7": {
      "x": 1280,
-     "y": 460
+     "y": 650
+    },
+    "n20": {
+     "x": 20,
+     "y": 360
     }
    },
    "frames": {},
@@ -303,7 +320,7 @@
  "expected": {
   "nodes": {
    "n1": {
-    "load": 7000,
+    "load": 4500,
     "cap": null,
     "util": 0,
     "status": "ok",
@@ -357,16 +374,35 @@
     "status": "crit",
     "lat": 400,
     "cum": 661.8550983899821
+   },
+   "n20": {
+    "load": 2500,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0
    }
   },
   "edges": {
-   "e1": 7000,
+   "e1": 4500,
    "e2": 7000,
    "e3": 14000,
    "e4": 2100.0000000000005,
    "e5": 7000,
    "e6": 7000,
-   "e7": 7000
+   "e7": 7000,
+   "e99": 2500
+  },
+  "crossings": {
+   "e1": 1,
+   "e2": 0,
+   "e3": 2,
+   "e4": 0,
+   "e5": 2,
+   "e6": 2,
+   "e7": 0,
+   "e99": 1
   },
   "verdict": {
    "status": "crit",
@@ -376,62 +412,57 @@
   },
   "layout": {
    "n2": {
-    "x": 416,
+    "x": 408,
     "y": 348
    },
    "n3": {
-    "x": 664,
+    "x": 656,
     "y": 348
    },
    "n4": {
-    "x": 984,
+    "x": 976,
     "y": 284
    },
    "n5": {
-    "x": 1248,
+    "x": 1264,
     "y": 156
    },
    "n6": {
-    "x": 984,
+    "x": 976,
     "y": 412
    },
    "n7": {
-    "x": 1248,
+    "x": 1264,
     "y": 540
    },
    "n1": {
     "x": 40,
-    "y": 320
+    "y": 232
+   },
+   "n20": {
+    "x": 40,
+    "y": 400
    }
   },
   "frames": {
    "c9": {
-    "x": 388,
+    "x": 380,
     "y": 290,
     "w": 506,
     "h": 178
    },
    "c10": {
-    "x": 956,
+    "x": 948,
     "y": 98,
-    "w": 569.6,
+    "w": 593.6,
     "h": 560
    },
    "c8": {
-    "x": 360,
+    "x": 352,
     "y": 40,
-    "w": 1191.6,
+    "w": 1215.6,
     "h": 646
    }
-  },
-  "crossings": {
-   "e1": 1,
-   "e2": 0,
-   "e3": 2,
-   "e4": 0,
-   "e5": 2,
-   "e6": 2,
-   "e7": 0
   }
  }
 }

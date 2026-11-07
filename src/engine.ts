@@ -58,7 +58,7 @@ export function compute(doc: Doc): Results {
   let converged = false;
   for (let iter = 0; iter < 60; iter++) {
     const next: Record<string, Breakdown> = {}, ncum: Record<string, number> = {};
-    doc.nodes.forEach(n => { next[n.id] = n.kind === 'entry' ? { sync: num(doc.targetRps) } : {}; ncum[n.id] = 0; });
+    doc.nodes.forEach(n => { next[n.id] = n.kind === 'entry' ? { sync: num(n.rps) } : {}; ncum[n.id] = 0; });
     doc.edges.forEach(e => {
       const s = byId[e.from], t = byId[e.to];
       if (!s || !t) return;

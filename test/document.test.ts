@@ -42,14 +42,58 @@ assert.equal(r.crossings['e3'], 2, 'api → cache crosses accounts over privatel
 // v2 file migrates to v3 with empty containers
 const v2 = { version: 2, kind: 'system', meta: file.meta, model: { targetRps: 1, nodes: file.model.nodes, edges: file.model.edges }, layout: { positions: file.layout.positions } };
 const m2 = migrate(JSON.parse(JSON.stringify(v2)));
-assert.equal(m2.version, 3); assert.deepEqual(m2.model.containers, []); assert.deepEqual(m2.layout.frames, {});
+assert.equal(m2.version, 4); assert.deepEqual(m2.model.containers, []); assert.deepEqual(m2.layout.frames, {});
 assert.ok(validate(m2), JSON.stringify(validate.errors, null, 1));
 
 // v1 (bare editor doc) migrates
 const v1 = JSON.parse(JSON.stringify({ targetRps: 1234, nodes: doc.nodes, edges: doc.edges }));
 const m = migrate(v1);
-assert.equal(m.version, 3); assert.equal(m.kind, 'system'); assert.equal(m.model.targetRps, 1234);
+assert.equal(m.version, 4); assert.equal(m.kind, 'system'); assert.ok(!('targetRps' in m.model));
+assert.equal((m.model.nodes.find((n: any) => n.kind === 'entry') as any).rps, 5000, 'example client keeps its own rps');
 assert.ok(validate(m), JSON.stringify(validate.errors, null, 1));
+
+// v3 → v4: the diagram-wide target becomes each client's rps; multi-topic Kafka nodes split into one per topic
+{
+  const v3 = {
+    version: 3, kind: 'system', meta: { title: 't', created: '2026-01-01T00:00:00Z', updated: '2026-01-01T00:00:00Z' },
+    model: {
+      targetRps: 2000, containers: [], links: [],
+      nodes: [
+        { id: 'n1', kind: 'entry', name: 'web', platforms: ['web'] },
+        { id: 'n2', kind: 'entry', name: 'app', platforms: ['app'] },
+        { id: 'n3', kind: 'service', name: 'api', rpsPerInstance: 500, instances: 4, latency: 10, endpoints: [] },
+        { id: 'n4', kind: 'queue', name: 'events', maxThroughput: 20000, latency: 5, topics: [
+          { name: 'payments.authorised', partitions: 12, schema: '{"type":"record","name":"A","fields":[{"name":"id","type":"string"}]}', key: 'id' },
+          { name: 'payments.refunded', partitions: 3, schema: '' }] },
+        { id: 'n5', kind: 'service', name: 'worker', rpsPerInstance: 500, instances: 2, latency: 10, endpoints: [] },
+      ],
+      edges: [{ id: 'e1', from: 'n1', to: 'n3', calls: 1 }, { id: 'e2', from: 'n2', to: 'n3', calls: 1 }, { id: 'e3', from: 'n3', to: 'n4', calls: 1 }, { id: 'e4', from: 'n4', to: 'n5', calls: 1 }],
+    },
+    layout: { positions: { n1: { x: 0, y: 0 }, n2: { x: 0, y: 120 }, n3: { x: 300, y: 0 }, n4: { x: 600, y: 0 }, n5: { x: 900, y: 0 } }, frames: {} },
+  };
+  const before = compute(fromFileV3Engine(v3));
+  const m4 = migrate(JSON.parse(JSON.stringify(v3)));
+  assert.equal(m4.version, 4); assert.ok(!('targetRps' in m4.model));
+  assert.deepEqual(m4.model.nodes.filter((n: any) => n.kind === 'entry').map((n: any) => n.rps), [2000, 2000], 'each client gets the old target');
+  const qs = m4.model.nodes.filter((n: any) => n.kind === 'queue') as any[];
+  assert.deepEqual(qs.map(q => [q.name, q.partitions, q.cluster, q.key ?? null]), [['payments.authorised', 12, 'events', 'id'], ['payments.refunded', 3, 'events', null]]);
+  assert.equal(qs[0].id, 'n4', 'first topic keeps the node id'); assert.ok(!('topics' in qs[0]));
+  const q2 = qs[1].id;
+  assert.ok(m4.model.edges.some((e: any) => e.from === 'n3' && e.to === q2) && m4.model.edges.some((e: any) => e.from === q2 && e.to === 'n5'), 'split topic wired like the original');
+  assert.deepEqual(m4.layout.positions[q2], { x: 600, y: 132 }, 'placed under the original');
+  assert.ok(validate(m4), JSON.stringify(validate.errors, null, 1));
+  const after = compute(fromFile(m4).doc);
+  assert.equal(after.nodes.n3.load, before.nodes.n3.load, 'service load unchanged by the migration (4000)');
+  assert.equal(after.nodes.n3.load, 4000);
+}
+function fromFileV3Engine(v3: any) {
+  // what the v3 engine saw: every entry injected the full target
+  const d = JSON.parse(JSON.stringify(v3));
+  d.model.nodes.forEach((n: any) => { if (n.kind === 'entry') n.rps = d.model.targetRps; if (n.kind === 'queue') { n.partitions = 1; n.schema = ''; } });
+  d.model.nodes = d.model.nodes.map((n: any) => { const { topics, ...r } = n; return r; });
+  delete d.model.targetRps; d.version = 4;
+  return fromFile(d).doc;
+}
 
 // unknown future version is refused clearly
 assert.throws(() => migrate({ version: 99, kind: 'system' }), /newer/);

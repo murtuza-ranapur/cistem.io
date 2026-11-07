@@ -1,7 +1,7 @@
 import './style.css';
-import { type Kind, exampleDoc } from './model';
+import { type Kind, exampleDoc, totalRps } from './model';
 import { toFile, fromFile } from './document';
-import { state, current, restore, loadExample, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
+import { state, current, restore, loadExample, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo, fmt } from './state';
 import { fit, zoomAt, hint, addNode, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
@@ -12,17 +12,19 @@ import { onAfterRender } from './state';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const svg = $<HTMLElement>('svg');
-const rpsInput = $<HTMLInputElement>('rps');
-const rpsRange = $<HTMLInputElement>('rpsRange');
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// ---------- target rps ----------
-let rpsSnapshotted = false;
-const setRps = (v: number) => { state.doc.targetRps = v; rpsInput.value = String(v); rpsRange.value = String(Math.min(50000, v)); renderAll(); };
-const onRps = (v: number) => { if (!rpsSnapshotted) { history.snapshot(state.doc); rpsSnapshotted = true; } setRps(v); };
-rpsInput.addEventListener('input', () => onRps(+rpsInput.value || 0));
-rpsRange.addEventListener('input', () => onRps(+rpsRange.value));
-[rpsInput, rpsRange].forEach(e => e.addEventListener('change', () => (rpsSnapshotted = false)));
+// ---------- load: the sum of the clients' peak rps (each client sets its own) ----------
+const totalVal = $('totalVal');
+const syncTotal = () => { totalVal.textContent = fmt(totalRps(state.doc)); };
+let clientCursor = 0;
+$('totalRps').onclick = () => {
+  const clients = state.doc.nodes.filter(n => n.kind === 'entry');
+  if (!clients.length) { hint('Add a Clients component — its peak rps is the load'); return; }
+  const n = clients[clientCursor++ % clients.length];
+  select({ type: 'node', id: n.id }); renderAll(); revealSelection();
+  setTimeout(() => document.querySelector<HTMLInputElement>('#sheetBody input[data-path="rps"]')?.select(), 260);
+};
 
 // ---------- title ----------
 const titleInput = $<HTMLInputElement>('title');
@@ -36,7 +38,7 @@ const refreshHistory = () => { undoBtn.disabled = !history.canUndo(); redoBtn.di
 // undo/redo can swap the whole document (e.g. undoing "open example"), so keep the title and RPS boxes in step
 onAfterRender(() => {
   if (document.activeElement !== titleInput && titleInput.value !== state.meta.title) syncTitle();
-  if (document.activeElement !== rpsInput && +rpsInput.value !== state.doc.targetRps) { rpsInput.value = String(state.doc.targetRps); rpsRange.value = String(Math.min(50000, state.doc.targetRps)); }
+  syncTotal();
 });
 history.onHistoryChange(refreshHistory);
 undoBtn.onclick = () => { undo(); refreshHistory(); };
@@ -116,7 +118,7 @@ $('expandAll').onclick = () => { allExpanded = !allExpanded; setAllDetail(allExp
 $('panelBtn').onclick = togglePanel;
 onPanelMode(m => $('panelBtn').classList.toggle('on', m !== 'hidden'));
 initTooltips();
-$('resetBtn').onclick = async () => { await openAsNew(toFile(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() })); setRps(state.doc.targetRps); syncTitle(); };
+$('resetBtn').onclick = async () => { await openAsNew(toFile(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() })); syncTotal(); syncTitle(); };
 
 // ---------- keyboard ----------
 document.addEventListener('keydown', ev => {
@@ -174,7 +176,7 @@ $('loadJson').onclick = () => {
   try { parsed = JSON.parse(jta.value); fromFile(parsed); }
   catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); return; }
   closeIo();
-  openAsNew(parsed).then(() => { setRps(state.doc.targetRps); syncTitle(); });
+  openAsNew(parsed).then(() => { syncTotal(); syncTitle(); });
 };
 
 // keep whatever was selected out from under the inspector once it has slid in
@@ -221,15 +223,15 @@ $('shareBtn').onclick = async () => {
     try { await navigator.clipboard.writeText(url); toast('Share link copied'); } catch { prompt('Share link', url); }
   } catch (e) { toast((e as Error).message, 4000); }
 };
-document.addEventListener('cistem:opened', () => { setRps(state.doc.targetRps); syncTitle(); refreshHistory(); });
-document.addEventListener('cistem:external-update', () => { setRps(state.doc.targetRps); syncTitle(); toast('Updated from another session'); });
+document.addEventListener('cistem:opened', () => { renderAll(); syncTitle(); refreshHistory(); });
+document.addEventListener('cistem:external-update', () => { renderAll(); syncTitle(); toast('Updated from another session'); });
 document.addEventListener('keydown', ev => { if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); cloud.id ? saveNow() : saveAsNew(); } });
 
 // ---------- boot ----------
 (async () => {
   const hasLocal = restore();
   if (!hasLocal) loadExample();
-  history.reset(); setRps(state.doc.targetRps); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false));
+  history.reset(); renderAll(); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false));
   await bootCloud(hasLocal);   // may replace the doc with a cloud one; fires cistem:opened if so
   startPolling();
 })();
