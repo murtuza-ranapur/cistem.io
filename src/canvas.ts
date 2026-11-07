@@ -29,8 +29,17 @@ const textWidth = (t: SVGTextElement) => { try { return t.getComputedTextLength(
 const snap = (v: number) => Math.round(v / 8) * 8;
 export const fmtMs = (ms: number) => ms >= 100 ? Math.round(ms) + 'ms' : ms >= 10 ? ms.toFixed(0) + 'ms' : ms.toFixed(1) + 'ms';
 
+const gridPattern = document.getElementById('grid') as unknown as SVGPatternElement;
+const gridDot = gridPattern.querySelector('circle')!;
 export function applyView() {
   world.setAttribute('transform', `translate(${state.view.x} ${state.view.y}) scale(${state.view.k})`);
+  // the dot grid lives in screen space; move and scale it with the view so the paper moves with the diagram
+  // (dots keep their size; when zoomed far out every other dot is dropped so it never turns into noise)
+  let step = 24 * state.view.k;
+  while (step < 12) step *= 2;
+  gridPattern.setAttribute('width', String(step)); gridPattern.setAttribute('height', String(step));
+  gridPattern.setAttribute('x', String(state.view.x)); gridPattern.setAttribute('y', String(state.view.y));
+  gridDot.setAttribute('cx', String(step / 2)); gridDot.setAttribute('cy', String(step / 2));
   zoomPct.textContent = Math.round(state.view.k * 100) + '%';
 }
 function toWorld(cx: number, cy: number) {
