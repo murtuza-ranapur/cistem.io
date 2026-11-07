@@ -26,6 +26,9 @@
   <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
   <symbol id="ic-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/></symbol>
   <symbol id="ic-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
+  <symbol id="ic-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="ic-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
   <symbol id="ic-example" viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></symbol>
 </svg>
 
@@ -44,6 +47,7 @@
       <span class="sep"></span>
       <button class="icon" id="layoutBtn" title="Auto-organise (O)" aria-label="Auto-organise"><svg><use href="#ic-organise"/></svg></button>
       <button class="icon" id="zfit" title="Fit to view (⌘0)" aria-label="Fit to view"><svg><use href="#ic-fit"/></svg></button>
+      <button class="icon" id="panelBtn" title="Details panel (I)" aria-label="Toggle details panel"><svg><use href="#ic-panel"/></svg></button>
       <button class="icon" id="expandAll" title="Expand all schemas (⇧Space)" aria-label="Expand all"><svg><use href="#ic-expand"/></svg></button>
       <span class="sep"></span>
       <button class="icon" id="shareBtn" title="Share link" aria-label="Share"><svg><use href="#ic-share"/></svg></button>
@@ -52,7 +56,7 @@
       <button id="signInBtn" class="signin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.5 2 2 6.6 2 12.3c0 4.5 2.9 8.4 6.8 9.7.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5.1 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 4-2.4 4.8-4.6 5.1.4.3.7 1 .7 1.9v2.8c0 .3.2.6.7.5A10.2 10.2 0 0 0 22 12.3C22 6.6 17.5 2 12 2z"/></svg>Sign in with GitHub</button>
       <button id="accountBtn" class="account" hidden aria-label="Account"><img id="avatar" alt="" width="24" height="24"><span id="login"></span></button>
       <div id="accountMenu" class="menu" hidden><div class="menu-head" id="accountName"></div><button id="signOutBtn" class="menu-item">Sign out</button></div>
-      <button class="icon" id="resetBtn" title="Load example" aria-label="Load example"><svg><use href="#ic-example"/></svg></button>
+      <button class="icon" id="resetBtn" title="Open the example (as a new diagram)" aria-label="Open example"><svg><use href="#ic-example"/></svg></button>
     </div>
   </header>
 
@@ -87,7 +91,8 @@
     <input id="renameBox" type="text" hidden aria-label="Rename">
   </main>
 
-  <aside id="inspector" class="closed" aria-label="Inspector">
+  <aside id="inspector" class="closed" aria-label="Details">
+    <div id="inspBar"><span>Details</span><span class="spacer"></span><button class="icon" data-panel="pin" aria-label="Pin panel"><svg><use href="#ic-pin"/></svg></button><button class="icon" data-panel="close" title="Hide panel (I)" aria-label="Hide panel"><svg><use href="#ic-close"/></svg></button></div>
     <div id="sheetBody"></div>
   </aside>
 

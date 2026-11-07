@@ -1,11 +1,13 @@
 import './style.css';
-import { type Kind } from './model';
-import { state, current, restore, loadExample, loadFile, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
+import { type Kind, exampleDoc } from './model';
+import { toFile, fromFile } from './document';
+import { state, current, restore, loadExample, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo } from './state';
 import { fit, zoomAt, hint, addNode, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
-import './sheet';
-import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
+import { togglePanel, onPanelMode } from './sheet';
+import { initTooltips } from './tooltip';
+import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, openAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
 import { onAfterRender } from './state';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -31,6 +33,11 @@ titleInput.addEventListener('input', () => { state.meta.title = titleInput.value
 // ---------- undo / redo ----------
 const undoBtn = $<HTMLButtonElement>('undoBtn'), redoBtn = $<HTMLButtonElement>('redoBtn');
 const refreshHistory = () => { undoBtn.disabled = !history.canUndo(); redoBtn.disabled = !history.canRedo(); };
+// undo/redo can swap the whole document (e.g. undoing "open example"), so keep the title and RPS boxes in step
+onAfterRender(() => {
+  if (document.activeElement !== titleInput && titleInput.value !== state.meta.title) syncTitle();
+  if (document.activeElement !== rpsInput && +rpsInput.value !== state.doc.targetRps) { rpsInput.value = String(state.doc.targetRps); rpsRange.value = String(Math.min(50000, state.doc.targetRps)); }
+});
 history.onHistoryChange(refreshHistory);
 undoBtn.onclick = () => { undo(); refreshHistory(); };
 redoBtn.onclick = () => { redo(); refreshHistory(); };
@@ -106,7 +113,10 @@ $('zout').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.widt
 $('zfit').onclick = () => fit();
 let allExpanded = false;
 $('expandAll').onclick = () => { allExpanded = !allExpanded; setAllDetail(allExpanded ? 'expanded' : 'compact'); $('expandAll').classList.toggle('active', allExpanded); };
-$('resetBtn').onclick = () => { loadExample(); setRps(state.doc.targetRps); syncTitle(); fit(); };
+$('panelBtn').onclick = togglePanel;
+onPanelMode(m => $('panelBtn').classList.toggle('on', m !== 'hidden'));
+initTooltips();
+$('resetBtn').onclick = async () => { await openAsNew(toFile(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() })); setRps(state.doc.targetRps); syncTitle(); };
 
 // ---------- keyboard ----------
 document.addEventListener('keydown', ev => {
@@ -126,6 +136,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); deleteSelection(); return; }
   if (ev.key.toLowerCase() === 'o' && !mod) { organise(); return; }
   if (ev.key.toLowerCase() === 'e' && !mod) { addContainer(); return; }
+  if (ev.key.toLowerCase() === 'i' && !mod) { togglePanel(); return; }
   if (ev.key === ' ' && !mod) { ev.preventDefault(); if (ev.shiftKey) $('expandAll').click(); else if (state.sel?.type === 'node') toggleDetail(state.sel.id); return; }
   if (ev.key === 'Escape') { select(null); renderAll(); return; }
   const step = ev.shiftKey ? 32 : 8;
@@ -153,8 +164,11 @@ $('copyJson').onclick = () => {
   try { navigator.clipboard.writeText(jta.value).then(() => msg('Copied'), fb); } catch { fb(); }
 };
 $('loadJson').onclick = () => {
-  try { loadFile(JSON.parse(jta.value)); setRps(state.doc.targetRps); syncTitle(); fit(); closeIo(); }
-  catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); }
+  let parsed: unknown;
+  try { parsed = JSON.parse(jta.value); fromFile(parsed); }
+  catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); return; }
+  closeIo();
+  openAsNew(parsed).then(() => { setRps(state.doc.targetRps); syncTitle(); });
 };
 
 // keep whatever was selected out from under the inspector once it has slid in

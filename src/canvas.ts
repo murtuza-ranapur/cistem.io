@@ -1,5 +1,6 @@
 import { KINDS, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
 import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
+import { holdPanel, releasePanel } from './sheet';
 
 const stage = document.getElementById('stage') as HTMLElement;
 const svg = document.getElementById('svg') as unknown as SVGSVGElement;
@@ -448,14 +449,14 @@ svg.addEventListener('pointerdown', ev => {
     const start: Record<string, { x: number; y: number }> = {};
     ids.forEach(i => { const n = state.doc.nodes.find(x => x.id === i)!; start[i] = { x: n.x, y: n.y }; });
     drag = { type: 'node', ids, start, ox: w.x, oy: w.y, moved: false, snapped: false };
-    renderAll();
+    holdPanel(); renderAll();
     return;
   }
   if (edgeEl) { select({ type: 'edge', id: edgeEl.dataset.edge! }); renderAll(); return; }
   const frameEl = target.closest('[data-container]') as SVGGElement | null;
   if (frameEl && !additive && !ev.altKey) {
     const id = frameEl.dataset.container!;
-    select({ type: 'container', id });
+    select({ type: 'container', id }); holdPanel();
     const w = toWorld(ev.clientX, ev.clientY);
     const nodeIds = state.doc.nodes.filter(n => ancestry(state.doc, n.container).includes(id)).map(n => n.id);
     const start: Record<string, { x: number; y: number }> = {};
@@ -548,6 +549,7 @@ function up(ev: PointerEvent) {
   if (pointers.size < 2) pinch = null;
   if (!drag) return;
   const d = drag; drag = null;
+  if (d.type === 'node' || d.type === 'frame') releasePanel(!d.moved); // a plain click opens the panel, a drag doesn't
   switch (d.type) {
     case 'pan': if (!d.moved) { select(null); renderAll(); } break;
     case 'node': {

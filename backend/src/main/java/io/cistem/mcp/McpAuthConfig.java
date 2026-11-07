@@ -31,6 +31,10 @@ import org.springframework.security.oauth2.server.authorization.OAuth2Authorizat
 import org.springframework.security.oauth2.server.authorization.OAuth2TokenType;
 import org.springframework.security.oauth2.server.authorization.client.JdbcRegisteredClientRepository;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
+import java.time.Duration;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.oauth2.server.authorization.token.JwtEncodingContext;
 import org.springframework.security.oauth2.server.authorization.token.OAuth2TokenCustomizer;
@@ -113,9 +117,35 @@ public class McpAuthConfig {
         return AuthorizationServerSettings.builder().issuer(props.publicUrl()).build();
     }
 
+    /**
+     * Dynamically registered clients would otherwise get Spring's defaults: 5-minute access tokens, and
+     * public (PKCE-only) clients get no refresh token at all — so Claude's connector "signed out" every few
+     * minutes. Every client, including ones registered before this change, is served with our token policy.
+     */
     @Bean
     RegisteredClientRepository registeredClientRepository(JdbcTemplate jdbc) {
-        return new JdbcRegisteredClientRepository(jdbc);
+        JdbcRegisteredClientRepository jdbcRepo = new JdbcRegisteredClientRepository(jdbc);
+        return new RegisteredClientRepository() {
+            @Override public void save(RegisteredClient c) { jdbcRepo.save(withTokenPolicy(c)); }
+            @Override public RegisteredClient findById(String id) { return withTokenPolicy(jdbcRepo.findById(id)); }
+            @Override public RegisteredClient findByClientId(String id) { return withTokenPolicy(jdbcRepo.findByClientId(id)); }
+        };
+    }
+
+    /** Public clients can't refresh, so their access token lives as long as a browser session; others refresh. */
+    static final Duration PUBLIC_ACCESS_TTL = Duration.ofDays(30);
+    static final Duration ACCESS_TTL = Duration.ofHours(1);
+    static final Duration REFRESH_TTL = Duration.ofDays(90);
+
+    static RegisteredClient withTokenPolicy(RegisteredClient c) {
+        if (c == null) return null;
+        var methods = c.getClientAuthenticationMethods();
+        boolean publicClient = methods.isEmpty() || (methods.size() == 1 && methods.contains(ClientAuthenticationMethod.NONE));
+        TokenSettings ts = TokenSettings.withSettings(c.getTokenSettings().getSettings())
+                .accessTokenTimeToLive(publicClient ? PUBLIC_ACCESS_TTL : ACCESS_TTL)
+                .refreshTokenTimeToLive(REFRESH_TTL)
+                .build();
+        return RegisteredClient.from(c).tokenSettings(ts).build();
     }
 
     @Bean

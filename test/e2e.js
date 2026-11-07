@@ -271,6 +271,73 @@ class T {
     const fin = await t.frameBox('c9'); assert(Math.abs(fin.y - mid.y) < 8, 'frame stays where it was dropped');
   });
 
+  // ---- details panel ----
+  const panelOpen = t => t.page.$eval('#inspector', e => !e.classList.contains('closed'));
+
+  await test('dragging a node does not pop the details panel open; a click does', async t => {
+    assert(!(await panelOpen(t)), 'starts closed');
+    const b = await t.node('n2');
+    await t.dragNodeTo('n2', 400, 300); await t.page.waitForTimeout(300);
+    assert(!(await panelOpen(t)), 'drag left the panel closed');
+    await t.clickNode('n3'); assert(await panelOpen(t), 'click opened it');
+  });
+
+  await test('close hides the panel and it stays hidden; I brings it back pinned', async t => {
+    await t.clickNode('n3'); assert(await panelOpen(t));
+    await t.page.click('#inspBar [data-panel="close"]'); await t.page.waitForTimeout(300);
+    assert(!(await panelOpen(t)), 'closed');
+    await t.clickNode('n2'); assert(!(await panelOpen(t)), 'selecting no longer opens it');
+    await t.page.reload(); await t.page.waitForTimeout(500);
+    await t.clickNode('n2'); assert(!(await panelOpen(t)), 'remembered across reload');
+    await t.page.keyboard.press('i'); await t.page.waitForTimeout(300);
+    assert(await panelOpen(t), 'I opens it');
+    await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(200);
+    assert(await panelOpen(t), 'reopened panel is pinned — deselecting keeps it');
+    assert((await t.page.textContent('#sheetBody')).includes('Nothing selected'), 'placeholder');
+  });
+
+  await test('pin keeps the panel open; unpin returns to open-on-select', async t => {
+    await t.clickNode('n3');
+    await t.page.click('#inspBar [data-panel="pin"]'); await t.page.waitForTimeout(100);
+    await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(200);
+    assert(await panelOpen(t), 'pinned stays open');
+    await t.page.click('#inspBar [data-panel="pin"]'); await t.page.waitForTimeout(250);
+    assert(!(await panelOpen(t)), 'unpinned with nothing selected closes');
+    await t.page.click('#panelBtn'); await t.page.waitForTimeout(250); assert(await panelOpen(t), 'toolbar button opens');
+    await t.page.click('#panelBtn'); await t.page.waitForTimeout(250); assert(!(await panelOpen(t)), 'toolbar button hides');
+  });
+
+  await test('clients have a delete button in the panel', async t => {
+    await t.clickNode('n1');
+    await t.page.click('#sheetBody [data-action="delete-node"]'); await t.page.waitForTimeout(200);
+    assert(!(await t.node('n1')), 'client deleted');
+  });
+
+  // ---- example / import ----
+  await test('opening the example is undoable as a whole, title included (signed out)', async t => {
+    await t.page.fill('#title', 'My payments'); await t.page.keyboard.press('Enter');
+    await t.clickNode('n2'); await t.page.keyboard.press('Delete'); await t.page.waitForTimeout(150);
+    const mine = await t.doc(); eq(mine.meta.title, 'My payments');
+    await t.page.click('#resetBtn'); await t.page.waitForTimeout(400);
+    eq((await t.doc()).meta.title, 'Checkout example'); assert(await t.node('n2'), 'example loaded');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(300);
+    const back = await t.doc();
+    eq(back.meta.title, 'My payments', 'title restored with the undo');
+    assert(!back.model.nodes.some(n => n.id === 'n2'), 'my edits restored');
+    eq(await t.page.inputValue('#title'), 'My payments', 'title box shows it');
+  });
+
+  // ---- tooltips ----
+  await test('toolbar tooltips appear quickly', async t => {
+    const b = await t.box('#layoutBtn');
+    await t.page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await t.page.waitForTimeout(300);
+    const tip = await t.page.$('.tip.on'); assert(tip, 'tooltip shown within 300ms');
+    assert((await tip.textContent()).includes('Auto-organise'));
+    eq(await t.page.$eval('#layoutBtn', e => e.getAttribute('title')), null, 'native title removed so the slow browser tooltip never fires');
+    const z = await t.box('#zfit'); await t.page.mouse.move(z.x + z.width / 2, z.y + z.height / 2); await t.page.waitForTimeout(40);
+    assert((await t.page.textContent('.tip.on')).includes('Fit'), 'moving to the neighbour shows its tip at once');
+  });
+
   // ---- structured editors ----
   const openSchema = async (t, id) => { await t.clickNode(id); await t.page.click('[data-tab="schema"]'); await t.page.waitForTimeout(200); };
   const fe = (path) => `[data-fe="${path}"]`;

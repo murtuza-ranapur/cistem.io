@@ -102,6 +102,8 @@ class McpOAuthFlowTest {
                 .andExpect(jsonPath("$.token_type").value("Bearer"))
                 .andReturn().getResponse().getContentAsString();
         String access = JsonPath.read(tok, "$.access_token");
+        // public clients can't refresh, so the token must outlive a working session (was 5 minutes)
+        assertTrue(((Number) JsonPath.read(tok, "$.expires_in")).longValue() >= 7 * 24 * 3600, "public client token lifetime: " + tok);
         // the JWT's subject is our user id, not the GitHub login
         String payload = new String(Base64.getUrlDecoder().decode(access.split("\\.")[1]), StandardCharsets.UTF_8);
         assertEquals(murtu.id().toString(), JsonPath.read(payload, "$.sub"));

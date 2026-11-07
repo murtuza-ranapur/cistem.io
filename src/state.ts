@@ -41,8 +41,9 @@ export function recompute() { state.results = compute(state.doc); }
 
 /** Record an undo point, then mutate. */
 export function mutate(fn: () => void) { history.snapshot(state.doc); fn(); }
-export function undo() { const d = history.undo(state.doc); if (d) { state.doc = d; state.sel = null; state.multi.clear(); renderAll(); } }
-export function redo() { const d = history.redo(state.doc); if (d) { state.doc = d; state.sel = null; state.multi.clear(); renderAll(); } }
+function restoreStep(r: history.Restored | null) { if (!r) return; state.doc = r.doc; if (r.meta) state.meta = r.meta; state.sel = null; state.multi.clear(); renderAll(); }
+export function undo() { restoreStep(history.undo(state.doc, state.meta)); }
+export function redo() { restoreStep(history.redo(state.doc, state.meta)); }
 
 const KEY = 'cistem.doc';
 const LEGACY_KEY = 'loadmap.doc';
@@ -56,7 +57,7 @@ export function restore(): boolean {
   return false;
 }
 export function replaceDoc(d: Doc, meta?: DiagramFile['meta']) {
-  history.snapshot(state.doc); state.doc = d; state.sel = null; state.multi.clear();
+  history.snapshot(state.doc, state.meta); state.doc = d; state.sel = null; state.multi.clear();
   const now = new Date().toISOString();
   state.meta = meta ?? { title: 'Untitled system', created: now, updated: now };
 }
