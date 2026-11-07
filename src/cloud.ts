@@ -140,6 +140,23 @@ export async function saveAsNew() {
     document.dispatchEvent(new CustomEvent('cistem:opened'));
   } catch (e) { setStatus('error', (e as Error).message); }
 }
+/**
+ * Open a document (the example, an imported file) as a NEW diagram instead of overwriting the open one.
+ * Signed in: the current diagram is saved first and stays in the drawer; the new one gets its own cloud
+ * entry. Signed out there's a single local slot, so the swap stays undoable (title included).
+ */
+export async function openAsNew(file: unknown) {
+  clearTimeout(timer);
+  if (signedIn() && cloud.id && !cloud.readonly && JSON.stringify(toFile(state.doc, state.meta)) !== cloud.lastSerialized) await saveNow();
+  loadFile(file);
+  cloud.id = null; cloud.version = 0; cloud.readonly = false; cloud.lastSerialized = '';
+  if (signedIn()) history.reset();
+  renderAll(); requestAnimationFrame(() => fit(false));
+  document.dispatchEvent(new CustomEvent('cistem:opened'));
+  syncUrl();
+  if (signedIn()) await saveAsNew(); else setStatus('local');
+}
+
 export async function newDiagram() {
   loadExample();
   state.doc.nodes = state.doc.nodes.filter(n => n.kind === 'entry'); state.doc.edges = [];

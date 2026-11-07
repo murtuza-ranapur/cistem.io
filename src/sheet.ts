@@ -209,7 +209,7 @@ function containerSheet(c: Container): string {
 }
 
 function nodeSheet(n: Node): string {
-  let h = `<div class="head"><span class="k" style="color:var(--c-${n.kind})">${icon(n.kind)}${KINDS[n.kind].label}</span><strong>${esc(n.name)}</strong><span class="spacer"></span>${n.kind !== 'entry' ? `<button class="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button>` : ''}</div>`;
+  let h = `<div class="head"><span class="k" style="color:var(--c-${n.kind})">${icon(n.kind)}${KINDS[n.kind].label}</span><strong>${esc(n.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div>`;
   if (hasSchema(n)) {
     h += `<div class="tabs"><button data-tab="capacity" class="${tab === 'capacity' ? 'on' : ''}">Capacity</button><button data-tab="schema" class="${tab === 'schema' ? 'on' : ''}">${schemaLabel(n)}</button></div>`;
     h += tab === 'schema' ? schemaTab(n) : capacityTab(n);
@@ -242,10 +242,45 @@ function validateJson(t: HTMLTextAreaElement) {
   } catch { t.classList.add('bad'); }
 }
 
+// ---------- panel behaviour ----------
+// auto:   opens when you click something, closes when nothing is selected
+// pinned: always open (a placeholder when nothing is selected)
+// hidden: never opens on its own — the toolbar button or `I` brings it back
+export type PanelMode = 'auto' | 'pinned' | 'hidden';
+const PANEL_KEY = 'cistem.panel';
+let panelMode: PanelMode = (() => { try { const v = localStorage.getItem(PANEL_KEY); return v === 'pinned' || v === 'hidden' ? v : 'auto'; } catch { return 'auto'; } })();
+let held = false;
+const panelListeners: ((m: PanelMode) => void)[] = [];
+export const getPanelMode = () => panelMode;
+export const onPanelMode = (fn: (m: PanelMode) => void) => { panelListeners.push(fn); fn(panelMode); };
+export function setPanelMode(m: PanelMode) {
+  panelMode = m; try { localStorage.setItem(PANEL_KEY, m); } catch { /* ignore */ }
+  panelListeners.forEach(f => f(m)); drawSheet();
+}
+/** Toolbar / `I`: hide if visible, otherwise show (pinned if it was hidden, so it stays put). */
+export function togglePanel() { setPanelMode(inspector.classList.contains('closed') ? 'pinned' : 'hidden'); }
+/** While a pointer gesture is in progress (dragging a node or frame) selecting must not pop the panel open. */
+let quietFor = '';  // selection that was picked up by a drag: don't auto-open for it until it's clicked
+const selKey = () => state.sel ? state.sel.type + ':' + state.sel.id : '';
+export function holdPanel() { held = true; }
+export function releasePanel(clicked: boolean) { held = false; quietFor = clicked ? '' : selKey(); if (clicked) drawSheet(); }
+
+const bar = document.getElementById('inspBar') as HTMLElement;
+bar.addEventListener('click', ev => {
+  const b = (ev.target as Element).closest<HTMLElement>('[data-panel]'); if (!b) return;
+  if (b.dataset.panel === 'close') setPanelMode('hidden');
+  else setPanelMode(panelMode === 'pinned' ? 'auto' : 'pinned');
+});
+onPanelMode(m => { const pin = bar.querySelector<HTMLElement>('[data-panel="pin"]')!; pin.classList.toggle('on', m === 'pinned'); pin.title = m === 'pinned' ? 'Unpin — close when nothing is selected' : 'Pin — keep this panel open'; });
+
 export function drawSheet() {
   const t = current();
-  if (!t) { state.sel = null; inspector.classList.add('closed'); return; }
-  inspector.classList.remove('closed');
+  if (!t && state.sel) state.sel = null;
+  const isOpen = !inspector.classList.contains('closed');
+  if (quietFor && quietFor !== selKey()) quietFor = '';
+  const open = panelMode === 'hidden' ? false : panelMode === 'pinned' ? true : !!t && (isOpen || (!held && !quietFor));
+  inspector.classList.toggle('closed', !open);
+  if (!t) { body.innerHTML = open ? '<div class="placeholder"><strong>Nothing selected</strong><span>Click a component, connection or environment to see and edit its details.</span></div>' : ''; return; }
   body.innerHTML = state.sel!.type === 'node' ? nodeSheet(t as Node) : state.sel!.type === 'edge' ? edgeSheet(t as Edge) : containerSheet(t as Container);
   body.querySelectorAll<HTMLTextAreaElement>('textarea[data-validate]').forEach(validateJson);
   body.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab as typeof tab; drawSheet(); });

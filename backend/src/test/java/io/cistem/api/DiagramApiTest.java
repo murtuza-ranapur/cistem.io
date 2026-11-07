@@ -55,6 +55,19 @@ class DiagramApiTest {
             {"document":{"version":2,"kind":"system","meta":{"title":"Test system","created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
              "model":{"targetRps":1000,"nodes":[],"edges":[]},"layout":{"positions":{}}}}""";
 
+    @Autowired org.springframework.session.SessionRepository<? extends org.springframework.session.Session> sessions;
+    @Autowired org.springframework.session.web.http.CookieSerializer cookies;
+
+    @Test
+    void sessionsLastThirtyDaysAndTheCookieSurvivesBrowserRestarts() {
+        // regression: @EnableJdbcHttpSession made Boot ignore spring.session.timeout → 30-minute sign-outs
+        org.junit.jupiter.api.Assertions.assertEquals(java.time.Duration.ofDays(30), sessions.createSession().getMaxInactiveInterval());
+        var req = new org.springframework.mock.web.MockHttpServletRequest(); var res = new org.springframework.mock.web.MockHttpServletResponse();
+        cookies.writeCookieValue(new org.springframework.session.web.http.CookieSerializer.CookieValue(req, res, "abc"));
+        String setCookie = res.getHeader("Set-Cookie");
+        org.junit.jupiter.api.Assertions.assertTrue(setCookie.startsWith("cistem_session=") && setCookie.contains("Max-Age=2592000") && setCookie.contains("HttpOnly"), setCookie);
+    }
+
     @Test
     void signedOutGets401OnApiAndMe() throws Exception {
         mvc.perform(get("/api/diagrams")).andExpect(status().isUnauthorized());

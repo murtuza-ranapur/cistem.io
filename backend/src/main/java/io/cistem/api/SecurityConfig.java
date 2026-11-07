@@ -30,10 +30,26 @@ import java.util.UUID;
  */
 @Configuration
 @EnableWebSecurity
-@EnableJdbcHttpSession
+// 30 days idle. (With this annotation present Spring Boot ignores spring.session.timeout, which is how
+// sessions silently fell back to the 30-minute default.)
+@EnableJdbcHttpSession(maxInactiveIntervalInSeconds = SecurityConfig.SESSION_SECONDS)
 public class SecurityConfig {
 
     public static final String USER_ID_ATTR = "cistem_user_id";
+    public static final int SESSION_SECONDS = 60 * 60 * 24 * 30;
+
+    /** Persistent cookie (survives closing the browser) matching the session lifetime. */
+    @Bean
+    org.springframework.session.web.http.CookieSerializer cookieSerializer(@org.springframework.beans.factory.annotation.Value("${COOKIE_SECURE:true}") boolean secure) {
+        var c = new org.springframework.session.web.http.DefaultCookieSerializer();
+        c.setCookieName("cistem_session");
+        c.setUseHttpOnlyCookie(true);
+        c.setSameSite("Lax");
+        c.setUseSecureCookie(secure);
+        c.setCookieMaxAge(SESSION_SECONDS);
+        c.setCookiePath("/");
+        return c;
+    }
 
     @Bean
     @Order(3)

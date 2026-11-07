@@ -1,8 +1,15 @@
 import type { Doc } from './model';
+import type { DiagramFile } from './document';
 
-/** Snapshot-based undo/redo. Documents are small, so whole-doc snapshots are fine. */
-const past: string[] = [];
-const future: string[] = [];
+/**
+ * Snapshot-based undo/redo. Documents are small, so whole-doc snapshots are fine.
+ * A snapshot may also carry the diagram's meta (title…) — set when the whole document was swapped,
+ * so undoing a swap restores the title too, not just the nodes.
+ */
+type Meta = DiagramFile['meta'];
+interface Entry { d: string; m?: string }
+const past: Entry[] = [];
+const future: Entry[] = [];
 const LIMIT = 100;
 let listeners: (() => void)[] = [];
 
@@ -10,24 +17,24 @@ export const onHistoryChange = (fn: () => void) => listeners.push(fn);
 const notify = () => listeners.forEach(f => f());
 
 /** Call before mutating the doc. Coalesces identical consecutive snapshots. */
-export function snapshot(doc: Doc) {
-  const s = JSON.stringify(doc);
-  if (past[past.length - 1] === s) return;
-  past.push(s);
+export function snapshot(doc: Doc, meta?: Meta) {
+  const e: Entry = { d: JSON.stringify(doc) };
+  if (meta) e.m = JSON.stringify(meta);
+  const last = past[past.length - 1];
+  if (last && last.d === e.d && last.m === e.m) return;
+  past.push(e);
   if (past.length > LIMIT) past.shift();
   future.length = 0;
   notify();
 }
-export function undo(doc: Doc): Doc | null {
-  const s = past.pop(); if (s === undefined) return null;
-  future.push(JSON.stringify(doc)); notify();
-  return JSON.parse(s);
+export interface Restored { doc: Doc; meta?: Meta }
+function step(from: Entry[], to: Entry[], doc: Doc, meta: Meta): Restored | null {
+  const e = from.pop(); if (e === undefined) return null;
+  to.push(e.m ? { d: JSON.stringify(doc), m: JSON.stringify(meta) } : { d: JSON.stringify(doc) }); notify();
+  return { doc: JSON.parse(e.d), meta: e.m ? JSON.parse(e.m) : undefined };
 }
-export function redo(doc: Doc): Doc | null {
-  const s = future.pop(); if (s === undefined) return null;
-  past.push(JSON.stringify(doc)); notify();
-  return JSON.parse(s);
-}
+export const undo = (doc: Doc, meta: Meta) => step(past, future, doc, meta);
+export const redo = (doc: Doc, meta: Meta) => step(future, past, doc, meta);
 export const canUndo = () => past.length > 0;
 export const canRedo = () => future.length > 0;
 export function reset() { past.length = 0; future.length = 0; notify(); }
