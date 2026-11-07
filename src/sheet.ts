@@ -22,19 +22,21 @@ const xBtn = (action: string) => `<button class="x" data-action="${action}" aria
 // Bodies and Avro schemas are stored as JSON text; the editor shows them as a tree of fields
 // (name · type · example / nullable) and writes the text back on every change. A JSON tab keeps
 // the raw text reachable for pasting; anything the tree can't express stays in that tab.
-type FeMode = 'fields' | 'json';
+type FeMode = 'fields' | 'code';
 const feModes = new Map<string, FeMode>();
 const feKey = (path: string) => (state.sel?.id ?? '') + ':' + path;
 const optList = (opts: string[], val: string) => opts.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('');
 function fieldEditor(path: string, label: string, text: string, kind: 'json' | 'avro'): string {
   const parsed = kind === 'json' ? parseJsonFields(text) : parseAvro(text);
   const canTree = parsed !== null;
-  const mode: FeMode = canTree ? (feModes.get(feKey(path)) ?? 'fields') : 'json';
+  const mode: FeMode = canTree ? (feModes.get(feKey(path)) ?? 'code') : 'code';
   let h = `<div class="fe" data-fe="${path}" data-kind="${kind}"><div class="fe-head"><span>${label}</span><span class="spacer"></span>`;
-  h += `<button data-femode="fields" class="${mode === 'fields' ? 'on' : ''}" ${canTree ? '' : `disabled title="${kind === 'json' ? 'Not a JSON object — edit as text' : 'Not a simple Avro record — edit as text'}"`}>Fields</button><button data-femode="json" class="${mode === 'json' ? 'on' : ''}">JSON</button></div>`;
-  if (mode === 'json') {
-    h += `<textarea data-path="${path}" data-validate="${kind}" spellcheck="false" placeholder="${kind === 'json' ? 'Paste or type JSON — switch to Fields to edit it as a tree' : 'Paste an Avro record schema'}">${esc(text)}</textarea>`;
-    if (!canTree && text.trim()) h += `<p class="fe-note">${kind === 'json' ? 'Fields view needs a JSON object at the top level.' : 'Fields view handles records with primitive, logical, enum, array, map and nested record types (nullable as ["null", T]).'}</p>`;
+  h += `<button data-femode="code" class="${mode === 'code' ? 'on' : ''}">Code</button>`;
+  h += `<button data-femode="fields" class="${mode === 'fields' ? 'on' : ''}" ${canTree ? '' : `disabled title="${kind === 'json' ? 'Fields view needs a JSON object at the top level' : 'Fields view handles records with primitive, logical, enum, array, map and nested record types'}"`}>Fields</button>`;
+  if (mode === 'code') h += `<button class="fe-tool" data-feformat title="Format (⇧⌥F)" aria-label="Format">{ }</button><button class="fe-tool" data-feexpand title="Open larger" aria-label="Open larger"><svg><use href="#ic-expand"/></svg></button>`;
+  h += '</div>';
+  if (mode === 'code') {
+    h += `<div class="cm-host" data-cm="${path}" data-kind="${kind}"><pre class="cm-pre">${esc(text) || '&nbsp;'}</pre></div>`;
   } else if (kind === 'json') {
     h += jsonRows(parsed as JField[], '', 0) + feAdd('', 0);
   } else {
@@ -44,6 +46,87 @@ function fieldEditor(path: string, label: string, text: string, kind: 'json' | '
   }
   return h + '</div>';
 }
+
+// ---------- code editors (CodeMirror, loaded on first use) ----------
+type CodeMod = typeof import('./code');
+let codeMod: Promise<CodeMod> | null = null;
+const loadCode = () => (codeMod ??= import('./code'));
+let views: { path: string; view: import('@codemirror/view').EditorView }[] = [];
+
+/** Field names worth suggesting in a body: connected tables and topics first, then other bodies in the diagram. */
+function bodyVocab(nodeId: string) {
+  const keys: { name: string; from: string; example?: unknown }[] = [];
+  const doc = state.doc;
+  const linked = new Set(doc.edges.filter(e => e.from === nodeId).map(e => e.to).concat(doc.edges.filter(e => e.to === nodeId).map(e => e.from)));
+  for (const n of doc.nodes) {
+    if (!linked.has(n.id)) continue;
+    if (n.kind === 'db') for (const t of (n as DbNode).tables || []) for (const c of t.columns || []) if (c.name) keys.push({ name: c.name, from: `${n.name}.${t.name}` });
+    if (n.kind === 'queue') for (const t of (n as QueueNode).topics || []) for (const f of parseAvro(t.schema)?.fields ?? []) if (f.name) keys.push({ name: f.name, from: t.name || n.name });
+  }
+  const walk = (v: unknown, from: string) => {
+    if (Array.isArray(v)) { v.forEach(x => walk(x, from)); return; }
+    if (!v || typeof v !== 'object') return;
+    for (const [k, x] of Object.entries(v)) { keys.push({ name: k, from, example: x !== null && typeof x === 'object' ? undefined : x }); walk(x, from); }
+  };
+  const services = [...doc.nodes.filter(n => n.id === nodeId), ...doc.nodes.filter(n => n.id !== nodeId)];
+  for (const n of services) if (n.kind === 'service') for (const ep of (n as ServiceNode).endpoints || []) for (const body of [ep.req, ep.res]) {
+    try { walk(JSON.parse(body), `${ep.method} ${ep.path}`); } catch { /* skip */ }
+  }
+  return { keys };
+}
+
+function mountEditors() {
+  const hosts = body.querySelectorAll<HTMLElement>('.cm-host[data-cm]');
+  if (!hosts.length) return;
+  const sel = state.sel?.id;
+  loadCode().then(m => {
+    if (state.sel?.id !== sel) return;
+    hosts.forEach(host => {
+      if (!host.isConnected) return;
+      const path = host.dataset.cm!, kind = host.dataset.kind as 'json' | 'avro';
+      const t = current(); if (!t) return;
+      const view = m.mountCode(host, {
+        kind, doc: getPath(t, path) ?? '',
+        onFocus: () => history.snapshot(state.doc),
+        onChange: text => { const cur = current(); if (!cur) return; setPath(cur, path, text); renderCanvas(); },
+        vocab: () => bodyVocab((current() as Node)?.id ?? ''),
+      });
+      views.push({ path, view });
+      if (refocus && refocus.path === path) { view.focus(); view.dispatch({ selection: { anchor: Math.min(refocus.at, view.state.doc.length) } }); refocus = null; }
+    });
+  });
+}
+let refocus: { path: string; at: number } | null = null;
+function teardownEditors() {
+  const active = views.find(v => v.view.hasFocus);
+  refocus = active ? { path: active.path, at: active.view.state.selection.main.head } : null;
+  views.forEach(v => v.view.destroy()); views = [];
+}
+
+/** The same editor, big, over everything (the panel is narrow). */
+function openBigEditor(path: string, kind: 'json' | 'avro', label: string) {
+  const t = current(); if (!t) return;
+  const ov = document.createElement('div');
+  ov.className = 'cm-overlay';
+  ov.innerHTML = `<div class="cm-dialog" role="dialog" aria-label="${esc(label)}"><div class="cm-dhead"><strong>${esc((t as Node).name ?? '')}</strong><span>${esc(label)}</span><span class="spacer"></span><button class="small" data-fmt>Format</button><button class="icon" data-close aria-label="Close" title="Close (Esc)"><svg><use href="#ic-close"/></svg></button></div><div class="cm-dbody"></div><div class="cm-dfoot">Ctrl-Space suggestions · ⇧⌥F format · Esc close</div></div>`;
+  document.body.appendChild(ov);
+  const close = () => { view?.destroy(); ov.remove(); drawSheet(); };
+  let view: import('@codemirror/view').EditorView | undefined;
+  loadCode().then(m => {
+    view = m.mountCode(ov.querySelector('.cm-dbody')!, {
+      kind, big: true, doc: getPath(t, path) ?? '',
+      onFocus: () => history.snapshot(state.doc),
+      onChange: text => { setPath(t, path, text); renderCanvas(); },
+      vocab: () => bodyVocab((t as Node).id),
+    });
+    view.focus();
+    ov.querySelector<HTMLElement>('[data-fmt]')!.onclick = () => { m.formatJson(view!); view!.focus(); };
+  });
+  ov.addEventListener('mousedown', ev => { if (ev.target === ov) close(); });
+  ov.querySelector<HTMLElement>('[data-close]')!.onclick = close;
+  ov.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !ov.querySelector('.cm-tooltip-autocomplete')) { ev.stopPropagation(); close(); } });
+}
+
 const feAdd = (listPath: string, depth: number) => `<div class="fe-row add" style="--d:${depth}"><button class="small" data-feact="add" data-flist="${listPath}">+ field</button></div>`;
 const SCALARS: JType[] = ['string', 'number', 'integer', 'boolean', 'null'];
 function jsonRows(fields: JField[], parent: string, depth: number): string {
@@ -298,11 +381,13 @@ export function drawSheet() {
   if (quietFor && quietFor !== selKey()) quietFor = '';
   const open = panelMode === 'hidden' ? false : panelMode === 'pinned' ? true : !!t && (isOpen || (!held && !quietFor));
   inspector.classList.toggle('closed', !open);
-  if (!t) { body.innerHTML = open ? '<div class="placeholder"><strong>Nothing selected</strong><span>Click a component, connection or environment to see and edit its details.</span></div>' : ''; return; }
+  if (!t) { teardownEditors(); body.innerHTML = open ? '<div class="placeholder"><strong>Nothing selected</strong><span>Click a component, connection or environment to see and edit its details.</span></div>' : ''; return; }
+  teardownEditors();
   body.innerHTML = state.sel!.type === 'node' ? nodeSheet(t as Node) : state.sel!.type === 'edge' ? edgeSheet(t as Edge) : containerSheet(t as Container);
   body.querySelectorAll<HTMLTextAreaElement>('textarea[data-validate]').forEach(validateJson);
   body.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab as typeof tab; drawSheet(); });
   if (focusAfterDraw) { body.querySelector<HTMLInputElement>(focusAfterDraw)?.focus(); focusAfterDraw = ''; }
+  mountEditors();
 }
 
 // Snapshot once per focus session so typing a value is one undo step.
@@ -352,10 +437,12 @@ body.addEventListener('input', ev => {
 });
 
 body.addEventListener('click', ev => {
-  const feBtn = (ev.target as Element).closest<HTMLElement>('[data-femode],[data-feact]');
+  const feBtn = (ev.target as Element).closest<HTMLElement>('[data-femode],[data-feact],[data-feexpand],[data-feformat]');
   if (feBtn) {
     const fe = feBtn.closest<HTMLElement>('.fe')!;
     if (feBtn.dataset.femode) { feModes.set(feKey(fe.dataset.fe!), feBtn.dataset.femode as FeMode); drawSheet(); return; }
+    if (feBtn.dataset.feexpand !== undefined) { openBigEditor(fe.dataset.fe!, fe.dataset.kind as 'json' | 'avro', fe.querySelector('.fe-head span')?.textContent ?? ''); return; }
+    if (feBtn.dataset.feformat !== undefined) { const v = views.find(x => x.path === fe.dataset.fe); if (v) loadCode().then(m => { m.formatJson(v.view); v.view.focus(); }); return; }
     history.snapshot(state.doc);
     let newPath = '';
     editTree(fe, root => {
