@@ -21,7 +21,13 @@ export const cloud = {
 };
 export const signedIn = () => !!cloud.user;
 /** What the cloud has of the open document, ignoring the always-fresh `updated` stamp. */
-export function signature(): string { const f = currentFile(); f.meta.updated = ''; return JSON.stringify(f); }
+export function signature(): string { const f = currentFile(); f.meta.updated = ''; return stable(f); }
+/** JSON with object keys sorted: the server (Postgres jsonb) hands documents back with keys reordered. */
+function stable(v: unknown): string {
+  if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
+  if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(k => (v as any)[k] !== undefined).map(k => JSON.stringify(k) + ':' + stable((v as any)[k])).join(',') + '}';
+  return JSON.stringify(v) ?? 'null';
+}
 
 /** The cloud link of the open tab; tabs swap it in and out. */
 export interface CloudSlot { id: string | null; version: number; status: SyncStatus; readonly: boolean; lastSerialized: string }
@@ -178,7 +184,17 @@ export function syncUrl(id?: string) {
 
 // ---------- drawer ----------
 const drawer = $('drawer'), listEl = $('drawerList');
-export function openDrawer() { if (!signedIn()) { signIn(); return; } drawer.hidden = false; refreshList(); }
+/** Signed out, the drawer explains where diagrams live and offers sign-in, rather than leaving for GitHub unasked. */
+export function openDrawer() {
+  drawer.hidden = false;
+  if (!signedIn()) {
+    listEl.innerHTML = `<div class="dsignin"><p>Your diagrams are kept in this browser, one per tab.</p><p>Sign in with GitHub to save them to your account, open them on other devices, share links and use them from Claude (MCP).</p><button class="small primary" data-signin>Sign in with GitHub</button></div>`;
+    (document.getElementById('saveAsNew') as HTMLElement).hidden = true;
+    return;
+  }
+  (document.getElementById('saveAsNew') as HTMLElement).hidden = false;
+  refreshList();
+}
 export function closeDrawer() { drawer.hidden = true; }
 export async function refreshList() {
   if (!signedIn()) return;
@@ -190,11 +206,12 @@ export async function refreshList() {
   listEl.innerHTML = list.map(d => `
     <div class="ditem ${d.id === cloud.id ? 'on' : ''}" data-open="${d.id}">
       <div class="dtitle">${esc(d.title)}${d.shared ? ' <span class="tag">shared</span>' : ''}${open.has(d.id) && d.id !== cloud.id ? ' <span class="tag">open</span>' : ''}</div>
-      <div class="dmeta">${d.kind} · v${d.version} · ${timeAgo(d.updatedAt)}</div>
+      <div class="dmeta">${esc(d.kind)} · v${esc(d.version)} · ${esc(timeAgo(d.updatedAt))}</div>
       <button class="x" data-del="${d.id}" aria-label="Delete">×</button>
     </div>`).join('');
 }
 listEl.addEventListener('click', ev => {
+  if ((ev.target as Element).closest('[data-signin]')) { signIn(); return; }
   const del = (ev.target as Element).closest('[data-del]') as HTMLElement | null;
   if (del) { const id = del.dataset.del!; confirmInline(del, () => deleteDiagram(id)); return; }
   const it = (ev.target as Element).closest('[data-open]') as HTMLElement | null;
@@ -217,8 +234,10 @@ function timeAgo(iso: string) {
  * this links them up with the account: ?s= opens a shared copy, ?d= a saved diagram (in its tab, or a new
  * one), otherwise the open tab is refreshed from the cloud. A first visit opens the most recent diagram.
  */
-export async function bootCloud(): Promise<void> {
-  const u = new URL(location.href);
+// the address the page was opened with: restoring tabs rewrites the URL before bootCloud reads it
+const openedWith = location.href;
+export async function bootCloud(href = openedWith): Promise<void> {
+  const u = new URL(href);
   const s = u.searchParams.get('s'), d = u.searchParams.get('d');
   try { cloud.user = await api.me(); } catch { cloud.user = null; }
   onUser?.(cloud.user);
@@ -229,7 +248,7 @@ export async function bootCloud(): Promise<void> {
   // Just came back from GitHub? restore the URL we left from.
   try {
     const back = sessionStorage.getItem('cistem.returnTo');
-    if (back !== null) { sessionStorage.removeItem('cistem.returnTo'); const bu = new URL(location.origin + '/' + back); const bd = bu.searchParams.get('d'); if (bd && !d) { window.history.replaceState(null, '', bu.toString()); return bootCloud(); } }
+    if (back !== null) { sessionStorage.removeItem('cistem.returnTo'); const bu = new URL(location.origin + '/' + back); const bd = bu.searchParams.get('d'); if (bd && !d) { window.history.replaceState(null, '', bu.toString()); return bootCloud(bu.toString()); } }
   } catch { /* ignore */ }
 
   if (d) { await openCloudTab(d); return; }

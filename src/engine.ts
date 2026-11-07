@@ -5,6 +5,8 @@ export interface NodeResult { load: number; cap: number; util: number; status: S
 export interface Verdict { status: Status; node: Node | null; lat: number; converged: boolean }
 export interface Results { nodes: Record<string, NodeResult>; edges: Record<string, number>; crossings: Record<string, number>; verdict: Verdict }
 
+/** Loads are capped so absurd inputs (1e300 × 1e300) stay finite instead of Infinity/NaN; Engine.MAX_LOAD mirrors it. */
+const MAX_LOAD = 1e18;
 /** see qty in model.ts */
 export const num = qty;
 const clamp01 = (v: unknown) => Math.min(1, Math.max(0, num(v)));
@@ -63,7 +65,7 @@ export function compute(doc: Doc): Results {
   let converged = false;
   for (let iter = 0; iter < 60; iter++) {
     const next: Record<string, Breakdown> = {}, ncum: Record<string, number> = {};
-    doc.nodes.forEach(n => { next[n.id] = isSource(n) ? { sync: num(n.rps) } : {}; ncum[n.id] = 0; });
+    doc.nodes.forEach(n => { next[n.id] = isSource(n) ? { sync: Math.min(MAX_LOAD, num(n.rps)) } : {}; ncum[n.id] = 0; });
     doc.edges.forEach(e => {
       const s = byId[e.from], t = byId[e.to];
       if (!s || !t) return;
@@ -71,9 +73,9 @@ export function compute(doc: Doc): Results {
       const srcTotal = total(s.id);
       for (const origin in bd[s.id]) {
         if (isAsync(t) && origin === t.id) continue;          // don't republish what we consumed from t
-        const amount = bd[s.id][origin] * factor;
+        const amount = Math.min(MAX_LOAD, bd[s.id][origin] * factor);
         const tag = isAsync(s) ? s.id : origin;                 // consuming from a queue tags the load with it
-        next[t.id][tag] = (next[t.id][tag] ?? 0) + amount;
+        next[t.id][tag] = Math.min(MAX_LOAD, (next[t.id][tag] ?? 0) + amount);
       }
       ncum[t.id] = Math.max(ncum[t.id], cum[s.id] + effLatency(s, srcTotal) + crossingLatency(doc, s.container, t.container));
     });
@@ -94,7 +96,8 @@ export function compute(doc: Doc): Results {
     const status: Status = util >= 1 ? 'crit' : util >= 0.7 ? 'warn' : 'ok';
     const lat = effLatency(n, L);
     nodes[n.id] = { load: L, cap, util, status, lat, cum: cum[n.id] + lat };
-    if (!isSource(n) && cum[n.id] + lat > maxLat) maxLat = cum[n.id] + lat;
+    // end-to-end latency follows the traffic: components nothing reaches don't count
+    if (!isSource(n) && L > 0 && cum[n.id] + lat > maxLat) maxLat = cum[n.id] + lat;
     if (status === 'crit' && worst !== 'crit') { worst = 'crit'; worstNode = n; }
     else if (status === 'warn' && worst === 'ok') { worst = 'warn'; worstNode = n; }
   });

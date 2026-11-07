@@ -1,5 +1,5 @@
-import { KINDS, typeDef, isSource, detailOf as typeDetail, hasSchemaDetail, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, frameColor, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
-import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
+import { KINDS, qty, typeDef, isSource, detailOf as typeDetail, hasSchemaDetail, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, frameColor, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
+import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds, fmtMs } from './state';
 import { holdPanel, releasePanel } from './sheet';
 
 const stage = document.getElementById('stage') as HTMLElement;
@@ -27,7 +27,7 @@ const set = (e: Element, attrs: Record<string, string | number>) => { for (const
 const trunc = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
 const textWidth = (t: SVGTextElement) => { try { return t.getComputedTextLength(); } catch { return (t.textContent?.length ?? 0) * 7; } };
 const snap = (v: number) => Math.round(v / 8) * 8;
-export const fmtMs = (ms: number) => ms >= 100 ? Math.round(ms) + 'ms' : ms >= 10 ? ms.toFixed(0) + 'ms' : ms.toFixed(1) + 'ms';
+export { fmtMs } from './state';
 
 const gridPattern = document.getElementById('grid') as unknown as SVGPatternElement;
 const gridDot = gridPattern.querySelector('circle')!;
@@ -171,6 +171,8 @@ function updateFrame(g: SVGGElement, c: Container, f: Frame) {
 // ---------- keyed rendering ----------
 const nodeEls = new Map<string, SVGGElement>();
 const edgeEls = new Map<string, SVGGElement>();
+const edgeGeo = new Map<string, { d: string; len: number; mid: { x: number; y: number } }>();
+const fmtCalls = (c: number) => (c >= 1000 ? fmt(c) : String(Math.round(c * 100) / 100));
 const labelEls = new Map<string, SVGGElement>();
 let firstDraw = true;
 
@@ -279,7 +281,7 @@ function updateNode(g: SVGGElement, n: Node) {
   g.querySelector('.kind')!.textContent = typeDef(n.kind).label;
   g.querySelector('.name')!.textContent = trunc(n.name || '', (w - tx - 12) / 7.2);
   g.querySelector('.sum')!.textContent = trunc(summary(n), (w - 24) / 6.3);
-  g.querySelector('.stat')!.textContent = isSource(n) ? `${fmt(n.rps ?? 0)} rps peak` : `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}`;
+  g.querySelector('.stat')!.textContent = isSource(n) ? `${fmt(qty(n.rps))} rps peak` : `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}`;
   if (!isSource(n)) {
     const u = Math.min(1, isFinite(r.util) ? r.util : 1);
     const fill = g.querySelector('.fill')!;
@@ -308,14 +310,17 @@ function updateEdge(g: SVGGElement, e: Edge, a: Node, b: Node) {
   const line = g.querySelector('.line') as SVGPathElement;
   set(g.querySelector('.hit')!, { d });
   set(line, { d, 'marker-end': isSel ? 'url(#arrowSel)' : crit ? 'url(#arrowCrit)' : 'url(#arrow)' });
-  if (g.classList.contains('enter')) { const len = line.getTotalLength(); line.style.strokeDasharray = String(len); line.style.setProperty('--len', String(len)); }
+  // measuring a path forces layout: only when its shape changed
+  let geo = edgeGeo.get(e.id);
+  if (!geo || geo.d !== d) { const len = line.getTotalLength(); geo = { d, len, mid: len ? line.getPointAtLength(len / 2) : { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 } }; edgeGeo.set(e.id, geo); }
+  if (g.classList.contains('enter')) { line.style.strokeDasharray = String(geo.len); line.style.setProperty('--len', String(geo.len)); }
   else { line.style.strokeDasharray = ''; }
   // label at the curve midpoint
-  const mid = line.getTotalLength() ? line.getPointAtLength(line.getTotalLength() / 2) : { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-  const txt = `${e.calls}× · ${fmt(state.results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '');
+  const mid = geo.mid;
+  const txt = `${fmtCalls(qty(e.calls))}× · ${fmt(state.results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '');
   const tw = txt.length * 6.1 + 12;
   const l = labelEls.get(e.id)!;
-  const tooShort = line.getTotalLength() < tw + 36 && !isSel;
+  const tooShort = geo.len < tw + 36 && !isSel;
   // hide a label that would land on a node (labels are decoration; the inspector has the number)
   const lx = mid.x - tw / 2, ly = mid.y - 9, lw = tw, lh = 18;
   const onNode = !isSel && state.doc.nodes.some(n => { const nw = W(n), nh = H(n); return lx < n.x + nw && lx + lw > n.x && ly < n.y + nh && ly + lh > n.y; });
@@ -352,8 +357,10 @@ export function draw() {
   }
   doc.nodes.forEach(n => {
     let g = nodeEls.get(n.id);
+    // ids repeat across documents (tabs, imports): an element built for another kind is rebuilt, not reused
+    if (g && g.dataset.kind !== n.kind) { g.remove(); nodeEls.delete(n.id); g = undefined; }
     if (!g) {
-      g = buildNode(n); nodeEls.set(n.id, g); gN.appendChild(g);
+      g = buildNode(n); g.dataset.kind = n.kind; nodeEls.set(n.id, g); gN.appendChild(g);
       if (animate) { g.classList.add('enter'); g.addEventListener('animationend', () => g!.classList.remove('enter'), { once: true }); }
     }
     updateNode(g, n);
@@ -401,7 +408,7 @@ export function draw() {
   const labels = { ok: 'Handles it', warn: 'Near limit', crit: 'Breaks' };
   wrap.className = 'verdict ' + v.status;
   (document.getElementById('verdict') as HTMLElement).textContent = labels[v.status] + (v.node ? ` at ${v.node.name}` : '');
-  (document.getElementById('lat') as HTMLElement).textContent = `~${v.lat.toFixed(0)} ms` + (v.converged ? '' : ' · not converging');
+  (document.getElementById('lat') as HTMLElement).textContent = `~${v.lat >= 1e4 ? fmtMs(v.lat) : v.lat.toFixed(0) + ' ms'}` + (v.converged ? '' : ' · not converging');
   emptyEl.hidden = doc.nodes.length > 0;
   firstDraw = false;
 }
@@ -467,7 +474,7 @@ svg.addEventListener('pointerdown', ev => {
     const already = selectedNodeIds().includes(id);
     if (additive) { if (already) { state.multi.delete(id); if (state.sel?.id === id) state.sel = null; } else select({ type: 'node', id }, true); }
     else if (!already) select({ type: 'node', id });
-    else if (state.sel?.id !== id) { state.multi.add(state.sel!.id); state.multi.delete(id); state.sel = { type: 'node', id }; }
+    else if (state.sel?.id !== id) { if (state.sel) state.multi.add(state.sel.id); state.multi.delete(id); state.sel = { type: 'node', id }; }
     const ids = selectedNodeIds();
     const w = toWorld(ev.clientX, ev.clientY);
     const start: Record<string, { x: number; y: number }> = {};
@@ -524,7 +531,7 @@ svg.addEventListener('pointermove', ev => {
       }
       if (!drag.moved) return;
       const start = drag.start;
-      drag.ids.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; n.x = snap(start[id].x + dx); n.y = snap(start[id].y + dy); });
+      drag.ids.forEach(id => { const n = state.doc.nodes.find(x => x.id === id); if (n && start[id]) { n.x = snap(start[id].x + dx); n.y = snap(start[id].y + dy); } });
       // highlight the frame the pointer is over (that's where the node will land)
       const over = containerAt(w.x, w.y);
       const ids = drag.ids;
@@ -536,7 +543,7 @@ svg.addEventListener('pointermove', ev => {
       if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) { drag.moved = true; mutate(() => {}); }
       if (!drag.moved) return; // (no `dragging` snapshot here: the frame must follow its members)
       const d = drag;
-      d.nodeIds.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; n.x = snap(d.start[id].x + dx); n.y = snap(d.start[id].y + dy); });
+      d.nodeIds.forEach(id => { const n = state.doc.nodes.find(x => x.id === id); if (n && d.start[id]) { n.x = snap(d.start[id].x + dx); n.y = snap(d.start[id].y + dy); } });
       // empty containers keep a stored frame; move those too
       for (const cid in d.frameStart) { const f = d.frameStart[cid]; state.doc.frames[cid] = { ...f, x: snap(f.x + dx), y: snap(f.y + dy) }; }
       const over = containerAt(w.x, w.y, d.id);
@@ -549,13 +556,13 @@ svg.addEventListener('pointermove', ev => {
       if (Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 3) drag.moved = true;
       state.view.x = drag.vx + ev.clientX - drag.sx; state.view.y = drag.vy + ev.clientY - drag.sy; applyView(); break;
     case 'connect': {
-      const a = state.doc.nodes.find(n => n.id === (drag as any).from)!;
+      const a = state.doc.nodes.find(n => n.id === (drag as any).from); if (!a) { drag = null; return; }
       const p = port(a, drag.side);
       const over = (document.elementFromPoint(ev.clientX, ev.clientY) as Element | null)?.closest('[data-node]') as SVGGElement | null;
       const tid = over && over.dataset.node !== a.id ? over.dataset.node! : null;
       if (tid !== drag.target) { nodeEls.get(drag.target || '')?.classList.remove('target'); drag.target = tid; nodeEls.get(tid || '')?.classList.add('target'); }
       let q = w, s2: Side = drag.side === 'e' ? 'w' : drag.side === 'w' ? 'e' : drag.side === 'n' ? 's' : 'n';
-      if (tid) { const b = state.doc.nodes.find(n => n.id === tid)!; const sides = routeSides(a, b); s2 = sides[1]; q = port(b, s2); }
+      if (tid && state.doc.nodes.some(n => n.id === tid)) { const b = state.doc.nodes.find(n => n.id === tid)!; const sides = routeSides(a, b); s2 = sides[1]; q = port(b, s2); }
       drag.path.setAttribute('d', pathBetween(p, q, drag.side, s2)); break;
     }
     case 'marquee': {
@@ -584,7 +591,7 @@ function up(ev: PointerEvent) {
         frames = computeFrames();
         const w = toWorld(ev.clientX, ev.clientY);
         const into = containerAt(w.x, w.y);
-        d.ids.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; if ((n.container ?? null) !== into) n.container = into; });
+        d.ids.forEach(id => { const n = state.doc.nodes.find(x => x.id === id); if (n && (n.container ?? null) !== into) n.container = into; });
       }
       dragging = null;
       renderAll(); break;
@@ -636,8 +643,10 @@ function startRename(ev: MouseEvent) {
   renameBox.style.width = Math.max(120, (W(n) - 60) * state.view.k) + 'px';
   renameBox.value = n.name; renameBox.hidden = false;
   renameBox.onblur = null;   // (re)armed below, after focus has settled
-  setTimeout(() => { renameBox.focus(); renameBox.select(); renameBox.onblur = commit; }, 0);
-  const commit = () => { if (renameBox.hidden) return; renameBox.hidden = true; if (renameBox.value !== n.name) { mutate(() => (n.name = renameBox.value)); renderAll(); } };
+  // focus after the double-click's own mouseup/click have landed, or they'd take focus straight back
+  setTimeout(() => { renameBox.focus({ preventScroll: true }); renameBox.select(); renameBox.onblur = commit; }, 0);
+  // an empty name isn't a name: keep the old one
+  const commit = () => { if (renameBox.hidden) return; renameBox.hidden = true; const v = renameBox.value.trim(); if (v && v !== n.name) { mutate(() => (n.name = v)); renderAll(); } };
   renameBox.onkeydown = e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { renameBox.hidden = true; } e.stopPropagation(); };
 }
 

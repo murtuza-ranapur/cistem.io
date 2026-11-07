@@ -275,7 +275,7 @@ function placeEdit(x: number, y: number, w: number, value: string, mono = false)
   const s = toScreen(x, y);
   editBox.style.left = s.x + 'px'; editBox.style.top = s.y + 'px'; editBox.style.width = Math.max(150, w * state.view.k) + 'px';
   editBox.classList.toggle('mono', mono);
-  editBox.value = value; editBox.hidden = false; editBox.focus(); editBox.select();
+  editBox.value = value; editBox.hidden = false; editBox.focus({ preventScroll: true }); editBox.select();
 }
 export function startRename(name: string) {
   const c = cls().classes.find(x => x.name === name); if (!c) return;
@@ -307,6 +307,8 @@ function closeEdit(commit: boolean) {
     list.splice(e.i, 1);
     (isMethod(m) ? c.methods : c.fields).splice(isMethod(m) === (e.kind === 'm') ? e.i : (isMethod(m) ? c.methods.length : c.fields.length), 0, m);
   });
+  // if focus has just moved into the panel, don't rebuild the panel under it
+  const a = document.activeElement; if (a && document.getElementById('sheetBody')!.contains(a)) { renderCanvas(); return; }
   renderAll();
 }
 editBox.addEventListener('keydown', ev => {
@@ -554,6 +556,9 @@ function onCodeChange(text: string) {
   const prevPos = cls().pos, prevIds = cls().relations;
   const next: ClassDoc = { ...p.doc, pos: {} };
   for (const c of next.classes) if (prevPos[c.name]) next.pos[c.name] = prevPos[c.name];
+  // a class renamed in the text is the same box: keep its place (same position in the list, old name gone)
+  const prevClasses = cls().classes, nextNames = new Set(next.classes.map(c => c.name));
+  next.classes.forEach((c, i) => { const old = prevClasses[i]; if (!next.pos[c.name] && old && !nextNames.has(old.name) && prevPos[old.name]) next.pos[c.name] = prevPos[old.name]; });
   next.relations.forEach((r, i) => { const o = prevIds[i]; if (o && o.from === r.from && o.to === r.to) r.id = o.id; });
   const wasEmpty = !cls().classes.length;
   state.cls = next;

@@ -1,5 +1,5 @@
-import { totalRps, typeDef, isSource, detailOf as typeDetail, hasSchemaDetail, CONTAINER_COLORS, KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
-import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select } from './state';
+import { totalRps, qty, typeDef, isSource, detailOf as typeDetail, hasSchemaDetail, CONTAINER_COLORS, KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
+import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select, fmtMs } from './state';
 import * as history from './history';
 import { toDbml, parseDbml, quickColumn, PG_TYPE_LIST } from './dbml';
 import { parseJsonFields, jsonFieldsToText, parseAvro, avroToText, listAt, J_TYPES, A_TYPES, COMMON_HEADERS, HEADER_VALUES, type JField, type AField, type JType, type ARecord } from './fields';
@@ -27,8 +27,9 @@ const icon = (kind: string) => `<svg style="stroke:var(--c-${kind});fill:none;st
 const cap = (s: string) => s ? s[0].toUpperCase() + s.slice(1) : s;
 const inp = (path: string, label: string, val: unknown, type = 'text', extra = '') =>
   `<label>${cap(label)}<input data-path="${path}" type="${type}" ${type === 'number' ? 'step="any"' : ''} value="${esc(val)}" ${extra}></label>`;
-const selIn = (path: string, label: string, val: string, opts: string[], cls = '') =>
-  `<label>${cap(label)}<select data-path="${path}" class="${cls}">${opts.map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
+/** A select whose options carry their value explicitly, so relabelling an option never changes what it stores. */
+const selIn = (path: string, label: string, val: string, opts: string[], cls = '', labelOf: (o: string) => string = o => o) =>
+  `<label>${cap(label)}<select data-path="${path}" class="${cls}">${opts.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(labelOf(o))}</option>`).join('')}</select></label>`;
 const chk = (path: string, label: string, val: boolean) => `<label class="check"><input data-path="${path}" type="checkbox" ${val ? 'checked' : ''}>${label}</label>`;
 const addBtn = (action: string, label: string) => `<button class="small" data-action="${action}">+ ${label}</button>`;
 const xBtn = (action: string) => `<button class="x" data-action="${action}" aria-label="Remove">×</button>`;
@@ -249,18 +250,25 @@ function capacityTab(n: Node): string {
   }
   h += '</div>';
   if (isSource(n)) h += `<p class="note">Peak requests per second these clients send. The diagram is tested at the sum of all clients — ${fmt(totalRps(state.doc))} rps — shown in the top bar.</p>`;
-  else {
+  else h += statsHtml(n);
+  return h + '</div>';
+}
+/** Load / capacity / utilisation / latency tiles for a component; redrawn in place while its fields are edited. */
+function statsHtml(n: Node): string {
+  const r = state.results.nodes[n.id]; if (!r) return '';
+  let h = '';
+  {
     const pct = isFinite(r.util) ? Math.round(r.util * 100) : 100;
     h += `<div class="stats">
       <div class="stat-tile"><div class="l">Load</div><div class="v">${fmt(r.load)} <small>rps</small></div></div>
       <div class="stat-tile"><div class="l">Capacity</div><div class="v">${fmt(r.cap)} <small>rps</small></div></div>
       <div class="stat-tile ${r.status}"><div class="l">Utilisation</div><div class="v">${isFinite(r.util) ? pct + '%' : '∞'}</div></div>
-      <div class="stat-tile"><div class="l">Effective latency</div><div class="v">${r.lat.toFixed(1)} <small>ms</small></div></div>
+      <div class="stat-tile"><div class="l">Effective latency</div><div class="v">${r.lat >= 1e4 ? fmtMs(r.lat) : r.lat.toFixed(1) + ' <small>ms</small>'}</div></div>
       <div class="meter ${r.status}"><i style="width:${Math.min(100, pct)}%"></i></div>
     </div>`;
-    h += `<p class="note">Headroom ${isFinite(r.cap) ? fmt(Math.max(0, r.cap - r.load)) + ' rps' : 'unlimited'}. Latency inflates as utilisation climbs (M/M/1 approximation).</p>`;
+    h += `<p class="note headroom">Headroom ${isFinite(r.cap) ? fmt(Math.max(0, r.cap - r.load)) + ' rps' : 'unlimited'}. Latency inflates as utilisation climbs (M/M/1 approximation).</p>`;
   }
-  return h + '</div>';
+  return h;
 }
 
 function schemaTab(n: Node): string {
@@ -362,7 +370,7 @@ function containerSheet(c: Container): string {
   const links = doc.links.filter(l => l.from === c.id || l.to === c.id);
   let h = `<div class="head"><span class="k" style="color:hsl(${CONTAINER_KINDS[c.kind].hue} 45% 45%)">${icon('container').replace('var(--c-container)', `hsl(${CONTAINER_KINDS[c.kind].hue} 45% 45%)`)}${CONTAINER_KINDS[c.kind].label}</span><strong>${esc(c.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-container" title="Delete (members stay)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div>`;
   h += `<div class="tab"><div class="props">${inp('name', 'name', c.name).replace('<label>', '<label class="wide">')}`;
-  h += selIn('kind', 'kind', c.kind, Object.keys(CONTAINER_KINDS)).replace(/<option ([^>]*)>([a-z]+)<\/option>/g, (_m, attrs, k) => `<option ${attrs}>${CONTAINER_KINDS[k as ContainerKind].label}</option>`);
+  h += selIn('kind', 'kind', c.kind, Object.keys(CONTAINER_KINDS), '', k => CONTAINER_KINDS[k as ContainerKind].label);
   h += `<label>Inside<select data-path="parent" data-nullable="1"><option value="" ${!c.parent ? 'selected' : ''}>Top level</option>${containerOptions(c.parent ?? null, c.id)}</select></label>`;
   h += inp('provider', 'provider', c.provider ?? '', 'text', 'placeholder="aws · ibm · gcp · on-prem"');
   h += inp('owner', 'owner', c.owner ?? '', 'text', 'placeholder="team or company"');
@@ -388,7 +396,8 @@ function containerSheet(c: Container): string {
 }
 
 function nodeSheet(n: Node): string {
-  let h = `<div class="head"><span class="k" style="color:var(--c-${n.kind})">${icon(n.kind)}${KINDS[n.kind].label}</span><strong>${esc(n.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div>`;
+  const kind = /^[\w-]+$/.test(n.kind) ? n.kind : 'service';
+  let h = `<div class="head"><span class="k" style="color:var(--c-${kind})">${icon(kind)}${esc(typeDef(kind).label)}</span><strong>${esc(n.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div>`;
   if (hasSchema(n)) {
     h += `<div class="tabs"><button data-tab="capacity" class="${tab === 'capacity' ? 'on' : ''}">Capacity</button><button data-tab="schema" class="${tab === 'schema' ? 'on' : ''}">${schemaLabel(n)}</button></div>`;
     h += tab === 'schema' ? schemaTab(n) : capacityTab(n);
@@ -408,6 +417,31 @@ function edgeSheet(e: Edge): string {
   return h;
 }
 
+/**
+ * Foreign keys point at "table.column" (or "node:table.column" from another database). Renaming a table or
+ * column moves every reference to it — in this database and in any other that points here.
+ */
+function renamedRefTarget(n: Node, path: string): { table: string; col?: string } | null {
+  let m = /^tables\.(\d+)\.name$/.exec(path);
+  if (m) { const t = n.tables?.[+m[1]]; return t ? { table: t.name } : null; }
+  m = /^tables\.(\d+)\.columns\.(\d+)\.name$/.exec(path);
+  if (m) { const t = n.tables?.[+m[1]], c = t?.columns[+m[2]]; return t && c ? { table: t.name, col: c.name } : null; }
+  return null;
+}
+function retargetRefs(n: Node, from: { table: string; col?: string }, to: { table: string; col?: string }) {
+  if (from.table === to.table && from.col === to.col) return;
+  const move = (ref: string) => {
+    const [t, c] = ref.split('.');
+    if (t !== from.table || (from.col !== undefined && c !== from.col)) return ref;
+    return `${to.table}.${from.col !== undefined ? to.col : c}`;
+  };
+  for (const d of state.doc.nodes) for (const tb of d.tables ?? []) for (const c of tb.columns) {
+    if (!c.references) continue;
+    const m = /^([^:]+):(.+)$/.exec(c.references);
+    if (m) { if (m[1] === n.id) c.references = `${m[1]}:${move(m[2])}`; }
+    else if (d.id === n.id) c.references = move(c.references);
+  }
+}
 function setPath(obj: unknown, path: string, val: unknown) {
   const parts = path.split('.');
   let o = obj as any;
@@ -492,6 +526,15 @@ export function drawSheet() {
 let editing: HTMLElement | null = null;
 body.addEventListener('focusin', ev => { const f = ev.target as HTMLElement; if (((f as any).dataset?.path || (f as any).dataset?.fk) && f !== editing) { editing = f; history.snapshot(state.doc); } });
 body.addEventListener('focusout', () => { editing = null; });
+// a number field shows what was stored: negatives and junk become 0
+// names can't be blank: an emptied name field goes back to the name it had
+let nameBefore = '';
+body.addEventListener('focusin', ev => { const f = ev.target as HTMLInputElement; if (f.dataset?.path === 'name') nameBefore = f.value; });
+body.addEventListener('change', ev => {
+  const f = ev.target as HTMLInputElement;
+  if (f.dataset.path === 'name' && !f.value.trim()) { const t = current(); if (t && 'name' in t) { (t as { name: string }).name = nameBefore; f.value = nameBefore; renderAll(); } }
+});
+body.addEventListener('change', ev => { const f = ev.target as HTMLInputElement; if (f.type === 'number' && f.dataset.path && String(qty(f.value)) !== f.value) f.value = String(qty(f.value)); });
 
 body.addEventListener('keydown', ev => {
   const el = ev.target as HTMLInputElement;
@@ -536,14 +579,25 @@ body.addEventListener('input', ev => {
   }
   if (!f.dataset.path) return;
   const t = current(); if (!t) return;
-  const v = f.type === 'checkbox' ? f.checked : f.type === 'number' ? (f.value === '' ? 0 : +f.value) : f.dataset.int ? (f.value === '' ? null : +f.value) : f.dataset.nullable ? (f.value === '' ? null : f.value) : f.value;
+  // quantities are never negative (the engine reads them as 0 anyway); the field is corrected on change
+  const v = f.type === 'checkbox' ? f.checked : f.type === 'number' ? qty(f.value) : f.dataset.int ? (f.value === '' ? null : +f.value) : f.dataset.nullable ? (f.value === '' ? null : f.value) : f.value;
   if (f.dataset.path.startsWith('links.')) {
     setPath(state.doc, f.dataset.path, v);
     if (f.dataset.path.endsWith('.type') && typeof v === 'string' && v in LINK_TYPES) { const i = +f.dataset.path.split('.')[1]; state.doc.links[i].latencyMs = LINK_TYPES[v]; renderAll(); return; }
-  } else setPath(t, f.dataset.path, v);
+  } else {
+    const old = renamedRefTarget(t as Node, f.dataset.path);
+    setPath(t, f.dataset.path, v);
+    if (old) retargetRefs(t as Node, old, renamedRefTarget(t as Node, f.dataset.path)!);
+  }
   if (f.dataset.path === 'container' || f.dataset.path === 'parent' || f.dataset.path === 'kind') { renderAll(); return; }
   if (f.tagName === 'TEXTAREA') validateJson(f as unknown as HTMLTextAreaElement);
   renderCanvas();
+  // keep the stat tiles in step with what's being typed
+  const stats = body.querySelector('.stats');
+  if (stats && state.sel?.type === 'node') {
+    const n = state.doc.nodes.find(x => x.id === state.sel!.id);
+    if (n) { const tmp = document.createElement('div'); tmp.innerHTML = statsHtml(n); body.querySelector('.note.headroom')?.remove(); stats.replaceWith(...tmp.childNodes); }
+  }
   if (f.dataset.path === 'name') { const s = body.querySelector('.head strong'); if (s) s.textContent = (t as Node).name; }
 });
 

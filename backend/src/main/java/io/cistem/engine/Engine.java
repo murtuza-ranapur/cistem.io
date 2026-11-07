@@ -51,6 +51,9 @@ public final class Engine {
         return pa.get(pa.size() - 1).equals(pb.get(pb.size() - 1)) ? SIBLINGS_MS : DIFFERENT_ROOTS_MS;
     }
 
+    /** Loads are capped so absurd inputs (1e300 × 1e300) stay finite numbers instead of Infinity/NaN; mirrors engine.ts. */
+    static final double MAX_LOAD = 1e18;
+
     private Engine() {}
 
     /** Non-negative finite number, or 0. Numeric strings count; anything else reads as 0 (mirrors num in engine.ts). */
@@ -122,7 +125,7 @@ public final class Engine {
             Map<String, Map<String, Double>> next = new HashMap<>(); Map<String, Double> ncum = new HashMap<>();
             for (var en : byId.entrySet()) {
                 Map<String, Double> m = new HashMap<>();
-                if (Types.isSource(en.getValue())) m.put("sync", en.getValue().has("rps") ? num(en.getValue(), "rps") : legacyTarget);
+                if (Types.isSource(en.getValue())) m.put("sync", Math.min(MAX_LOAD, en.getValue().has("rps") ? num(en.getValue(), "rps") : legacyTarget));
                 next.put(en.getKey(), m); ncum.put(en.getKey(), 0.0);
             }
             for (JsonNode e : edges) {
@@ -134,7 +137,7 @@ public final class Engine {
                 for (var o : bd.get(from).entrySet()) {
                     if (toQueue && o.getKey().equals(to)) continue;
                     String tag = fromQueue ? from : o.getKey();
-                    next.get(to).merge(tag, o.getValue() * factor, Double::sum);
+                    next.get(to).merge(tag, Math.min(MAX_LOAD, o.getValue() * factor), (x, y) -> Math.min(MAX_LOAD, x + y));
                 }
                 ncum.merge(to, cum.get(from) + effLatency(s, total.apply(from)) + crossingLatency(model, containerOf(s), containerOf(t)), Math::max);
             }
@@ -155,7 +158,7 @@ public final class Engine {
             Status status = util >= 1 ? Status.crit : util >= 0.7 ? Status.warn : Status.ok;
             double lat = effLatency(n, L);
             results.put(id, new NodeResult(L, cap, util, status, lat, cum.get(id) + lat));
-            if (!Types.isSource(n) && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;
+            if (!Types.isSource(n) && L > 0 && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;   // only what traffic reaches
             if (status == Status.crit && worst != Status.crit) { worst = Status.crit; worstNode = id; }
             else if (status == Status.warn && worst == Status.ok) { worst = Status.warn; worstNode = id; }
         }

@@ -184,3 +184,34 @@ stick.
 shapes, multi-select and group moves, marquee selection, Shift-constrained drags, right-click menus,
 Ctrl-scroll zoom, keyboard everything, exporting images, huge diagrams, pasting arbitrary text, and is
 deliberately trying to break it: rapid undo/redo, edits during drags, odd input, many tabs, two windows.
+
+---
+
+## Exploratory testing — 7 Nov 2026
+
+Three testers, one per persona, drove the production build in a real browser (desktop, Pixel 7, iPhone 13,
+light and dark, signed in and out). Every finding was reproduced twice; each fix has a regression test
+(`regression:` in test/e2e.js, hostile-file cases in test/seq.test.ts and test/cls.test.ts, parity fixtures
+`parity-absurd.json` / `parity-unreached.json`, REST validation in DiagramApiTest).
+
+**Fixed**
+- Security: unescaped enum-like fields (diagram kind, node kind, sequence message style / block kind, class kind,
+  relation type and id) could run script from a crafted file or API document. Documents of every kind are now
+  sanitised on load, those fields are escaped, and the server rejects unknown kinds and future versions.
+- Data loss: an unreadable cloud diagram opened as a blank one and the next edit overwrote it — it now opens
+  read-only. Changing an environment's kind wedged the editor and stopped saving. Repeated node ids across
+  tabs/imports wedged the canvas. Labels with `#` or `//` were cut by the sequence text parser. Two windows
+  dropped each other's tabs.
+- Broken: share links and `?d=` links never opened their diagram; sequence/class JSON couldn't be imported;
+  ⌘A-then-drag threw; Delete/undo during a drag crashed; renaming a table orphaned its foreign keys; opening a
+  saved tab after reload wrote a version (key order, unstable meta); focusing a field cleared redo and title
+  renames weren't undoable; panel stat tiles went stale while typing; double-click on a lifeline didn't rename;
+  the drawing jumped sideways when an inline editor took focus; signed-out ≡ went straight to GitHub.
+- Wrong numbers: negative or textual quantities, unreachable components counting towards end-to-end latency,
+  overflowing loads (NaN), 1e12 shown as "1000000.0M"; sequence top bar always green.
+- Phones: page wider than the screen, three-row header, tiny canvas.
+- Speed: edge label placement measured every path on every redraw (64% of time at 300 components); typing the
+  title redrew the canvas per key.
+
+**Known gaps (features, not defects)** — copy/paste of shapes, right-click menu, PNG/SVG export,
+Shift-constrained drag, plain-drag marquee.

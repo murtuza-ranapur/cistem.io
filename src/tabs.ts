@@ -103,7 +103,13 @@ async function load(t: Tab, refresh = true) {
     const s = await api.get(t.cloudId);
     if (tabs.active !== t.key) return;
     const mine = local && s.version === t.version ? local : null;
-    adoptStored(s);
+    try { adoptStored(s); }
+    catch (e) {
+      // a document this app can't read (newer version, broken file): never autosave over it
+      cloud.readonly = true; history.reset();
+      setStatus('readonly', `Can't open this diagram here (${(e as Error).message}) — it hasn't been changed`);
+      return;
+    }
     if (t.kind !== state.kind) { t.kind = state.kind; changed(); }
     // same version as the copy we kept, but edited since: keep the edits and let autosave send them
     if (mine && mine.kind === state.kind) { const theirs = cloud.lastSerialized; adoptLoaded(mine); cloud.lastSerialized = theirs; renderAll(); opened(); }
@@ -182,8 +188,34 @@ export function moveTab(key: string, to: number) {
 }
 
 /** Restore this device's tabs (instantly, from local copies). `fallback` fills a first visit. */
+/**
+ * Another window of the app shares this storage: tabs it opens appear here too (never dropped), and when it
+ * changes the diagram open here, this window shows that version rather than overwriting it on the next edit.
+ */
+function watchOtherWindows() {
+  window.addEventListener('storage', ev => {
+    if (ev.key === LIST_KEY && ev.newValue) {
+      try {
+        const theirs = JSON.parse(ev.newValue) as { tabs: Tab[] };
+        const add = (theirs.tabs ?? []).filter(t => t && t.key && !tabs.list.some(x => x.key === t.key));
+        // titles/links of tabs the other window is working on follow along (ours stays ours)
+        let touched = false;
+        for (const t of theirs.tabs ?? []) { const mine = tabs.list.find(x => x.key === t?.key); if (mine && mine.key !== tabs.active && (mine.title !== t.title || mine.cloudId !== t.cloudId)) { Object.assign(mine, { title: t.title, cloudId: t.cloudId, version: t.version, kind: t.kind }); touched = true; } }
+        if (add.length) tabs.list.push(...add);
+        if (add.length || touched) changed();
+      } catch { /* ignore */ }
+      return;
+    }
+    if (ev.key && ev.key === slot(tabs.active) && ev.newValue) {
+      const l = readLocal(ev.key); if (!l) return;
+      adoptLoaded(l); renderAll(); opened();
+      import('./canvas').then(m => m.hint('Updated from another window', 1800));
+    }
+  });
+}
 export async function bootTabs(fallback: () => unknown) {
   onCloudChange(followCloud);
+  watchOtherWindows();
   try {
     const saved = JSON.parse(localStorage.getItem(LIST_KEY) || 'null');
     if (saved && Array.isArray(saved.tabs)) { tabs.list = saved.tabs.filter((t: Tab) => t && t.key); tabs.active = saved.active; }

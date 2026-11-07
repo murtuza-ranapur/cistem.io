@@ -183,9 +183,13 @@ export function drawSeq() {
   // top bar: end-to-end time instead of the capacity verdict
   const wrap = document.getElementById('verdictWrap') as HTMLElement;
   if (sys && tm.linked) {
-    wrap.className = 'verdict ok seqtime';
+    // colour by the worst linked component, so an overloaded system shows here too
+    const rank = { ok: 0, warn: 1, crit: 2 } as const;
+    let worst: 'ok' | 'warn' | 'crit' = 'ok', worstName = '';
+    for (const p of d.participants) { const n = nodeOf(p, sys); const r = n && sys.res.nodes[n.id]; if (r && rank[r.status] > rank[worst]) { worst = r.status; worstName = n!.name; } }
+    wrap.className = `verdict ${worst} seqtime`;
     (document.getElementById('verdict') as HTMLElement).textContent = `End to end ~${fmtMs(tm.total)}`;
-    (document.getElementById('lat') as HTMLElement).textContent = `from ${sys.title}`;
+    (document.getElementById('lat') as HTMLElement).textContent = worst === 'ok' ? `from ${sys.title}` : `${worstName} ${worst === 'crit' ? 'overloaded' : 'running hot'}`;
   } else {
     wrap.className = 'verdict seqtime muted';
     (document.getElementById('verdict') as HTMLElement).textContent = d.uses ? 'Link lifelines to components for timings' : 'Sequence';
@@ -195,6 +199,23 @@ export function drawSeq() {
 }
 on('canvas', () => { if (isSeq()) drawSeq(); else if (!svg.hasAttribute('hidden')) { svg.setAttribute('hidden', ''); emptyEl.hidden = true; } });
 
+/**
+ * Clicks redraw the diagram, which replaces the elements under the pointer, so the browser doesn't
+ * always pair two clicks into a dblclick. Pair them here: a second tap on the same thing within 400 ms.
+ */
+let lastTap = { key: '', at: 0 };
+function secondTap(key: string) {
+  const now = performance.now(), hit = lastTap.key === key && now - lastTap.at < 400;
+  lastTap = hit ? { key: '', at: 0 } : { key, at: now };
+  return hit;
+}
+/** Pan sideways just enough that world x (a lifeline) is in view, clear of the edges. */
+function revealX(x: number | undefined) {
+  if (x === undefined) return;
+  const w = svg.getBoundingClientRect().width, sx = x * state.view.k + state.view.x, pad = SEQ.headW / 2 * state.view.k + 24;
+  const dx = sx > w - pad ? w - pad - sx : sx < pad ? pad - sx : 0;
+  if (dx) { state.view.x += dx; apply(); }
+}
 /** y of the gap before row `i` (rows.length = after the last). */
 function insertY(i: number) {
   if (!geo.rows.length) return SEQ.firstRow + 6;
@@ -255,7 +276,7 @@ svg.addEventListener('pointermove', ev => {
   if (drag.t === 'msg') {
     if (!drag.moved && Math.hypot(p.x - drag.x, p.y - drag.y) < 6 / state.view.k) return;
     drag.moved = true; drag.x = p.x; drag.to = nearestLife(p.x); drag.at = indexAt(drag.y);
-    hint(drag.to ? (drag.to === drag.from ? 'Release to add a message to itself' : `Release to add a message ${esc(nameOf(drag.from))} → ${esc(nameOf(drag.to))}`) : 'Release on a lifeline');
+    hint(drag.to ? (drag.to === drag.from ? 'Release to add a message to itself' : `Release to add a message ${nameOf(drag.from)} → ${nameOf(drag.to)}`) : 'Release on a lifeline');
     drawSeq(); return;
   }
   if (drag.t === 'move') {
@@ -278,7 +299,7 @@ svg.addEventListener('pointerup', ev => {
   if (d.t === 'pan') { if (!d.moved) { select(null); renderAll(); } return; }
   if (d.t === 'msg') {
     if (!d.moved) { select({ type: 'part', id: d.from }); renderAll(); return; }
-    if (!d.to) { drawSeq(); return; }
+    if (!d.to || !seq().participants.some(p => p.id === d.from) || !seq().participants.some(p => p.id === d.to)) { drawSeq(); return; }
     const r: Row = { t: 'msg', id: rowId(), from: d.from, to: d.to, label: '', style: d.from === d.to ? 'sync' : tool };
     mutate(() => { seq().rows.splice(d.at, 0, r); });
     select({ type: 'row', id: r.id }); renderAll();
@@ -286,11 +307,11 @@ svg.addEventListener('pointerup', ev => {
     return;
   }
   if (d.t === 'move') {
-    if (!d.moved) { drawSeq(); return; }
+    if (!d.moved) { if (secondTap('row:' + d.rowId)) { startEdit(d.rowId); return; } drawSeq(); return; }
     moveRows(d.rowId, d.span, d.at); return;
   }
   if (d.t === 'head') {
-    if (!d.moved) { select({ type: 'part', id: d.pid }); renderAll(); return; }
+    if (!d.moved) { if (secondTap('part:' + d.pid)) { startEditPart(d.pid); return; } select({ type: 'part', id: d.pid }); renderAll(); return; }
     const ps = seq().participants, i = ps.findIndex(p => p.id === d.pid);
     let to = d.at; if (to > i) to--;
     if (to === i) { drawSeq(); return; }
@@ -338,7 +359,7 @@ let editing: { id: string; part: boolean } | null = null;
 function placeEdit(x: number, y: number, w: number, value: string) {
   const s = toScreen(x, y);
   editBox.style.left = s.x + 'px'; editBox.style.top = s.y + 'px'; editBox.style.width = Math.max(140, w * state.view.k) + 'px';
-  editBox.value = value; editBox.hidden = false; editBox.focus(); editBox.select();
+  editBox.value = value; editBox.hidden = false; editBox.focus({ preventScroll: true }); editBox.select();
 }
 export function startEdit(id: string) {
   const i = seq().rows.findIndex(r => r.id === id), r = seq().rows[i]; if (!r) return;
@@ -380,6 +401,17 @@ function closeEdit(commit: boolean) {
     if (r && (r.t === 'msg' ? r.label : r.t === 'note' ? r.text : r.t === 'close' ? '' : r.guard) !== v) {
       mutate(() => { if (r.t === 'msg') r.label = v; else if (r.t === 'note') r.text = v; else if (r.t !== 'close') r.guard = v; });
     }
+  }
+  settle();
+}
+/** After an inline edit: redraw, but if focus has just moved into the panel, don't rebuild the panel under it. */
+function settle() {
+  const panel = document.getElementById('sheetBody')!, a = document.activeElement as HTMLInputElement | null;
+  if (a && panel.contains(a)) {
+    renderCanvas();
+    const r = state.sel?.type === 'row' ? seq().rows.find(x => x.id === state.sel!.id) : undefined;
+    if (r?.t === 'msg' && a.dataset.sqf === 'label' && !a.value) a.value = r.label;
+    return;
   }
   renderAll();
 }
@@ -437,7 +469,7 @@ export function addParticipant(name?: string) {
   const at = state.sel?.type === 'part' ? ps.findIndex(x => x.id === state.sel!.id) + 1 : ps.length;
   mutate(() => { ps.splice(at || ps.length, 0, p); });
   select({ type: 'part', id: p.id }); renderAll();
-  requestAnimationFrame(() => { geo = layoutSeq(seq()); startEditPart(p.id); });
+  requestAnimationFrame(() => { geo = layoutSeq(seq()); revealX(geo.colX[p.id]); startEditPart(p.id); });
   return p;
 }
 function selectedRange(): [number, number] | null {

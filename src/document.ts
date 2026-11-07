@@ -10,8 +10,8 @@
  * JSON Schema: schema/cistem.schema.json
  */
 import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
-import type { SeqDoc } from './seq';
-import type { ClassDoc } from './cls';
+import { sanitizeSeq, type SeqDoc } from './seq';
+import { sanitizeCls, type ClassDoc } from './cls';
 
 export const FORMAT_VERSION = 4;
 export type DiagramKind = 'system' | 'sequence' | 'class';
@@ -94,26 +94,71 @@ export function readAny(input: unknown): Loaded {
     if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
     const m = d.model ?? {};
     if (!Array.isArray(m.classes) || !Array.isArray(m.relations)) throw new Error('Malformed class diagram');
-    const now = new Date().toISOString();
-    return { kind: 'class', cls: { classes: m.classes, relations: m.relations, pos: { ...(d.layout?.positions ?? {}) } }, meta: d.meta ?? { title: 'Untitled classes', created: now, updated: now } };
+    return { kind: 'class', cls: sanitizeCls(m, d.layout?.positions), meta: cleanMeta(d.meta, 'Untitled classes') };
   }
   if (d && typeof d === 'object' && d.kind === 'sequence') {
     if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
     const m = d.model ?? {};
     if (!Array.isArray(m.participants) || !Array.isArray(m.rows)) throw new Error('Malformed sequence');
-    const now = new Date().toISOString();
-    return { kind: 'sequence', seq: { participants: m.participants, rows: m.rows, ...(m.uses ? { uses: m.uses } : {}) }, meta: d.meta ?? { title: 'Untitled sequence', created: now, updated: now } };
+    return { kind: 'sequence', seq: sanitizeSeq(m), meta: cleanMeta(d.meta, 'Untitled sequence') };
   }
   return { kind: 'system', ...fromFile(input) };
+}
+/** meta from an untrusted file: a string title, ISO-ish timestamps, string tags. */
+export function cleanMeta(raw: unknown, fallback: string): DiagramFile['meta'] {
+  const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const s = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+  return {
+    title: s(m.title).trim() || fallback,
+    // stable fallbacks: reading the same file twice must give the same meta (autosave compares them)
+    created: s(m.created) || s(m.updated) || '', updated: s(m.updated) || s(m.created) || '',
+    ...(Array.isArray(m.tags) ? { tags: m.tags.filter(t => typeof t === 'string') } : {}),
+  };
 }
 export function kindOfFile(input: unknown): DiagramKind { const k = (input as any)?.kind; return k === 'sequence' || k === 'class' ? k : 'system'; }
 
 /** Accepts any version this app has ever written and returns an editor Doc. */
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {
   const f = migrate(input);
-  const nodes = f.model.nodes.map(n => ({ ...n, ...(f.layout.positions[n.id] ?? { x: 0, y: 0 }) })) as Node[];
-  const doc = adopt({ nodes, edges: f.model.edges, containers: f.model.containers, links: f.model.links, frames: f.layout.frames, detail: f.layout.detail ?? {} });
-  return { doc, meta: f.meta };
+  const c = cleanSystem(f);
+  const doc = adopt({ nodes: c.nodes, edges: c.edges, containers: c.containers, links: c.links, frames: c.frames, detail: f.layout.detail ?? {} });
+  return { doc, meta: cleanMeta(f.meta, 'Untitled system') };
+}
+
+/**
+ * A system model from an untrusted file, made safe to draw and edit: objects where objects belong, plain
+ * unique ids, kinds that are identifiers, string names, numeric positions, arrays where arrays belong, and
+ * edges/links between things that exist. Unknown fields are kept.
+ */
+function cleanSystem(f: DiagramFile) {
+  const obj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+  const str = (v: unknown) => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+  const id = (v: unknown) => str(v).replace(/[^\w.:-]/g, '');
+  const numOr = (v: unknown, d: number) => { const x = Number(v); return v !== null && v !== '' && Number.isFinite(x) ? x : d; };
+  const unique = (seen: Set<string>, v: unknown, prefix: string) => { let i = id(v); if (!i || seen.has(i)) { let k = seen.size + 1; do i = `${prefix}${k++}`; while (seen.has(i)); } seen.add(i); return i; };
+  const pos = obj(f.layout?.positions) ? f.layout.positions : {};
+  const nodeIds = new Set<string>(), renamed = new Map<string, string>();
+  const nodes = (Array.isArray(f.model?.nodes) ? f.model.nodes : []).filter(obj).map((n: any) => {
+    const nid = unique(nodeIds, n.id, 'n'); if (str(n.id) && str(n.id) !== nid && !renamed.has(str(n.id))) renamed.set(str(n.id), nid);
+    const p: Record<string, unknown> = obj(pos[str(n.id)]) ? pos[str(n.id)] : {};
+    const out: any = { ...n, id: nid, kind: /^[\w-]+$/.test(str(n.kind)) ? str(n.kind) : 'service', name: str(n.name), x: numOr(p.x, 0), y: numOr(p.y, 0) };
+    if ('tables' in n) out.tables = (Array.isArray(n.tables) ? n.tables : []).filter(obj).map((t: any) => ({ ...t, name: str(t.name), columns: (Array.isArray(t.columns) ? t.columns : []).filter(obj).map((c: any) => ({ ...c, name: str(c.name), type: str(c.type) })) }));
+    if ('endpoints' in n) out.endpoints = (Array.isArray(n.endpoints) ? n.endpoints : []).filter(obj).map((e: any) => ({ ...e, method: str(e.method) || 'GET', path: str(e.path) }));
+    if ('container' in n) out.container = n.container === null ? null : id(n.container) || null;
+    return out;
+  }) as Node[];
+  const edgeIds = new Set<string>();
+  const edges = (Array.isArray(f.model?.edges) ? f.model.edges : []).filter(obj)
+    .map((e: any) => ({ ...e, from: renamed.get(str(e.from)) ?? id(e.from), to: renamed.get(str(e.to)) ?? id(e.to) }))
+    .filter((e: any) => nodeIds.has(e.from) && nodeIds.has(e.to))
+    .map((e: any) => ({ ...e, id: unique(edgeIds, e.id, 'e') }));
+  const cIds = new Set<string>();
+  const containers = (Array.isArray(f.model?.containers) ? f.model.containers : []).filter(obj).map((c: any) => ({ ...c, id: unique(cIds, c.id, 'c'), name: str(c.name), kind: /^[\w-]+$/.test(str(c.kind)) ? str(c.kind) : 'cloud', parent: c.parent ? id(c.parent) : null }));
+  const lIds = new Set<string>();
+  const links = (Array.isArray(f.model?.links) ? f.model.links : []).filter(obj).map((l: any) => ({ ...l, id: unique(lIds, l.id, 'l'), from: id(l.from), to: id(l.to), type: str(l.type) })).filter((l: any) => cIds.has(l.from) && cIds.has(l.to));
+  const frames: Record<string, any> = {};
+  if (obj(f.layout?.frames)) for (const [k, v] of Object.entries(f.layout.frames)) if (obj(v) && cIds.has(k)) frames[k] = { ...v, x: numOr(v.x, 0), y: numOr(v.y, 0), w: numOr(v.w, 300), h: numOr(v.h, 200) };
+  return { nodes, edges, containers, links, frames };
 }
 
 type Migration = (d: any) => any;

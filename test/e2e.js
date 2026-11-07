@@ -440,9 +440,9 @@ class T {
 
   await test('renaming shows on the tab; tabs and their order survive a reload', async t => {
     await t.page.fill('#title', 'Alpha'); await t.page.waitForTimeout(100);
-    await t.page.keyboard.press('Escape');
+    await t.page.keyboard.press('Enter');
     await t.page.click('#newTabBtn'); await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(250);
-    await t.page.fill('#title', 'Beta'); await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(100);
+    await t.page.fill('#title', 'Beta'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(100);
     const titles = () => t.page.$$eval('.dtab .tt', els => els.map(e => e.textContent));
     const before = await titles();
     assert(before.indexOf('Alpha') >= 0 && before.indexOf('Beta') === before.indexOf('Alpha') + 1, 'new tab opens right after the current one: ' + before);
@@ -677,6 +677,139 @@ abstract class Entity { protected long version; }`;
     await t.page.reload(); await t.page.waitForTimeout(800);
     eq(await t.page.getAttribute('#app', 'data-kind'), 'class');
     eq(await t.page.$$eval('.cl-box', e => e.length), 2);
+  });
+
+  // ---- regressions found by persona testing ----
+  await test('regression: sequence and class exports import back as new tabs', async t => {
+    for (const kind of ['sequence', 'class']) {
+      await t.page.click('#newTabBtn'); await t.page.click(`[data-new="${kind}"]`); await t.page.waitForTimeout(300);
+      await t.page.keyboard.press(kind === 'sequence' ? 'p' : '1'); await t.page.waitForTimeout(200); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+      const tabs = await t.page.$$eval('.dtab', e => e.length);
+      await t.page.click('#ioBtn'); await t.page.click('#loadJson'); await t.page.waitForTimeout(400);
+      eq(await t.page.$$eval('.dtab', e => e.length), tabs + 1, kind + ' import opened a tab');
+      eq(await t.page.getAttribute('#app', 'data-kind'), kind);
+    }
+  });
+
+  await test('regression: changing an environment kind keeps the editor working', async t => {
+    await t.page.keyboard.press('e'); await t.page.waitForTimeout(300);
+    await t.page.selectOption('#sheetBody [data-path="kind"]', 'vpc'); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.containers.slice(-1)[0].kind, 'vpc', 'stores the key');
+    const n0 = (await t.doc()).model.nodes.length;
+    await t.page.click('[data-add="service"]'); await t.page.waitForTimeout(250);
+    eq((await t.doc()).model.nodes.length, n0 + 1, 'still editable');
+  });
+
+  await test('regression: title renames undo; focusing a field keeps redo', async t => {
+    await t.page.fill('#title', 'Renamed'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(150);
+    eq(await t.page.inputValue('#title'), 'Checkout example', 'one undo restores the title');
+    await t.page.click('[data-add="service"]'); await t.page.waitForTimeout(200);
+    const n = (await t.doc()).model.nodes.length;
+    await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(150);
+    await t.page.click('#title'); await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(100);
+    await t.page.keyboard.press('Control+Shift+z'); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.nodes.length, n, 'redo still works after just focusing the title');
+    await t.page.click('#title'); await t.page.keyboard.press('Enter'); await t.page.keyboard.press('o'); await t.page.waitForTimeout(100);
+    eq(await t.page.inputValue('#title'), 'Checkout example', 'Enter leaves the title box');
+  });
+
+  await test('regression: blank names revert, negatives read as 0, stat tiles follow edits', async t => {
+    await t.clickNode('n3');
+    await t.page.fill('#sheetBody [data-path="name"]', ''); await t.page.keyboard.press('Tab'); await t.page.waitForTimeout(150);
+    eq((await t.node('n3')).name, 'checkout-api', 'blank name reverted');
+    const util = () => t.page.$eval('#sheetBody .stat-tile.ok .v, #sheetBody .stat-tile.warn .v, #sheetBody .stat-tile.crit .v', e => e.textContent);
+    const before = await util();
+    await t.page.fill('#sheetBody [data-path="instances"]', '20'); await t.page.waitForTimeout(150);
+    assert(await util() !== before, 'utilisation tile updated while typing');
+    await t.page.fill('#sheetBody [data-path="latency"]', '-100'); await t.page.keyboard.press('Tab'); await t.page.waitForTimeout(150);
+    eq((await t.node('n3')).latency, 0, 'stored as 0');
+    eq(await t.page.inputValue('#sheetBody [data-path="latency"]'), '0', 'field shows 0');
+    assert(!/(^|[\s/(])[-−]\d/.test(await t.page.textContent('[data-node="n3"]')), 'no negative numbers on the canvas');
+  });
+
+  await test('regression: double-clicking a lifeline head renames it; panel Label takes a click after drawing', async t => {
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="sequence"]'); await t.page.waitForTimeout(300);
+    for (const n of ['A', 'B']) { await t.page.keyboard.press('p'); await t.page.waitForTimeout(150); await t.page.keyboard.type(n); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(120); }
+    await t.page.keyboard.press('Escape');
+    const ha = await t.center('[data-head="a"] rect'); await t.page.mouse.dblclick(ha.x, ha.y); await t.page.waitForTimeout(200);
+    assert(await t.page.isVisible('#seqEdit'), 'rename opened');
+    await t.page.keyboard.press('Control+a'); await t.page.keyboard.type('Alpha'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    assert((await t.doc()).model.participants.some(p => p.name === 'Alpha'));
+    const h = await t.page.$$eval('[data-head]', els => els.map(e => { const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height }; }));
+    await t.page.mouse.move(h[0].x, h[0].y + 60); await t.page.mouse.down(); await t.page.mouse.move(h[1].x, h[0].y + 62, { steps: 6 }); await t.page.mouse.up(); await t.page.waitForTimeout(250);
+    await t.page.click('#sheetBody [data-sqf="label"]'); await t.page.waitForTimeout(150);
+    await t.page.keyboard.type('POST /settle'); await t.page.waitForTimeout(150);
+    eq((await t.doc()).model.rows.find(r => r.t === 'msg').label, 'POST /settle');
+    eq((await t.doc()).model.participants.length, 2, 'no shortcut fired');
+  });
+
+  await test('regression: renaming a table moves its foreign keys', async t => {
+    const dbId = (await t.doc()).model.nodes.find(n => n.kind === 'db').id;
+    await t.clickNode(dbId);
+    await t.page.click('#sheetBody [data-tab="schema"]').catch(() => {}); await t.page.waitForTimeout(200);
+    const input = await t.page.$('#sheetBody [data-path="tables.0.name"]');
+    assert(input, 'table name field');
+    await input.fill('charges'); await t.page.waitForTimeout(150);
+    const db = await t.node(dbId);
+    assert(db.tables[1].columns.some(c => c.references === 'charges.id'), JSON.stringify(db.tables[1].columns));
+  });
+
+  await test('regression: signed-out drawer explains instead of leaving for GitHub', async t => {
+    await t.page.click('#drawerBtn'); await t.page.waitForTimeout(200);
+    assert(t.page.url().startsWith(BASE), 'stayed on the app');
+    assert(await t.page.isVisible('#drawer [data-signin]'), 'offers sign-in');
+  });
+
+  await test('regression: phone header and toolbar fit the screen', async t => {
+    const { devices } = require('playwright');
+    const ctx = await t.page.context().browser().newContext({ ...devices['iPhone 13'] });
+    const p = await ctx.newPage(); await p.goto(BASE); await p.waitForTimeout(700);
+    const w = await p.evaluate(() => ({ inner: innerWidth, scroll: document.documentElement.scrollWidth, top: document.getElementById('top').getBoundingClientRect().height, stage: document.getElementById('stage').getBoundingClientRect().height }));
+    await ctx.close();
+    eq(w.inner, 390, 'no zoom-out'); assert(w.scroll <= 390, 'no sideways scroll: ' + w.scroll);
+    assert(w.top < 130, 'header stays compact: ' + w.top);
+    assert(w.stage > 300, 'canvas has room: ' + w.stage);
+  });
+
+  await test('regression: hostile files never run script (system, sequence, class)', async t => {
+    await t.page.evaluate(() => { window.__alerts = 0; window.alert = () => { window.__alerts++; }; });
+    const x = '"><img src=x onerror=alert(1)>';
+    const files = [
+      { version: 4, kind: 'system', meta: { title: 'h' }, model: { nodes: [{ id: 'a', kind: x, name: x }, { id: 'b', kind: 'service', name: 'b' }], edges: [{ id: x, from: 'a', to: 'b', calls: x }], containers: [{ id: 'c', kind: x, name: x }], links: [] }, layout: { positions: { a: { x: 'abc', y: null } } } },
+      { version: 4, kind: 'sequence', meta: null, model: { participants: [{ id: x, name: x }, { id: 'b', name: 'b' }], rows: [{ t: 'msg', id: x, from: x, to: 'b', style: x, label: x }, { t: 'open', id: 'o', kind: x, guard: x }, { t: 'close', id: 'c' }] }, layout: {} },
+      { version: 4, kind: 'class', meta: { title: x }, model: { classes: [{ name: x, kind: x, fields: [{ vis: x, name: 'f', type: x }], methods: [] }, { name: 'B', kind: 'class', fields: [], methods: [] }], relations: [{ id: x, from: 'B', to: 'B', type: x, label: x }] }, layout: { positions: {} } },
+    ];
+    for (const f of files) {
+      await t.page.click('#ioBtn'); await t.page.fill('#json', JSON.stringify(f)); await t.page.click('#loadJson'); await t.page.waitForTimeout(400);
+      // select everything selectable to render panels too
+      for (const sel of ['g.node', '.sq-msg', '.sq-block .sq-bkind', '[data-class]', '[data-rel]']) { const el = await t.page.$(sel); if (el) { await el.click({ force: true }).catch(() => {}); await t.page.waitForTimeout(150); } }
+    }
+    eq(await t.page.evaluate(() => window.__alerts), 0, 'no script ran');
+    eq(await t.page.evaluate(() => document.querySelectorAll('#app img[src="x"]').length), 0, 'no injected elements');
+    assert(!(await t.page.textContent('#zoomPct')).includes('NaN'), 'no NaN view');
+  });
+
+  await test('regression: the same node ids in different tabs never wedge the canvas', async t => {
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="sequence"]'); await t.page.waitForTimeout(250);
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(250);
+    await t.page.reload(); await t.page.waitForTimeout(700);
+    await t.page.click('.dtab:nth-child(2)'); await t.page.waitForTimeout(400);
+    const n0 = (await t.doc()).model.nodes.length;
+    await t.page.click('[data-add="service"]'); await t.page.waitForTimeout(250);
+    eq((await t.doc()).model.nodes.length, n0 + 1, 'still editable');
+    eq(await t.page.$$eval('#nodes g.node', e => e.length), n0 + 1, 'drawing matches the model');
+  });
+
+  await test('regression: ⌘A then drag moves everything; Delete or undo mid-drag waits', async t => {
+    await t.page.keyboard.press('Control+a');
+    const before = await t.node('n3'), b = await t.box('[data-node="n3"] rect.body');
+    await t.page.mouse.move(b.x + 40, b.y + 40); await t.page.mouse.down(); await t.page.mouse.move(b.x + 80, b.y + 60, { steps: 5 });
+    await t.page.keyboard.press('Delete'); await t.page.keyboard.press('Control+z');
+    await t.page.mouse.move(b.x + 120, b.y + 80, { steps: 5 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    const after = await t.node('n3');
+    assert(after, 'not deleted mid-drag'); assert(after.x > before.x, 'moved');
+    const n2 = await t.node('n2'); assert(n2.x !== undefined, 'others still there');
   });
 
   // ---- tooltips ----

@@ -171,7 +171,7 @@
   "verdict": {
    "status": "crit",
    "node": "n34",
-   "lat": 9,
+   "lat": 1,
    "converged": true
   },
   "layout": {

@@ -76,7 +76,7 @@
    {
     "t": "open",
     "kind": "loop",
-    "guard": "for each item"
+    "guard": "for each item # comment"
    },
    {
     "t": "msg",
@@ -98,10 +98,10 @@
    }
   ],
   "errors": [],
-  "printed": "participant merchants, proxy\nparticipant ecom \"ecom-transaction-payments\" service @n3\nparticipant legacy, items\n\nmerchants -> proxy: POST /uploads\nalt merchant on legacy\n  proxy -> legacy: forward\n  legacy --> proxy: 202 Accepted\nelse\n  proxy -> ecom: POST /payments/batch\nend\necom ->> items: publish item\nloop for each item\n  items ->> ecom: consume\n  note over ecom, items: idempotent\nend\n"
+  "printed": "participant merchants, proxy\nparticipant ecom \"ecom-transaction-payments\" service @n3\nparticipant legacy, items\n\nmerchants -> proxy: POST /uploads\nalt merchant on legacy\n  proxy -> legacy: forward\n  legacy --> proxy: 202 Accepted\nelse\n  proxy -> ecom: POST /payments/batch\nend\necom ->> items: publish item\nloop for each item # comment\n  items ->> ecom: consume\n  note over ecom, items: idempotent\nend\n"
  },
  {
-  "text": "actor user\nuser->api:GET /x\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done",
+  "text": "# a comment line\n// another\nactor user\nuser->api:GET /x?a=1#frag // keep\nnote over api: Order #42 // see https://x.io\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done",
   "participants": [
    {
     "id": "user",
@@ -126,8 +126,15 @@
     "t": "msg",
     "from": "user",
     "to": "api",
-    "label": "GET /x",
+    "label": "GET /x?a=1#frag // keep",
     "style": "sync"
+   },
+   {
+    "t": "note",
+    "over": [
+     "api"
+    ],
+    "text": "Order #42 // see https://x.io"
    },
    {
     "t": "msg",
@@ -171,7 +178,7 @@
    }
   ],
   "errors": [],
-  "printed": "participant user actor\nparticipant api, a, b\n\nuser -> api: GET /x\napi --> user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote over api: done\n"
+  "printed": "participant user actor\nparticipant api, a, b\n\nuser -> api: GET /x?a=1#frag // keep\nnote over api: Order #42 // see https://x.io\napi --> user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote over api: done\n"
  },
  {
   "text": "a -> b: ok\nelse\nloop forever\na -> b\nwat is this\nparticipant a\nparticipant 9x\nb -> c:   spaced label  ",

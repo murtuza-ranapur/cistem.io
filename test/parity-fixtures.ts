@@ -77,7 +77,7 @@ const write = (name: string, doc: any, title: string) => {
 {
   const cases = [
     'participant merchants, proxy\nparticipant ecom "ecom-transaction-payments" service @n3\n\nmerchants -> proxy: POST /uploads\nalt merchant on legacy\n  proxy -> legacy: forward\n  legacy --> proxy: 202 Accepted\nelse\n  proxy -> ecom: POST /payments/batch\nend\necom ->> items: publish item\nloop for each item # comment\n  items ->> ecom: consume\n  note over ecom, items: idempotent\nend\n',
-    'actor user\nuser->api:GET /x\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done',
+    '# a comment line\n// another\nactor user\nuser->api:GET /x?a=1#frag // keep\nnote over api: Order #42 // see https://x.io\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done',
     'a -> b: ok\nelse\nloop forever\na -> b\nwat is this\nparticipant a\nparticipant 9x\nb -> c:   spaced label  ',
     'participant p-1 "Name \\"q\\"" queue\np-1 -> p-1: self\nopt\nend',
   ];
@@ -96,4 +96,9 @@ const write = (name: string, doc: any, title: string) => {
   const r = makeNode('cache', 0, 0, { name: 'r', hitRatio: '1.7', maxOps: 'lots' }) as any, d = makeNode('db', 0, 0, { name: 'd', replicas: -3, readShare: 'x' }) as any;
   const doc = { nodes: [c, c2, s, r, d], edges: [{ id: 'a', from: c.id, to: s.id, calls: '3' }, { id: 'b', from: c2.id, to: s.id, calls: -1 }, { id: 'x', from: s.id, to: r.id, calls: 1 }, { id: 'y', from: r.id, to: d.id, calls: 'NaN' }], containers: [], links: [], frames: {}, detail: {} } as any;
   write('parity-absurd.json', doc, 'Absurd inputs');
+}
+// 7. an unconnected component doesn't count towards end-to-end latency
+{
+  const c = makeNode('entry', 0, 0, { name: 'c', rps: 100 }) as any, s = makeNode('service', 0, 0, { name: 's', latency: 5 }) as any, lone = makeNode('service', 0, 0, { name: 'lone', latency: 900 }) as any;
+  write('parity-unreached.json', { nodes: [c, s, lone], edges: [{ id: 'a', from: c.id, to: s.id, calls: 1 }], containers: [], links: [], frames: {}, detail: {} } as any, 'Unreached');
 }

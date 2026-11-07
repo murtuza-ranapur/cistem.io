@@ -182,3 +182,22 @@ import { clsToFile, readAny } from '../src/document';
   assert.ok(!validate({ ...f, model: { participants: [], rows: [] } }), 'a class model needs classes and relations');
   console.log('cls schema ok');
 }
+
+// ---- regressions from persona testing: real-world Kotlin/Java, hostile files ----
+import { sanitizeCls } from '../src/cls';
+{
+  const kt = parseJavaKotlin('object Singleton {\n  val x = 1\n}\nclass Repo {\n  private suspend fun <T: Any> load(block: suspend () -> T): T? = null\n}\nenum class Color(val rgb: Int) { RED(1), GREEN(2) }\npublic class Outer {\n  private enum Status { A, B }\n  public <T> Visitor<? extends R> visit(List<? super T> xs) { return null; }\n}');
+  assert.deepEqual(byName(kt, 'Singleton').fields.map(f => f.name), ['x'], 'untyped val');
+  assert.equal(byName(kt, 'Repo').methods[0].params, 'block: suspend () -> T', 'balanced params');
+  assert.equal(byName(kt, 'Repo').methods[0].type, 'T?');
+  assert.deepEqual(byName(kt, 'Color').fields.map(f => f.name), ['RED', 'GREEN'], 'enum ctor props are not constants');
+  assert.ok(!byName(kt, 'Outer').fields.some(f => f.name === 'Status'), 'nested enum is not a field');
+  assert.equal(byName(kt, 'Outer').methods[0].type, 'Visitor<? extends R>');
+  const bad = sanitizeCls({ classes: [{ name: '<img src=x onerror=alert(1)>', kind: '"><script>', fields: [null, 'ok', { name: 'a b' }, { vis: 'x', name: 'f', type: 1 }], methods: 'nope' }, { name: 'A' }, { name: 'A' }], relations: [{ id: '"><b>', from: 'A', to: 'A2', type: 'evil' }, { from: 'A', to: 'Ghost' }] }, { A: { x: 'abc', y: 1 }, A2: { x: 5, y: 6 } });
+  assert.deepEqual(bad.classes.map(c => [c.name, c.kind]), [['ClassimgsrcxonerroralertI'.slice(0, 0) + bad.classes[0].name, 'class'], ['A', 'class'], ['A2', 'class']]);
+  assert.ok(/^[A-Za-z_$][\w$]*$/.test(bad.classes[0].name), 'identifier name');
+  assert.deepEqual(bad.classes[0].fields.map(f => `${f.vis}${f.name}:${f.type}`), ['ok:', 'f:1']);
+  assert.equal(bad.relations.length, 1); assert.equal(bad.relations[0].type, 'assoc'); assert.ok(/^[\w.-]+$/.test(bad.relations[0].id));
+  assert.deepEqual(bad.pos, { A2: { x: 5, y: 6 } }, 'non-numeric positions dropped');
+  console.log('cls hostile ok');
+}

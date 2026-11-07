@@ -625,3 +625,30 @@ button.cl-tag.ref{border:none;background:color-mix(in srgb,var(--fk) 16%,transpa
   #rail .rail-group-label{display:none}
   #rail .comp{flex:none}
 }
+
+/* header: one line on desktop however long the verdict or title; on phones the actions get their own scrolling row */
+#top>*{flex-shrink:0}
+#top .title{flex:0 1 200px;min-width:90px;text-overflow:ellipsis}
+#top .verdict{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
+#top .verdict #verdict{overflow:hidden;text-overflow:ellipsis;min-width:0}
+#top .verdict .lat{flex:none}
+#top .sync,#top .total,#top .signin{white-space:nowrap}
+#top .actions{flex-shrink:0}
+@media (max-width:1320px){ .signin .long{display:none} }
+@media (max-width:1100px){ #top .verdict .lat{display:none} #top{gap:10px} }
+@media (max-width:900px){
+  #app{grid-template-columns:minmax(0,1fr)}
+  #top{gap:6px 8px}
+  #top .brand{margin-right:0}
+  #top .brand .tld{display:none}
+  #top .title{flex:1 1 120px}
+  #top .verdict .lat{display:inline}
+  #top .actions{order:10;width:100%;margin-left:0;overflow-x:auto;scrollbar-width:none;justify-content:flex-start}
+  #top .actions::-webkit-scrollbar{display:none}
+  #top .actions>*{flex:none}
+  .signin>span{display:none}
+  .signin{padding:5px 8px}
+  #inspector{max-height:40vh}
+}
+.dsignin{padding:16px;font-size:13px;line-height:1.5;color:var(--muted)}
+.dsignin p{margin:0 0 10px}

@@ -136,5 +136,18 @@ class DiagramApiTest {
     void validatesDocumentShape() throws Exception {
         mvc.perform(json(post("/api/diagrams"), "{\"document\":{\"hello\":1}}").with(as(alice)).with(csrf()))
                 .andExpect(status().isBadRequest());
+        // unknown kinds (they end up in the UI) and versions from the future are refused
+        mvc.perform(json(post("/api/diagrams"), "{\"document\":{\"version\":4,\"kind\":\"<img src=x onerror=alert(1)>\",\"model\":{}}}").with(as(alice)).with(csrf()))
+                .andExpect(status().isBadRequest());
+        mvc.perform(json(post("/api/diagrams"), "{\"document\":{\"version\":9,\"kind\":\"system\",\"model\":{}}}").with(as(alice)).with(csrf()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void putWithoutIfMatchStillChecksTheBodyVersion() throws Exception {
+        String created = mvc.perform(json(post("/api/diagrams"), DOC).with(as(alice)).with(csrf())).andReturn().getResponse().getContentAsString();
+        String id = com.jayway.jsonpath.JsonPath.read(created, "$.id");
+        mvc.perform(json(put("/api/diagrams/" + id), DOC.replaceFirst("\\{", "{\"version\":999,")).with(as(alice)).with(csrf()))
+                .andExpect(status().isConflict());
     }
 }

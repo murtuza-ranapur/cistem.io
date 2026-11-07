@@ -138,3 +138,20 @@ import { seqToFile, readAny } from '../src/document';
   assert.ok(!validate({ ...f, model: { nodes: [], edges: [] } }), 'a sequence needs participants and rows');
   console.log('seq schema ok');
 }
+
+// ---- hostile sequence files are made safe; labels keep # and // ----
+import { sanitizeSeq } from '../src/seq';
+{
+  const s = sanitizeSeq({ participants: [{ id: 'a' }, { id: '"><img>', name: 'x' }, null, { id: 'a' }], rows: [{ t: 'msg', id: '"><b>', from: 'a', to: '"><img>', style: '"><img onerror=1>', label: 7 }, { t: 'open', kind: '<svg>' }, { t: 'else' }, { t: 'msg', from: 'a', to: 'ghost' }, { t: 'note', over: ['ghost'] }] });
+  assert.ok(s.participants.every(p => /^[A-Za-z_$][\w.$-]*$/.test(p.id)));
+  assert.equal(new Set(s.participants.map(p => p.id)).size, s.participants.length, 'unique ids');
+  const msg = s.rows.find(r => r.t === 'msg') as any;
+  assert.equal(msg.style, 'sync'); assert.equal(msg.label, '7'); assert.ok(/^[\w.$-]+$/.test(msg.id));
+  assert.ok(balanced(s.rows)); assert.ok(!s.rows.some(r => r.t === 'else'), 'stray else dropped (opt has no branches)');
+  assert.equal((s.rows.find(r => r.t === 'open') as any).kind, 'opt');
+  assert.equal(s.rows.filter(r => r.t === 'msg').length, 1, 'message to a missing lifeline dropped');
+  const p2 = parseSeq('a -> b: Order #42 // see https://x.io\n# comment\n// comment');
+  assert.deepEqual(p2.errors, []);
+  assert.equal((p2.doc.rows[0] as any).label, 'Order #42 // see https://x.io');
+  console.log('seq hostile ok');
+}

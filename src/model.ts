@@ -217,6 +217,8 @@ export function adopt(d: unknown): Doc {
   const cids = new Set(doc.containers.map(c => c.id));
   doc.nodes.forEach(n => { if (n.container && !cids.has(n.container)) n.container = null; });
   doc.containers.forEach(c => { if (c.parent && !cids.has(c.parent)) c.parent = null; });
+  // an environment kind this app doesn't know (hand-edited or newer files) shows as a generic cloud
+  doc.containers.forEach(c => { if (!(c.kind in CONTAINER_KINDS)) c.kind = 'cloud' as ContainerKind; });
   doc.links = doc.links.filter(l => cids.has(l.from) && cids.has(l.to));
   bumpId(doc);
   return doc;

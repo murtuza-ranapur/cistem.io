@@ -1,14 +1,14 @@
 import './style.css';
 import { exampleDoc, totalRps, isSource } from './model';
-import { toFile, fromFile } from './document';
-import { state, current, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo, fmt } from './state';
+import { toFile, readAny } from './document';
+import { state, live, current, serialize, renderAll, renderCanvas, renderMeta, mutate, select, selectedNodeIds, undo, redo, fmt } from './state';
 import { fit, zoomAt, hint, addNode, RAIL_ORDER, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import { togglePanel, onPanelMode } from './sheet';
 import { initTooltips } from './tooltip';
 import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, openAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
-import { onAfterRender } from './state';
+import { onAfterRender, onStorageFull } from './state';
 import { bootTabs, syncActiveTitle, newTab, usesFor, tabs } from './tabs';
 import { seqKey } from './seqview';
 import { clsKey, organiseCls } from './clsview';
@@ -38,8 +38,16 @@ $('totalRps').onclick = () => {
 // ---------- title ----------
 const titleInput = $<HTMLInputElement>('title');
 const syncTitle = () => { titleInput.value = state.meta.title; document.title = `${state.meta.title} · cistem.io`; };
-titleInput.addEventListener('focus', () => history.snapshot(state.doc));
-titleInput.addEventListener('input', () => { state.meta.title = titleInput.value || 'Untitled system'; document.title = `${state.meta.title} · cistem.io`; renderCanvas(); });
+// the undo point is the document of whatever kind is open, with its title
+let titleBefore = '';
+titleInput.addEventListener('focus', () => { titleBefore = state.meta.title; history.snapshot(live(), state.meta); });
+const untitled = () => state.kind === 'sequence' ? 'Untitled sequence' : state.kind === 'class' ? 'Untitled classes' : 'Untitled system';
+titleInput.addEventListener('input', () => { state.meta.title = titleInput.value.trim() || untitled(); document.title = `${state.meta.title} · cistem.io`; renderMeta(); });
+titleInput.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape') { state.meta.title = titleBefore; syncTitle(); renderCanvas(); }   // Escape cancels the rename
+  if (ev.key === 'Enter' || ev.key === 'Escape') titleInput.blur();
+});
+titleInput.addEventListener('blur', () => { if (!titleInput.value.trim()) syncTitle(); });
 
 // ---------- undo / redo ----------
 const undoBtn = $<HTMLButtonElement>('undoBtn'), redoBtn = $<HTMLButtonElement>('redoBtn');
@@ -49,7 +57,7 @@ const appEl = $('app');
 onAfterRender(() => {
   if (document.activeElement !== titleInput && titleInput.value !== state.meta.title) syncTitle();
   syncTotal(); syncActiveTitle();
-  if (appEl.dataset.kind !== state.kind) { appEl.dataset.kind = state.kind; titleInput.placeholder = state.kind === 'sequence' ? 'Untitled sequence' : 'Untitled system'; }
+  if (appEl.dataset.kind !== state.kind) { appEl.dataset.kind = state.kind; titleInput.placeholder = untitled(); }
 });
 history.onHistoryChange(refreshHistory);
 undoBtn.onclick = () => { undo(); refreshHistory(); };
@@ -121,7 +129,10 @@ function organise() {
 $('layoutBtn').onclick = () => (state.kind === 'class' ? organiseCls() : organise());
 
 // ---------- view ----------
+onStorageFull(() => hint('This diagram is too big to keep in this browser — export it, or sign in to save it to your account', 6000));
 const stageEl = $('stage');
+// the stage never scrolls: focusing an inline editor near its edge would otherwise shift every drawing sideways
+stageEl.addEventListener('scroll', () => { if (stageEl.scrollLeft || stageEl.scrollTop) { stageEl.scrollLeft = 0; stageEl.scrollTop = 0; } });
 $('zin').onclick = () => { const r = stageEl.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
 $('zout').onclick = () => { const r = stageEl.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
 $('zfit').onclick = () => fit();
@@ -135,6 +146,15 @@ const openExample = async () => { await openAsNew(exampleFile()); syncTotal(); s
 $('resetBtn').onclick = openExample;
 
 // ---------- keyboard ----------
+// while a pointer is held (a drag in progress), keys that change or delete what's being dragged wait
+let pointersHeld = 0;
+document.addEventListener('pointerdown', () => { pointersHeld++; }, true);
+const release = () => { pointersHeld = Math.max(0, pointersHeld - 1); };
+window.addEventListener('pointerup', release, true); window.addEventListener('pointercancel', release, true);
+window.addEventListener('blur', () => { pointersHeld = 0; });
+document.addEventListener('keydown', ev => {
+  if (pointersHeld && (ev.key === 'Delete' || ev.key === 'Backspace' || ((ev.metaKey || ev.ctrlKey) && /^[zyd]$/i.test(ev.key))) && !(ev.target as HTMLElement).closest?.('input,textarea,.cm-editor,[contenteditable]')) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+}, true);
 document.addEventListener('keydown', ev => {
   const t = (ev.target as Element).tagName;
   const mod = ev.metaKey || ev.ctrlKey;
@@ -182,7 +202,8 @@ document.addEventListener('keydown', ev => {
 
 // ---------- save / load ----------
 const io = $('io'), jta = $<HTMLTextAreaElement>('json');
-const msg = (t: string) => { const m = $('ioMsg'); m.textContent = t; setTimeout(() => { m.textContent = ''; }, 1800); };
+let msgTimer = 0;
+const msg = (t: string) => { const m = $('ioMsg'); m.textContent = t; clearTimeout(msgTimer); msgTimer = window.setTimeout(() => { m.textContent = ''; }, 3500); };
 const openIo = (blank = false) => { io.hidden = false; jta.value = blank ? '' : serialize(); jta.placeholder = 'Paste a cistem.io diagram (.json) and press Load'; jta.focus(); };
 const closeIo = () => { io.hidden = true; };
 $('ioBtn').onclick = () => openIo();
@@ -224,7 +245,7 @@ $('copyJson').onclick = () => {
 };
 $('loadJson').onclick = () => {
   let parsed: unknown;
-  try { parsed = JSON.parse(jta.value); fromFile(parsed); }
+  try { parsed = JSON.parse(jta.value); readAny(parsed); }
   catch (e) { msg(e instanceof SyntaxError ? 'Not valid JSON' : (e as Error).message); return; }
   closeIo();
   openAsNew(parsed).then(() => { syncTotal(); syncTitle(); });

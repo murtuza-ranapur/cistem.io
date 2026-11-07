@@ -37,7 +37,6 @@ public final class Seq {
     private static final Pattern BRANCH = Pattern.compile("^(else|and)\\b\\s*(.*)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern END = Pattern.compile("^end$", Pattern.CASE_INSENSITIVE);
     private static final Pattern MSG = Pattern.compile("^(\\S+?)\\s*(->>|-->|->)\\s*(\\S+?)\\s*(?::\\s*(.*))?$");
-    private static final Pattern COMMENT = Pattern.compile("\\s+(#|//).*$");
 
     public static Parsed parse(String text, ObjectMapper om) {
         ObjectNode model = om.createObjectNode();
@@ -47,7 +46,7 @@ public final class Seq {
         int[] seq = {0};
         String[] lines = text.split("\n", -1);
         for (int line = 0; line < lines.length; line++) {
-            String l = COMMENT.matcher(lines[line]).replaceAll("").trim();
+            String l = lines[line].trim();   // comments are whole lines only (labels may contain # and //)
             if (l.isEmpty() || l.startsWith("#") || l.startsWith("//")) continue;
             Matcher m;
             if ((m = PARTICIPANT.matcher(l)).matches()) {

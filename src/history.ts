@@ -25,13 +25,22 @@ export function snapshot(doc: Doc, meta?: Meta) {
   if (last && last.d === e.d && last.m === e.m) return;
   past.push(e);
   if (past.length > LIMIT) past.shift();
-  future.length = 0;
+  // an undo point taken without a change since the last undo/redo (focusing a field) keeps redo available;
+  // redo itself checks that nothing changed before it applies
+  if (restored === null || e.d !== restored) { future.length = 0; restored = null; }
   notify();
 }
 export interface Restored { doc: unknown; meta?: Meta }
+/** The state the last undo/redo produced; redo only applies while the document is still exactly that. */
+let restored: string | null = null;
 function step(from: Entry[], to: Entry[], doc: Doc, meta: Meta): Restored | null {
-  const e = from.pop(); if (e === undefined) return null;
-  to.push(e.m ? { d: JSON.stringify(doc), m: JSON.stringify(meta) } : { d: JSON.stringify(doc) }); notify();
+  // undo points recorded on focus without any edit since equal the current state: skip them, so one press
+  // always changes something
+  const cur = JSON.stringify(doc), curM = JSON.stringify(meta);
+  if (from === future && restored !== null && cur !== restored) { future.length = 0; restored = null; notify(); return null; }
+  while (from.length && from[from.length - 1].d === cur && (!from[from.length - 1].m || from[from.length - 1].m === curM)) from.pop();
+  const e = from.pop(); if (e === undefined) { notify(); return null; }
+  to.push(e.m ? { d: cur, m: curM } : { d: cur }); restored = e.d; notify();
   return { doc: JSON.parse(e.d), meta: e.m ? JSON.parse(e.m) : undefined };
 }
 export const undo = (doc: Doc, meta: Meta) => step(past, future, doc, meta);
@@ -41,5 +50,5 @@ export const canRedo = () => future.length > 0;
 /** Hand over the undo stacks (switching tabs keeps each tab's history). */
 export interface Stacks { past: Entry[]; future: Entry[] }
 export function takeStacks(): Stacks { const s = { past: past.splice(0), future: future.splice(0) }; notify(); return s; }
-export function putStacks(s: Stacks) { past.splice(0, past.length, ...s.past); future.splice(0, future.length, ...s.future); notify(); }
-export function reset() { past.length = 0; future.length = 0; notify(); }
+export function putStacks(s: Stacks) { past.splice(0, past.length, ...s.past); future.splice(0, future.length, ...s.future); restored = null; notify(); }
+export function reset() { past.length = 0; future.length = 0; restored = null; notify(); }

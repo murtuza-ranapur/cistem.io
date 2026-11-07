@@ -15,6 +15,7 @@
  *   ecom ->> items: publish item                 async      (->>)
  *   note over proxy, ecom: text
  *   alt merchant on legacy / else / end          also opt, loop, par (with `and` branches)
+ *   # a comment                                  (whole lines starting with # or //)
  */
 import type { Doc } from './model';
 import type { Results } from './engine';
@@ -126,7 +127,8 @@ function splitList(s: string) { return s.split(',').map(x => x.trim()).filter(Bo
 export function parseCistem(text: string): { doc: SeqDoc; errors: SeqError[] } {
   const b = builder();
   text.split('\n').forEach((raw, line) => {
-    const l = raw.replace(/\s+(#|\/\/).*$/, '').trim();
+    // comments are whole lines only: labels may contain # and // ("Order #42", URLs)
+    const l = raw.trim();
     if (!l || l.startsWith('#') || l.startsWith('//')) return;
     let m: RegExpExecArray | null;
     if ((m = /^(participant|actor)\s+(.+)$/i.exec(l))) {
@@ -465,4 +467,58 @@ export function sequenceFromPath(sys: Doc, startId: string, asyncKinds: Set<stri
   part(startId);
   visit(startId);
   return d;
+}
+
+// ---------- reading untrusted documents ----------
+
+const STYLES: MsgStyle[] = ['sync', 'async', 'reply'];
+const safeId = (v: unknown) => String(v ?? '').replace(/[^\w.$-]/g, '');
+const str = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? '' : String(v));
+/**
+ * A sequence from a file, the server or MCP, made safe to edit and draw: every enum is one the app knows,
+ * ids are plain identifiers and unique, rows reference lifelines that exist, and blocks are balanced.
+ */
+export function sanitizeSeq(raw: unknown): SeqDoc {
+  const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const participants: Participant[] = [], idMap = new Map<string, string>();
+  for (const p of Array.isArray(m.participants) ? m.participants : []) {
+    if (!p || typeof p !== 'object') continue;
+    const o = p as Record<string, unknown>;
+    let id = safeId(o.id);
+    if (!ID_RE.test(id) || participants.some(x => x.id === id)) id = slugId(str(o.name) || id || 'p', participants.map(x => x.id));
+    if (!idMap.has(str(o.id))) idMap.set(str(o.id), id);
+    const type = safeId(o.type).replace(/[.$]/g, '');
+    participants.push({ id, name: str(o.name) || id, ...(type ? { type } : {}), ...(o.ref ? { ref: safeId(o.ref) } : {}) });
+  }
+  const has = (id: string) => participants.some(p => p.id === id);
+  const ref = (v: unknown) => idMap.get(str(v)) ?? safeId(v);   // rows follow lifelines whose ids were cleaned
+  const rows: Row[] = [], seen = new Set<string>();
+  const freshId = (v: unknown) => { let id = safeId(v); if (!id || seen.has(id)) id = rowId(); seen.add(id); return id; };
+  for (const r of Array.isArray(m.rows) ? m.rows : []) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    if (o.t === 'msg') {
+      const from = ref(o.from), to = ref(o.to);
+      if (!has(from) || !has(to)) continue;
+      rows.push({ t: 'msg', id: freshId(o.id), from, to, label: str(o.label), style: STYLES.includes(o.style as MsgStyle) ? o.style as MsgStyle : 'sync' });
+    } else if (o.t === 'note') {
+      const over = (Array.isArray(o.over) ? o.over : []).map(ref).filter(has);
+      if (!over.length) continue;
+      rows.push({ t: 'note', id: freshId(o.id), over, text: str(o.text) });
+    } else if (o.t === 'open') rows.push({ t: 'open', id: freshId(o.id), kind: BLOCK_KINDS.includes(o.kind as BlockKind) ? o.kind as BlockKind : 'opt', guard: str(o.guard) });
+    else if (o.t === 'else') rows.push({ t: 'else', id: freshId(o.id), guard: str(o.guard) });
+    else if (o.t === 'close') rows.push({ t: 'close', id: freshId(o.id) });
+  }
+  // balance: drop stray else/end, close what's left open
+  const out: Row[] = [], st: BlockKind[] = [];
+  for (const r of rows) {
+    if (r.t === 'open') st.push(r.kind);
+    else if (r.t === 'else') { const k = st[st.length - 1]; if (k !== 'alt' && k !== 'par') continue; }
+    else if (r.t === 'close') { if (!st.length) continue; st.pop(); }
+    out.push(r);
+  }
+  while (st.pop()) out.push({ t: 'close', id: rowId() });
+  const u = m.uses && typeof m.uses === 'object' ? m.uses as Record<string, unknown> : null;
+  const uses = u ? { ...(u.id ? { id: safeId(u.id) } : {}), ...(u.tab ? { tab: safeId(u.tab) } : {}), ...(u.title ? { title: str(u.title) } : {}) } : null;
+  return { participants, rows: out, ...(uses && (uses.id || uses.tab) ? { uses } : {}) };
 }

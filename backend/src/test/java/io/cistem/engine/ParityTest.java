@@ -74,7 +74,7 @@ class ParityTest {
         }
         JsonNode v = exp.path("verdict");
         assertEquals(v.path("status").asText(), r.verdict().status().name());
-        assertEquals(v.path("node").asText(), r.verdict().nodeId());
+        assertEquals(v.path("node").isNull() ? null : v.path("node").asText(), r.verdict().nodeId());
         assertEquals(v.path("lat").asDouble(), r.verdict().lat(), 1e-6);
         assertEquals(v.path("converged").asBoolean(), r.verdict().converged());
     }
@@ -94,6 +94,7 @@ class ParityTest {
     @Test
     void absurdInputsMatchTypeScript() throws Exception {
         engineMatches(fixture("/parity-absurd.json"));
+        engineMatches(fixture("/parity-unreached.json"));
     }
 
     @Test

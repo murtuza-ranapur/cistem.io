@@ -35,7 +35,7 @@ public class DiagramController {
     }
 
     /** Request body for create/update: the full diagram file. Title and kind are read from it. */
-    public record DiagramBody(@NotNull JsonNode document) {
+    public record DiagramBody(@NotNull JsonNode document, Integer version) {
         String title() {
             JsonNode t = document.path("meta").path("title");
             return t.isTextual() && !t.asText().isBlank() ? t.asText() : "Untitled";
@@ -48,9 +48,14 @@ public class DiagramController {
             if (!document.isObject()) throw bad("document must be a JSON object");
             if (!document.path("version").isInt()) throw bad("document.version is required");
             if (!document.path("kind").isTextual()) throw bad("document.kind is required");
+            if (!KINDS.contains(document.path("kind").asText())) throw bad("document.kind must be one of " + KINDS);
+            if (document.path("version").asInt() < 1 || document.path("version").asInt() > io.cistem.engine.Migrate.VERSION)
+                throw bad("document.version must be between 1 and " + io.cistem.engine.Migrate.VERSION);
             if (!document.path("model").isObject()) throw bad("document.model is required");
         }
     }
+
+    static final java.util.Set<String> KINDS = java.util.Set.of("system", "sequence", "class");
 
     @GetMapping("/diagrams")
     public List<Diagram.Summary> list(@AuthenticationPrincipal Object p) {
@@ -82,7 +87,8 @@ public class DiagramController {
         body.validate();
         UUID owner = SecurityConfig.userId(p);
         Diagram current = repo.find(owner, id).orElseThrow(DiagramController::notFound);
-        int expected = ifMatch == null ? current.version() : parseVersion(ifMatch);
+        // the version to update from: If-Match, else the body's version; with neither, last write wins
+        int expected = ifMatch != null ? parseVersion(ifMatch) : body.version() != null ? body.version() : current.version();
         return repo.update(owner, id, expected, body.title(), body.document())
                 .map(d -> ResponseEntity.ok().eTag(etag(d)).body(d))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.CONFLICT).eTag(etag(current)).body(current));

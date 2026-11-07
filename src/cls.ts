@@ -209,10 +209,11 @@ export function parseMermaidCls(text: string): { doc: ClassDoc; errors: ClsError
     const m = mermaidMember(raw); if (m) (isMethod(m) ? c.methods : c.fields).push(m);
   };
   text.split('\n').forEach((raw, line) => {
-    const l = raw.replace(/%%.*$/, '').trim();
+    let l = raw.replace(/%%.*$/, '').trim();
     if (!l || /^classDiagram\b/.test(l) || /^(direction|note|link|click|callback|style|classDef|cssClass|namespace|title)\b/.test(l)) return;
     if (open) { if (l === '}') { open = null; return; } put(open, l); return; }
     let m: RegExpExecArray | null;
+    l = l.replace(/`([^`]+)`/g, (_m, n: string) => n.replace(/[^\w$]/g, ''));   // `Weird Name` → WeirdName
     if ((m = /^class\s+([A-Za-z_$][\w$]*)(?:~[^~]*~)?(?:\s*\[[^\]]*\])?(?:\s*:::\w+)?\s*(\{)?\s*(?:<<\s*(.+?)\s*>>)?\s*$/.exec(l))) {
       const c = ensureClass(b, m[1]);
       if (m[3]) { const k = kindFrom(m[3]); if (k) c.kind = k; else c.stereo = m[3]; }
@@ -258,7 +259,8 @@ function splitTop(s: string, sep: string): string[] {
 }
 const visOf = (mods: string, kotlin: boolean): Vis => /\bprivate\b/.test(mods) ? '-' : /\bprotected\b/.test(mods) ? '#' : /\bpublic\b/.test(mods) ? '+' : /\binternal\b/.test(mods) ? '~' : kotlin ? '+' : '~';
 const MODS = '(?:(?:public|private|protected|internal|static|final|abstract|sealed|open|data|value|inner|override|synchronized|native|transient|volatile|default|strictfp|lateinit|const|suspend|inline|enum|annotation|non-sealed)\\s+)*';
-const typeName = (t: string) => t.trim().replace(/\s+/g, ' ').replace(/\s*([<>,?])\s*/g, (_m, c) => (c === ',' ? ', ' : c));
+/** Normalise a type's spacing: `Map< String ,List<X> >` → `Map<String, List<X>>`, keeping `? extends T` and `T?`. */
+const typeName = (t: string) => t.trim().replace(/\s+/g, ' ').replace(/\s*([<>,])\s*/g, (_m, c) => (c === ',' ? ', ' : c)).replace(/\s+\?(?=$|[>,])/g, '?').replace(/<\?(?=\w)/g, '<? ');
 
 /** Read classes, interfaces, enums and records (and Kotlin data classes) with their members and relations. */
 export function parseJavaKotlin(src: string): ClassDoc {
@@ -292,7 +294,7 @@ export function parseJavaKotlin(src: string): ClassDoc {
     if (imp) sup(imp[1], 'implement');
     if (kt) splitTop(kt[1], ',').forEach(x => { const n = /^\s*([A-Za-z_$][\w$.]*)/.exec(x)?.[1]?.split('.').pop(); if (n) pending.push({ from: name, to: n, type: /\(\s*\)?/.test(x) && /\(/.test(x) ? 'inherit' : 'implement' }); });
     // constructor properties
-    for (const p of splitTop(ctor, ',')) {
+    for (const p of kind === 'enum' ? [] : splitTop(ctor, ',')) {   // an enum's constructor properties aren't constants
       const t = p.trim(); if (!t) continue;
       const kp = /^(?:(private|protected|public|internal)\s+)?(?:override\s+)?(val|var)?\s*([A-Za-z_$][\w$]*)\s*:\s*([^=]+)/.exec(t);
       const jp = /^(?:final\s+)?(.+?)\s+([A-Za-z_$][\w$]*)$/.exec(t);
@@ -308,16 +310,20 @@ export function parseJavaKotlin(src: string): ClassDoc {
       const consts = (stmts.shift() ?? '').replace(/\(.*?\)/g, '');
       for (const k of consts.split(',')) { const n = /^\s*([A-Z_$][\w$]*)\s*$/.exec(k); if (n) c.fields.push({ vis: '', name: n[1], type: '' }); }
     }
-    stmts = stmts.filter(x => !/^(class|interface|enum|record|object|companion|init|static\s*$)/.test(x.replace(MODS_RE, '')));
+    // nested types are declarations, not members ("enum" is also a modifier word in MODS, so test before stripping)
+    stmts = stmts.filter(x => !/^(?:(?:public|private|protected|internal|static|final|abstract|sealed|open|data|inner|value|annotation)\s+)*(class|interface|enum|record|object|companion|init|static\s*$)/.test(x) && !/^(class|interface|enum|record|object|companion|init|static\s*$)/.test(x.replace(MODS_RE, '')));
     for (const st of stmts) {
-      const methJ = new RegExp(`^(${MODS})(?:<[^>]+>\\s+)?([\\w$.<>\\[\\]?, ]+?)\\s+([A-Za-z_$][\\w$]*)\\s*\\(([^)]*)\\)`).exec(st);
-      const methK = new RegExp(`^(${MODS})fun\\s+(?:<[^>]+>\\s+)?(?:[\\w.]+\\.)?([A-Za-z_$][\\w$]*)\\s*\\(([^)]*)\\)\\s*(?::\\s*([^=]+))?`).exec(st);
+      // parameter lists can nest parentheses (suspend () -> T, lambdas): read them balanced
+      const methJ = withParams(new RegExp(`^(${MODS})(?:<[^>]+>\\s+)?([\\w$.<>\\[\\]?, ]+?)\\s+([A-Za-z_$][\\w$]*)\\s*\\(`).exec(st), st);
+      const methK = withParams(new RegExp(`^(${MODS})fun\\s+(?:<[^>]+>\\s+)?(?:[\\w.]+\\.)?([A-Za-z_$][\\w$]*)\\s*\\(`).exec(st), st, true);
+      const fieldK2 = new RegExp(`^(${MODS})(val|var)\\s+([A-Za-z_$][\\w$]*)\\s*(=.*)?$`).exec(st);
       const ctorJ = new RegExp(`^(${MODS})${name}\\s*(\\(|$)`).exec(st);
       const fieldJ = new RegExp(`^(${MODS})([\\w$.<>\\[\\]?, ]+?)\\s+([A-Za-z_$][\\w$]*)\\s*(=.*)?$`).exec(st);
       const fieldK = new RegExp(`^(${MODS})(val|var)\\s+([A-Za-z_$][\\w$]*)\\s*:\\s*([^=]+)`).exec(st);
       if (ctorJ) continue;
       if (methK) { c.methods.push({ vis: visOf(methK[1], true), name: methK[2], params: kParams(methK[3]), type: typeName(methK[4] ?? 'Unit'), ...(/\babstract\b/.test(methK[1]) ? { abstract: true } : {}) }); continue; }
       if (fieldK) { c.fields.push({ vis: visOf(fieldK[1], true), name: fieldK[3], type: typeName(fieldK[4]) }); continue; }
+      if (fieldK2) { c.fields.push({ vis: visOf(fieldK2[1], true), name: fieldK2[3], type: '' }); continue; }   // type inferred
       if (methJ && !/^(return|new|throw|if|for|while|switch)$/.test(methJ[2])) {
         c.methods.push({ vis: kind === 'interface' && !/\bprivate\b/.test(methJ[1]) ? '+' : visOf(methJ[1], false), name: methJ[3], params: jParams(methJ[4]), type: typeName(methJ[2]), ...(/\bstatic\b/.test(methJ[1]) ? { static: true } : {}), ...(/\babstract\b/.test(methJ[1]) ? { abstract: true } : {}) });
         continue;
@@ -339,6 +345,20 @@ export function parseJavaKotlin(src: string): ClassDoc {
   return d;
 }
 const MODS_RE = new RegExp('^' + MODS);
+/**
+ * Complete a method match that stopped at its opening parenthesis: the balanced parameter list, then for
+ * Kotlin the `: ReturnType`. Returns the same shape as the old single regex: [all, mods, …, params, return].
+ */
+function withParams(m: RegExpExecArray | null, st: string, kotlin = false): string[] | null {
+  if (!m) return null;
+  let depth = 0, i = m.index + m[0].length - 1, j = i;
+  for (; j < st.length; j++) { if (st[j] === '(') depth++; else if (st[j] === ')' && --depth === 0) break; }
+  if (j >= st.length) return null;
+  const params = st.slice(i + 1, j);
+  if (!kotlin) return [...m, params];
+  const ret = /^\s*:\s*([^={]+)/.exec(st.slice(j + 1))?.[1];
+  return [...m, params, ret as string];
+}
 const kParams = (p: string) => splitTop(p, ',').map(x => x.trim().replace(/^(vararg|noinline|crossinline)\s+/, '').replace(/\s*=.*$/, '')).filter(Boolean).join(', ');
 const jParams = (p: string) => splitTop(p, ',').map(x => { const t = x.trim().replace(/^final\s+/, ''); const m = /^(.+?)\s+([A-Za-z_$][\w$]*)$/.exec(t); return m ? `${m[2]}: ${typeName(m[1])}` : t; }).filter(Boolean).join(', ');
 /** The class names a type refers to: `List<Item>` → Item (many), `Money?` → Money. */
@@ -387,7 +407,8 @@ export function fromTables(tables: Table[], dbName?: string): ClassDoc {
   for (const t of tables) for (const c of t.columns) {
     const ref = c.references && !c.references.includes(':') ? c.references.split('.')[0] : null;
     if (!ref || !tables.some(x => x.name === ref)) continue;
-    d.relations.push({ id: relId(), from: cname(t.name), to: cname(ref), type: 'assoc', label: camel(c.name), fromMult: '*', toMult: '1' });
+    // a unique foreign key is one-to-one; a nullable one may point at nothing
+    d.relations.push({ id: relId(), from: cname(t.name), to: cname(ref), type: 'assoc', label: camel(c.name), fromMult: c.unique || c.pk ? '0..1' : '*', toMult: c.nullable ? '0..1' : '1' });
   }
   return d;
 }
@@ -506,4 +527,52 @@ export function renameClass(d: ClassDoc, from: string, to: string) {
   if (d.pos[from]) { d.pos[to] = d.pos[from]; delete d.pos[from]; }
   const re = new RegExp(`\\b${from.replace(/\$/g, '\\$')}\\b`, 'g');
   for (const k of d.classes) for (const m of [...k.fields, ...k.methods]) { m.type = m.type.replace(re, to); if (m.params) m.params = m.params.replace(re, to); }
+}
+
+// ---------- reading untrusted documents ----------
+
+const VISES: Vis[] = ['+', '-', '#', '~', ''];
+const s_ = (v: unknown) => (v === null || v === undefined || typeof v === 'object' ? '' : String(v));
+function cleanMember(v: unknown, method: boolean): Member | null {
+  if (typeof v === 'string') return NAME_RE.test(v) ? { vis: '', name: v, type: '', ...(method ? { params: '' } : {}) } : null;
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const name = s_(o.name).trim(); if (!NAME_RE.test(name)) return null;
+  return { vis: VISES.includes(o.vis as Vis) ? o.vis as Vis : '', name, type: s_(o.type), ...(method || o.params !== undefined ? { params: s_(o.params) } : {}), ...(o.static === true ? { static: true } : {}), ...(o.abstract === true ? { abstract: true } : {}) };
+}
+/**
+ * A class diagram from a file, the server or MCP, made safe: known kinds and relation types, identifier
+ * names (unique), members that are members, relations between classes that exist, numeric positions.
+ */
+export function sanitizeCls(model: unknown, positions: unknown): ClassDoc {
+  const m = (model && typeof model === 'object' ? model : {}) as Record<string, unknown>;
+  const d = blankCls();
+  for (const c of Array.isArray(m.classes) ? m.classes : []) {
+    if (!c || typeof c !== 'object') continue;
+    const o = c as Record<string, unknown>;
+    let name = s_(o.name).replace(/[^\w$]/g, '');
+    if (!NAME_RE.test(name)) name = 'Class' + name;
+    if (d.classes.some(x => x.name === name)) { let i = 2; while (d.classes.some(x => x.name === name + i)) i++; name = name + i; }
+    const kind = CLASS_KINDS.includes(o.kind as ClassKind) ? o.kind as ClassKind : 'class';
+    const fields = (Array.isArray(o.fields) ? o.fields : []).map(f => cleanMember(f, false)).filter((x): x is Member => !!x).map(f => (isMethod(f) ? { ...f, params: undefined } : f));
+    const methods = (Array.isArray(o.methods) ? o.methods : []).map(f => cleanMember(f, true)).filter((x): x is Member => !!x).map(f => ({ ...f, params: f.params ?? '' }));
+    d.classes.push({ name, kind, fields: fields.map(f => { const { params: _p, ...rest } = f; return rest; }), methods, ...(s_(o.stereo) ? { stereo: s_(o.stereo) } : {}) });
+  }
+  const names = new Set(d.classes.map(c => c.name)), seen = new Set<string>();
+  for (const r of Array.isArray(m.relations) ? m.relations : []) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const from = s_(o.from), to = s_(o.to);
+    if (!names.has(from) || !names.has(to)) continue;
+    let id = s_(o.id).replace(/[^\w.-]/g, ''); if (!id || seen.has(id)) id = relId(); seen.add(id);
+    const rel: Relation = { id, from, to, type: REL_TYPES.includes(o.type as RelType) ? o.type as RelType : 'assoc' };
+    for (const k of ['label', 'fromMult', 'toMult'] as const) if (s_(o[k])) rel[k] = s_(o[k]);
+    d.relations.push(rel);
+  }
+  const p = (positions && typeof positions === 'object' ? positions : {}) as Record<string, unknown>;
+  for (const [n, v] of Object.entries(p)) {
+    const o = v as Record<string, unknown> | null;
+    if (names.has(n) && o && Number.isFinite(Number(o.x)) && Number.isFinite(Number(o.y))) d.pos[n] = { x: Number(o.x), y: Number(o.y) };
+  }
+  return d;
 }
