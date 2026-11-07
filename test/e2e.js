@@ -338,6 +338,51 @@ class T {
     assert((await t.page.textContent('.tip.on')).includes('Fit'), 'moving to the neighbour shows its tip at once');
   });
 
+  // ---- table editor ----
+  const dbId = async t => (await t.doc()).model.nodes.find(n => n.kind === 'db').id;
+  const openTables = async t => { const id = await dbId(t); await t.clickNode(id); await t.page.click('[data-tab="schema"]'); await t.page.waitForTimeout(200); return id; };
+
+  await test('table editor: add a column, name and type it, toggle flags', async t => {
+    const id = await openTables(t);
+    const before = (await t.node(id)).tables[0].columns.length;
+    await t.page.click('[data-action="add-column:0"]'); await t.page.waitForTimeout(150);
+    await t.page.keyboard.type('captured_at'); // focus lands on the new name
+    const row = `[data-col="0:${before}"]`;
+    await t.page.fill(`${row} .ctype`, 'timestamptz'); await t.page.waitForTimeout(100);
+    await t.page.click(`${row} [data-flip$=".index"]`); await t.page.waitForTimeout(100);
+    await t.page.click(`${row} [data-flip$=".nullable"]`); await t.page.waitForTimeout(100); // new columns start nullable → off
+    const c = (await t.node(id)).tables[0].columns[before];
+    eq(c.name, 'captured_at'); eq(c.type, 'timestamptz'); eq(c.index, true, 'indexed'); eq(c.nullable, false, 'not null');
+    assert(await t.page.$eval(`${row} [data-flip$=".index"]`, e => e.classList.contains('on')), 'flag shows on');
+  });
+
+  await test('table editor: PK forces NOT NULL; NULL clears PK', async t => {
+    const id = await openTables(t);
+    await t.page.click('[data-col="0:1"] [data-flip$=".nullable"]'); await t.page.waitForTimeout(100); // make it nullable (if not)
+    let c = (await t.node(id)).tables[0].columns[1];
+    if (!c.nullable) { await t.page.click('[data-col="0:1"] [data-flip$=".nullable"]'); await t.page.waitForTimeout(100); c = (await t.node(id)).tables[0].columns[1]; }
+    eq(c.nullable, true);
+    await t.page.click('[data-col="0:1"] [data-flip$=".pk"]'); await t.page.waitForTimeout(100);
+    c = (await t.node(id)).tables[0].columns[1]; eq(c.pk, true); eq(c.nullable, false, 'PK made it NOT NULL');
+    await t.page.click('[data-col="0:1"] [data-flip$=".nullable"]'); await t.page.waitForTimeout(100);
+    c = (await t.node(id)).tables[0].columns[1]; eq(c.nullable, true); eq(c.pk, false, 'nullable is no longer a PK');
+  });
+
+  await test('table editor: foreign key and default live behind the ⋯ toggle', async t => {
+    const id = await openTables(t);
+    assert(!(await t.page.$('.crow.cmore')), 'collapsed by default');
+    await t.page.click('[data-col="0:1"] [data-colmore]'); await t.page.waitForTimeout(150);
+    const opts = await t.page.$$eval('.crow.cmore select option', os => os.map(o => o.value));
+    assert(opts.includes('refunds.id'), 'other tables offered: ' + opts);
+    await t.page.selectOption('.crow.cmore select', 'refunds.id'); await t.page.waitForTimeout(100);
+    await t.page.fill('.crow.cmore input[data-path$=".default"]', 'gen_random_uuid()'); await t.page.waitForTimeout(100);
+    const c = (await t.node(id)).tables[0].columns[1];
+    eq(c.references, 'refunds.id'); eq(c.default, 'gen_random_uuid()');
+    eq(await t.page.textContent('[data-col="0:1"] [data-colmore]'), '→', 'FK marker on the row');
+    await t.page.click('[data-col="0:1"] [data-colmore]'); await t.page.waitForTimeout(150);
+    assert(!(await t.page.$('.crow.cmore')), 'collapses again');
+  });
+
   // ---- structured editors ----
   const openSchema = async (t, id) => { await t.clickNode(id); await t.page.click('[data-tab="schema"]'); await t.page.waitForTimeout(200); };
   const fe = (path) => `[data-fe="${path}"]`;
