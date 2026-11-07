@@ -271,6 +271,17 @@ class T {
     const fin = await t.frameBox('c9'); assert(Math.abs(fin.y - mid.y) < 8, 'frame stays where it was dropped');
   });
 
+  await test('the dot grid moves and zooms with the diagram', async t => {
+    const grid = () => t.page.evaluate(() => { const g = document.getElementById('grid'); return { x: +g.getAttribute('x'), y: +g.getAttribute('y'), w: +g.getAttribute('width') }; });
+    const g0 = await grid(); const n0 = await t.box('[data-node="n3"] rect.body');
+    const p = await t.emptyCanvasPoint();
+    await t.page.mouse.move(p.x, p.y); await t.page.mouse.down(); await t.page.mouse.move(p.x + 50, p.y + 30, { steps: 4 }); await t.page.mouse.move(p.x + 120, p.y + 70, { steps: 6 }); await t.page.mouse.up(); await t.page.waitForTimeout(100);
+    const g1 = await grid(); const n1 = await t.box('[data-node="n3"] rect.body');
+    assert(Math.abs((g1.x - g0.x) - (n1.x - n0.x)) < 1 && Math.abs((g1.y - g0.y) - (n1.y - n0.y)) < 1, `grid moved with the diagram (grid ${g1.x - g0.x},${g1.y - g0.y} vs node ${n1.x - n0.x},${n1.y - n0.y})`);
+    await t.page.mouse.move(p.x, p.y); await t.page.keyboard.down('Control'); await t.page.mouse.wheel(0, -300); await t.page.keyboard.up('Control'); await t.page.waitForTimeout(200);
+    const g2 = await grid(); assert(g2.w !== g1.w, `grid spacing follows zoom (${g1.w} → ${g2.w})`);
+  });
+
   // ---- details panel ----
   const panelOpen = t => t.page.$eval('#inspector', e => !e.classList.contains('closed'));
 
