@@ -34,6 +34,9 @@
   <symbol id="ic-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/></symbol>
   <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="ic-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></symbol>
+  <symbol id="ic-k-system" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="8.5" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 10v2.5h11V10M12 12.5V15"/></symbol>
+  <symbol id="ic-k-sequence" viewBox="0 0 24 24"><path d="M6 3v18M18 3v18" stroke-dasharray="2 2.5"/><path d="M6 8h11M15 6l2 2-2 2M18 15H7M9 13l-2 2 2 2"/></symbol>
+  <symbol id="ic-k-class" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M4 9h16M4 14.5h16M7 6.3h6"/></symbol>
   <symbol id="ic-example" viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></symbol>
 </svg>
 
@@ -63,6 +66,22 @@
       <button class="icon" id="resetBtn" title="Open the example (as a new diagram)" aria-label="Open example"><svg><use href="#ic-example"/></svg></button>
     </div>
   </header>
+
+  <nav id="tabs" aria-label="Open diagrams">
+    <div id="tabList" role="tablist"></div>
+    <button class="newtab" id="newTabBtn" title="New diagram (⌥T)" aria-label="New diagram" aria-haspopup="menu">+</button>
+  </nav>
+  <div id="newMenu" class="newmenu" role="menu" hidden>
+    <div class="nm-head">New diagram</div>
+    <button class="nm-item" role="menuitem" data-new="system"><span class="nm-ic k-system"><svg><use href="#ic-k-system"/></svg></span><span><strong>System</strong><span class="nm-sub">Components with capacity, environments, load</span></span><kbd>1</kbd></button>
+    <button class="nm-item" role="menuitem" data-new="sequence" disabled><span class="nm-ic k-sequence"><svg><use href="#ic-k-sequence"/></svg></span><span><strong>Sequence <em class="soon">coming next</em></strong><span class="nm-sub">Who calls whom, in order</span></span><kbd>2</kbd></button>
+    <button class="nm-item" role="menuitem" data-new="class" disabled><span class="nm-ic k-class"><svg><use href="#ic-k-class"/></svg></span><span><strong>Class <em class="soon">later</em></strong><span class="nm-sub">Types, fields, methods and how they relate</span></span><kbd>3</kbd></button>
+    <div class="nm-foot">
+      <button class="chip" data-nm="open">Open existing…</button>
+      <button class="chip" data-nm="import">Import .json</button>
+      <button class="chip" data-nm="example">Example</button>
+    </div>
+  </div>
 
   <aside id="rail" aria-label="Components">
     <div id="railTypes"></div>

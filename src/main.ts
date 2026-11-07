@@ -1,7 +1,7 @@
 import './style.css';
 import { exampleDoc, totalRps, isSource } from './model';
 import { toFile, fromFile } from './document';
-import { state, current, restore, loadExample, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo, fmt } from './state';
+import { state, current, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo, fmt } from './state';
 import { fit, zoomAt, hint, addNode, RAIL_ORDER, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
@@ -9,6 +9,8 @@ import { togglePanel, onPanelMode } from './sheet';
 import { initTooltips } from './tooltip';
 import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, openAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
 import { onAfterRender } from './state';
+import { bootTabs, syncActiveTitle } from './tabs';
+import { tabKeys, menuActions } from './tabbar';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const svg = $<HTMLElement>('svg');
@@ -38,7 +40,7 @@ const refreshHistory = () => { undoBtn.disabled = !history.canUndo(); redoBtn.di
 // undo/redo can swap the whole document (e.g. undoing "open example"), so keep the title and RPS boxes in step
 onAfterRender(() => {
   if (document.activeElement !== titleInput && titleInput.value !== state.meta.title) syncTitle();
-  syncTotal();
+  syncTotal(); syncActiveTitle();
 });
 history.onHistoryChange(refreshHistory);
 undoBtn.onclick = () => { undo(); refreshHistory(); };
@@ -118,13 +120,16 @@ $('expandAll').onclick = () => { allExpanded = !allExpanded; setAllDetail(allExp
 $('panelBtn').onclick = togglePanel;
 onPanelMode(m => $('panelBtn').classList.toggle('on', m !== 'hidden'));
 initTooltips();
-$('resetBtn').onclick = async () => { await openAsNew(toFile(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() })); syncTotal(); syncTitle(); };
+const exampleFile = () => toFile(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() });
+const openExample = async () => { await openAsNew(exampleFile()); syncTotal(); syncTitle(); };
+$('resetBtn').onclick = openExample;
 
 // ---------- keyboard ----------
 document.addEventListener('keydown', ev => {
   const t = (ev.target as Element).tagName;
   const mod = ev.metaKey || ev.ctrlKey;
   if (ev.defaultPrevented) return;
+  if (tabKeys(ev)) { ev.preventDefault(); return; }
   if ((ev.target as HTMLElement).isContentEditable || (ev.target as Element).closest?.('.cm-editor, .cm-overlay')) {
     // the code editor owns its keys; Escape (when no suggestion list is open) just leaves it
     if (ev.key === 'Escape' && !document.querySelector('.cm-tooltip-autocomplete')) (ev.target as HTMLElement).blur();
@@ -159,9 +164,10 @@ document.addEventListener('keydown', ev => {
 // ---------- save / load ----------
 const io = $('io'), jta = $<HTMLTextAreaElement>('json');
 const msg = (t: string) => { const m = $('ioMsg'); m.textContent = t; setTimeout(() => { m.textContent = ''; }, 1800); };
-const openIo = () => { io.hidden = false; jta.value = serialize(); jta.focus(); };
+const openIo = (blank = false) => { io.hidden = false; jta.value = blank ? '' : serialize(); jta.placeholder = 'Paste a cistem.io diagram (.json) and press Load'; jta.focus(); };
 const closeIo = () => { io.hidden = true; };
-$('ioBtn').onclick = openIo;
+$('ioBtn').onclick = () => openIo();
+menuActions({ openExisting: openDrawer, importJson: () => openIo(true), example: openExample });
 $('ioClose').onclick = closeIo;
 io.addEventListener('click', ev => { if (ev.target === io) closeIo(); });
 io.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeIo(); });
@@ -228,10 +234,9 @@ document.addEventListener('keydown', ev => { if ((ev.metaKey || ev.ctrlKey) && e
 
 // ---------- boot ----------
 (async () => {
-  const hasLocal = restore();
-  if (!hasLocal) loadExample();
-  history.reset(); renderAll(); syncTitle(); refreshHistory(); requestAnimationFrame(() => fit(false));
-  await bootCloud(hasLocal);   // may replace the doc with a cloud one; fires cistem:opened if so
+  await bootTabs(exampleFile);   // this device's tabs, from their local copies
+  syncTitle(); refreshHistory();
+  await bootCloud();             // links them up with the account (and ?d= / ?s=)
   startPolling();
 })();
 void current;

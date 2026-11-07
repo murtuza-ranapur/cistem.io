@@ -7,6 +7,7 @@ require('fs').mkdirSync(OUT, { recursive: true });
 
 const results = [];
 async function test(name, fn) {
+  if (process.env.E2E_ONLY && !name.includes(process.env.E2E_ONLY)) return;
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
   const errors = [];
@@ -31,7 +32,7 @@ const eq = (a, b, m) => { if (a !== b) throw new Error(`${m || 'expected equal'}
 
 class T {
   constructor(page) { this.page = page; }
-  doc() { return this.page.evaluate(() => JSON.parse(localStorage.getItem('cistem.doc'))); }
+  doc() { return this.page.evaluate(() => JSON.parse(localStorage.getItem('cistem.doc.' + JSON.parse(localStorage.getItem('cistem.tabs')).active))); }
   async node(id) { const d = await this.doc(); const n = d.model.nodes.find(n => n.id === id); if (!n) return null; return { ...n, ...d.layout.positions[id] }; }
   async nodeByName(name) { const d = await this.doc(); const n = d.model.nodes.find(n => n.name === name); return n && { ...n, ...d.layout.positions[n.id] }; }
   async box(sel) { const el = await this.page.$(sel); if (!el) throw new Error('no element ' + sel); return el.boundingBox(); }
@@ -299,7 +300,7 @@ class T {
   await test('expanding a node pushes its neighbours out of the way; collapsing brings them back', async t => {
     // stack a node right under the database first, then expand the database
     const db = await t.node('n5'); const before = (await t.doc()).layout.positions;
-    await t.page.evaluate(([x, y]) => { const d = JSON.parse(localStorage.getItem('cistem.doc')); d.layout.positions.n4 = { x, y }; d.layout.detail = {}; localStorage.setItem('cistem.doc', JSON.stringify(d)); }, [db.x, db.y + 110]);
+    await t.page.evaluate(([x, y]) => { const k = 'cistem.doc.' + JSON.parse(localStorage.getItem('cistem.tabs')).active; const d = JSON.parse(localStorage.getItem(k)); d.layout.positions.n4 = { x, y }; d.layout.detail = {}; localStorage.setItem(k, JSON.stringify(d)); }, [db.x, db.y + 110]);
     await t.page.reload(); await t.page.waitForTimeout(500);
     eq((await overlaps(t)).length, 0, 'no overlaps to start with');
     const n4 = (await t.doc()).layout.positions.n4;
@@ -406,17 +407,68 @@ class T {
   });
 
   // ---- example / import ----
-  await test('opening the example is undoable as a whole, title included (signed out)', async t => {
+  await test('the example opens in a new tab; the diagram you had stays in its tab', async t => {
     await t.page.fill('#title', 'My payments'); await t.page.keyboard.press('Enter');
     await t.clickNode('n2'); await t.page.keyboard.press('Delete'); await t.page.waitForTimeout(150);
-    const mine = await t.doc(); eq(mine.meta.title, 'My payments');
+    const before = await t.page.$$eval('.dtab', els => els.length);
     await t.page.click('#resetBtn'); await t.page.waitForTimeout(400);
+    eq(await t.page.$$eval('.dtab', els => els.length), before + 1, 'one more tab');
     eq((await t.doc()).meta.title, 'Checkout example'); assert(await t.node('n2'), 'example loaded');
-    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(300);
+    await t.page.click('.dtab:has-text("My payments")'); await t.page.waitForTimeout(300);
     const back = await t.doc();
-    eq(back.meta.title, 'My payments', 'title restored with the undo');
-    assert(!back.model.nodes.some(n => n.id === 'n2'), 'my edits restored');
+    eq(back.meta.title, 'My payments'); assert(!back.model.nodes.some(n => n.id === 'n2'), 'my edits are still there');
     eq(await t.page.inputValue('#title'), 'My payments', 'title box shows it');
+  });
+
+  // ---- tabs ----
+  await test('+ System opens a blank diagram in a new tab; each tab keeps its own undo', async t => {
+    const p = await t.emptyCanvasPoint(); await t.dragNodeTo('n3', p.x + 120, p.y);   // an undoable edit in tab A
+    await t.page.click('#newTabBtn'); await t.page.waitForTimeout(150);
+    assert(await t.page.isVisible('#newMenu'), 'menu open');
+    assert(await t.page.isDisabled('[data-new="sequence"]'), 'sequence not available yet');
+    await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(300);
+    const d = await t.doc(); eq(d.model.nodes.length, 1, 'blank: just clients'); eq(d.meta.title, 'Untitled system');
+    eq(await t.page.$eval('.dtab.on .tt', e => e.textContent), 'Untitled system');
+    assert(await t.page.isDisabled('#undoBtn'), 'a new tab starts with no history');
+    await t.page.keyboard.press('Alt+1'); await t.page.waitForTimeout(300);
+    eq(await t.page.$eval('.dtab.on', e => [...e.parentNode.children].indexOf(e)), 0, 'Alt+1 goes to the first tab');
+    await t.page.keyboard.press('Alt+2'); await t.page.waitForTimeout(300);
+    eq((await t.doc()).meta.title, 'Checkout example', 'Alt+2: the tab we edited');
+    assert(!(await t.page.isDisabled('#undoBtn')), 'its history came back with it');
+  });
+
+  await test('renaming shows on the tab; tabs and their order survive a reload', async t => {
+    await t.page.fill('#title', 'Alpha'); await t.page.waitForTimeout(100);
+    await t.page.keyboard.press('Escape');
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(250);
+    await t.page.fill('#title', 'Beta'); await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(100);
+    const titles = () => t.page.$$eval('.dtab .tt', els => els.map(e => e.textContent));
+    const before = await titles();
+    assert(before.indexOf('Alpha') >= 0 && before.indexOf('Beta') === before.indexOf('Alpha') + 1, 'new tab opens right after the current one: ' + before);
+    // drag Beta to the front
+    const b = await t.box('.dtab:has-text("Beta")'), f = await t.box('.dtab');
+    await t.page.mouse.move(b.x + 20, b.y + 10); await t.page.mouse.down();
+    await t.page.mouse.move(b.x - 40, b.y + 10, { steps: 4 }); await t.page.mouse.move(f.x + 4, f.y + 10, { steps: 6 }); await t.page.mouse.up();
+    await t.page.waitForTimeout(200);
+    eq((await titles())[0], 'Beta', 'dragged to the front');
+    await t.page.reload(); await t.page.waitForTimeout(700);
+    eq((await titles()).join('|'), (await (async () => ['Beta', ...before.filter(x => x !== 'Beta')])()).join('|'), 'same tabs, same order');
+    eq(await t.page.inputValue('#title'), 'Beta', 'the active tab is reopened');
+  });
+
+  await test('closing a local-only tab asks once; the last tab leaves a blank diagram', async t => {
+    const n0 = await t.page.$$eval('.dtab', els => els.length);
+    await t.page.click('.dtab.on [data-close]'); await t.page.waitForTimeout(100);
+    eq(await t.page.$$eval('.dtab', els => els.length), n0, 'first click only arms');
+    assert((await t.page.textContent('.dtab.on [data-close]')).includes('discard'), 'says what happens');
+    await t.page.click('.dtab.on [data-close]'); await t.page.waitForTimeout(300);
+    eq(await t.page.$$eval('.dtab', els => els.length), n0 - 1, 'closed');
+    while (await t.page.$$eval('.dtab', els => els.length) > 1) { await t.page.keyboard.press('Alt+w'); await t.page.keyboard.press('Alt+w'); await t.page.waitForTimeout(250); }
+    await t.page.keyboard.press('Alt+w'); await t.page.keyboard.press('Alt+w'); await t.page.waitForTimeout(300);
+    eq(await t.page.$$eval('.dtab', els => els.length), 1, 'one tab left');
+    eq((await t.doc()).model.nodes.length, 1, 'a blank diagram');
+    const keys = await t.page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('cistem.doc.')).length);
+    eq(keys, 1, 'closed tabs leave nothing behind in storage');
   });
 
   // ---- tooltips ----

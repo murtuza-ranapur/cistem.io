@@ -37,4 +37,8 @@ export const undo = (doc: Doc, meta: Meta) => step(past, future, doc, meta);
 export const redo = (doc: Doc, meta: Meta) => step(future, past, doc, meta);
 export const canUndo = () => past.length > 0;
 export const canRedo = () => future.length > 0;
+/** Hand over the undo stacks (switching tabs keeps each tab's history). */
+export interface Stacks { past: Entry[]; future: Entry[] }
+export function takeStacks(): Stacks { const s = { past: past.splice(0), future: future.splice(0) }; notify(); return s; }
+export function putStacks(s: Stacks) { past.splice(0, past.length, ...s.past); future.splice(0, future.length, ...s.future); notify(); }
 export function reset() { past.length = 0; future.length = 0; notify(); }

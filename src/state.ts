@@ -45,16 +45,15 @@ function restoreStep(r: history.Restored | null) { if (!r) return; state.doc = r
 export function undo() { restoreStep(history.undo(state.doc, state.meta)); }
 export function redo() { restoreStep(history.redo(state.doc, state.meta)); }
 
-const KEY = 'cistem.doc';
-const LEGACY_KEY = 'loadmap.doc';
+/** Each open tab keeps its document in its own localStorage slot; this is the active tab's. */
+let docKey = '';
+export function setDocKey(k: string) { docKey = k; }
 export function serialize(): string { return JSON.stringify(toFile(state.doc, state.meta), null, 2); }
-export function persist() { try { localStorage.setItem(KEY, JSON.stringify(toFile(state.doc, state.meta))); } catch { /* storage unavailable */ } }
-export function restore(): boolean {
-  try {
-    const s = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
-    if (s) { const { doc, meta } = fromFile(JSON.parse(s)); if (doc.nodes.length) { state.doc = doc; state.meta = meta; return true; } }
-  } catch { /* ignore */ }
-  return false;
+export function persist() { if (!docKey) return; try { localStorage.setItem(docKey, JSON.stringify(toFile(state.doc, state.meta))); } catch { /* storage unavailable */ } }
+/** Read a stored document (any version); null when absent or unreadable. */
+export function readLocal(key: string): { doc: Doc; meta: DiagramFile['meta'] } | null {
+  try { const s = localStorage.getItem(key); if (s) return fromFile(JSON.parse(s)); } catch { /* ignore */ }
+  return null;
 }
 export function replaceDoc(d: Doc, meta?: DiagramFile['meta']) {
   history.snapshot(state.doc, state.meta); state.doc = d; state.sel = null; state.multi.clear();

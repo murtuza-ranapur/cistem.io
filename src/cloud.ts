@@ -3,11 +3,11 @@
  * ?d= / ?s= URLs. Signed out, the editor works against localStorage only.
  */
 import { api, ConflictError, AuthError, type Summary, type Stored, type Profile } from './api';
-import { isSource } from './model';
 import { toFile } from './document';
-import { state, loadFile, loadExample, renderAll, esc } from './state';
+import { state, loadFile, renderAll, esc } from './state';
 import { fit } from './canvas';
 import * as history from './history';
+import { openCloudTab, openSharedTab, newTab, closeCloudTabs, activeTab, isFirstVisit, tabs, closeTab } from './tabs';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -21,12 +21,29 @@ export const cloud = {
   lastSerialized: '',
 };
 export const signedIn = () => !!cloud.user;
+/** What the cloud has of the open document, ignoring the always-fresh `updated` stamp. */
+export function signature(): string { const f = toFile(state.doc, state.meta); f.meta.updated = ''; return JSON.stringify(f); }
+
+/** The cloud link of the open tab; tabs swap it in and out. */
+export interface CloudSlot { id: string | null; version: number; status: SyncStatus; readonly: boolean; lastSerialized: string }
+export function takeCloud(): CloudSlot {
+  clearTimeout(timer);
+  return { id: cloud.id, version: cloud.version, status: cloud.status, readonly: cloud.readonly, lastSerialized: cloud.lastSerialized };
+}
+export function putCloud(s: CloudSlot | null) {
+  clearTimeout(timer);
+  cloud.id = s?.id ?? null; cloud.version = s?.version ?? 0; cloud.readonly = s?.readonly ?? false; cloud.lastSerialized = s?.lastSerialized ?? '';
+  setStatus(s?.status ?? 'local'); syncUrl();
+}
+const changeListeners: (() => void)[] = [];
+/** Called after every status change (ids and versions are settled by then). */
+export function onCloudChange(fn: () => void) { changeListeners.push(fn); }
 
 let onStatus: ((s: SyncStatus, detail?: string) => void) | null = null;
 let onUser: ((u: Profile | null) => void) | null = null;
 export function onSyncStatus(fn: typeof onStatus) { onStatus = fn; }
 export function onUserChange(fn: typeof onUser) { onUser = fn; }
-function setStatus(s: SyncStatus, detail?: string) { cloud.status = s; onStatus?.(s, detail); }
+export function setStatus(s: SyncStatus, detail?: string) { cloud.status = s; onStatus?.(s, detail); changeListeners.forEach(f => f()); }
 
 // ---------- sign in / out ----------
 export function signIn() {
@@ -45,8 +62,7 @@ let timer = 0;
 let inflight: Promise<void> | null = null;
 export function scheduleSave() {
   if (!signedIn() || !cloud.id || cloud.readonly) return;
-  const now = JSON.stringify(toFile(state.doc, state.meta));
-  if (now === cloud.lastSerialized) return;
+  if (signature() === cloud.lastSerialized) return;
   setStatus('dirty');
   clearTimeout(timer);
   timer = window.setTimeout(saveNow, 900);
@@ -57,12 +73,14 @@ export async function saveNow() {
   if (cloud.readonly) return;
   if (inflight) await inflight;
   const file = toFile(state.doc, state.meta);
-  const serialized = JSON.stringify(file);
+  const serialized = signature();
   if (serialized === cloud.lastSerialized) { setStatus('saved'); return; }
   setStatus('saving');
+  const id = cloud.id!;
   inflight = (async () => {
     try {
-      const stored = await api.update(cloud.id!, cloud.version, file);
+      const stored = await api.update(id, cloud.version, file);
+      if (cloud.id !== id) return; // switched tabs meanwhile; that tab's slot was taken before the switch
       cloud.version = stored.version; cloud.lastSerialized = serialized;
       setStatus('saved'); refreshList();
     } catch (e) {
@@ -110,25 +128,20 @@ export function resolveConflict(choice: 'theirs' | 'mine') {
 }
 
 // ---------- open / create ----------
-function adoptStored(s: Stored, readonly = false) {
+export function adoptStored(s: Stored, readonly = false) {
   const sameDiagram = cloud.id === s.id;
   cloud.id = readonly ? null : s.id; cloud.version = s.version; cloud.readonly = readonly;
   loadFile(s.document);
-  cloud.lastSerialized = JSON.stringify(toFile(state.doc, state.meta));
+  cloud.lastSerialized = signature();
   history.reset();
   renderAll(); if (!sameDiagram) requestAnimationFrame(() => fit(false));
   setStatus(readonly ? 'readonly' : 'saved');
   syncUrl(readonly ? undefined : s.id);
   document.dispatchEvent(new CustomEvent('cistem:opened'));
 }
-export async function openDiagram(id: string) {
-  try { adoptStored(await api.get(id)); closeDrawer(); }
-  catch (e) { setStatus('error', (e as Error).message); }
-}
-export async function openShared(token: string) {
-  try { adoptStored(await api.shared(token), true); }
-  catch { setStatus('error', 'That share link no longer works'); }
-}
+/** Open a saved diagram: its tab if one is open, otherwise a new tab. */
+export async function openDiagram(id: string) { closeDrawer(); await openCloudTab(id); }
+export async function openShared(token: string) { await openSharedTab(token); }
 /** Save the current in-memory diagram as a new cloud diagram. */
 export async function saveAsNew() {
   if (!signedIn()) { signIn(); return; }
@@ -136,41 +149,16 @@ export async function saveAsNew() {
     setStatus('saving');
     const stored = await api.create(toFile(state.doc, state.meta));
     cloud.id = stored.id; cloud.version = stored.version; cloud.readonly = false;
-    cloud.lastSerialized = JSON.stringify(toFile(state.doc, state.meta));
+    cloud.lastSerialized = signature();
     setStatus('saved'); syncUrl(stored.id); refreshList();
     document.dispatchEvent(new CustomEvent('cistem:opened'));
   } catch (e) { setStatus('error', (e as Error).message); }
 }
-/**
- * Open a document (the example, an imported file) as a NEW diagram instead of overwriting the open one.
- * Signed in: the current diagram is saved first and stays in the drawer; the new one gets its own cloud
- * entry. Signed out there's a single local slot, so the swap stays undoable (title included).
- */
-export async function openAsNew(file: unknown) {
-  clearTimeout(timer);
-  if (signedIn() && cloud.id && !cloud.readonly && JSON.stringify(toFile(state.doc, state.meta)) !== cloud.lastSerialized) await saveNow();
-  loadFile(file);
-  cloud.id = null; cloud.version = 0; cloud.readonly = false; cloud.lastSerialized = '';
-  if (signedIn()) history.reset();
-  renderAll(); requestAnimationFrame(() => fit(false));
-  document.dispatchEvent(new CustomEvent('cistem:opened'));
-  syncUrl();
-  if (signedIn()) await saveAsNew(); else setStatus('local');
-}
-
-export async function newDiagram() {
-  loadExample();
-  state.doc.nodes = state.doc.nodes.filter(n => isSource(n)); state.doc.edges = [];
-  state.meta.title = 'Untitled system';
-  cloud.id = null; cloud.version = 0; cloud.readonly = false; cloud.lastSerialized = '';
-  history.reset(); renderAll(); requestAnimationFrame(() => fit(false));
-  document.dispatchEvent(new CustomEvent('cistem:opened'));
-  syncUrl();
-  if (signedIn()) await saveAsNew(); else setStatus('local');
-  closeDrawer();
-}
+/** Open a document (the example, an imported file) in a new tab; signed in, it's saved as a new diagram. */
+export async function openAsNew(file: unknown) { await newTab('system', file); }
+export async function newDiagram() { closeDrawer(); await newTab('system'); }
 export async function deleteDiagram(id: string) {
-  try { await api.remove(id); if (cloud.id === id) { cloud.id = null; setStatus('local'); syncUrl(); } refreshList(); }
+  try { await api.remove(id); await closeCloudTabs(id); refreshList(); }
   catch (e) { setStatus('error', (e as Error).message); }
 }
 export async function toggleShare(): Promise<string | null> {
@@ -182,7 +170,7 @@ export async function toggleShare(): Promise<string | null> {
 }
 export const shareUrl = (token: string) => `${location.origin}/?s=${token}`;
 
-function syncUrl(id?: string) {
+export function syncUrl(id?: string) {
   const u = new URL(location.href);
   u.searchParams.delete('s'); u.searchParams.delete('login');
   if (id ?? cloud.id) u.searchParams.set('d', (id ?? cloud.id)!); else u.searchParams.delete('d');
@@ -199,9 +187,10 @@ export async function refreshList() {
   try { list = await api.list(); }
   catch (e) { listEl.innerHTML = `<p class="empty">Couldn't load diagrams: ${esc((e as Error).message)}</p>`; return; }
   if (!list.length) { listEl.innerHTML = '<p class="empty">No diagrams yet. Save this one or start a new one.</p>'; return; }
+  const open = new Set(tabs.list.map(t => t.cloudId));
   listEl.innerHTML = list.map(d => `
     <div class="ditem ${d.id === cloud.id ? 'on' : ''}" data-open="${d.id}">
-      <div class="dtitle">${esc(d.title)}${d.shared ? ' <span class="tag">shared</span>' : ''}</div>
+      <div class="dtitle">${esc(d.title)}${d.shared ? ' <span class="tag">shared</span>' : ''}${open.has(d.id) && d.id !== cloud.id ? ' <span class="tag">open</span>' : ''}</div>
       <div class="dmeta">${d.kind} · v${d.version} · ${timeAgo(d.updatedAt)}</div>
       <button class="x" data-del="${d.id}" aria-label="Delete">×</button>
     </div>`).join('');
@@ -225,30 +214,34 @@ function timeAgo(iso: string) {
 
 // ---------- boot ----------
 /**
- * Resolve who we are and what to show. Returns true when a cloud diagram was loaded,
- * so main.ts knows not to fall back to localStorage.
+ * Resolve who we are and what to show. The tabs restored from this device are already on screen;
+ * this links them up with the account: ?s= opens a shared copy, ?d= a saved diagram (in its tab, or a new
+ * one), otherwise the open tab is refreshed from the cloud. A first visit opens the most recent diagram.
  */
-export async function bootCloud(hasLocalWork: boolean): Promise<boolean> {
+export async function bootCloud(): Promise<void> {
   const u = new URL(location.href);
   const s = u.searchParams.get('s'), d = u.searchParams.get('d');
   try { cloud.user = await api.me(); } catch { cloud.user = null; }
   onUser?.(cloud.user);
 
-  if (s) { await openShared(s); return true; }
-  if (!signedIn()) { setStatus('local'); return false; }
+  if (s) { await openShared(s); return; }
+  if (!signedIn()) { setStatus('local'); return; }
 
   // Just came back from GitHub? restore the URL we left from.
   try {
     const back = sessionStorage.getItem('cistem.returnTo');
-    if (back !== null) { sessionStorage.removeItem('cistem.returnTo'); const bu = new URL(location.origin + '/' + back); const bd = bu.searchParams.get('d'); if (bd && !d) { window.history.replaceState(null, '', bu.toString()); return bootCloud(hasLocalWork); } }
+    if (back !== null) { sessionStorage.removeItem('cistem.returnTo'); const bu = new URL(location.origin + '/' + back); const bd = bu.searchParams.get('d'); if (bd && !d) { window.history.replaceState(null, '', bu.toString()); return bootCloud(); } }
   } catch { /* ignore */ }
 
-  if (d) { try { adoptStored(await api.get(d)); return true; } catch { /* fall through: deleted or someone else's */ } }
-
-  // Signed in with nothing open: offer to keep local work, else open the most recent diagram.
+  if (d) { await openCloudTab(d); return; }
+  const t = activeTab();
+  if (t?.cloudId) { await openCloudTab(t.cloudId, true); return; }
   const list = await api.list().catch(() => [] as Summary[]);
-  if (hasLocalWork && !list.length) { setStatus('local'); return false; } // first save will create it
-  if (list.length) { adoptStored(await api.get(list[0].id)); return true; }
+  if (list.length && !tabs.list.some(x => x.cloudId)) {
+    const placeholder = isFirstVisit() ? t?.key : undefined;  // the example a first visit starts with
+    await openCloudTab(list[0].id);
+    if (placeholder) await closeTab(placeholder, true);
+    return;
+  }
   setStatus('local');
-  return false;
 }
