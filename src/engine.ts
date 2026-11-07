@@ -1,11 +1,12 @@
-import { crossingLatency, behaviourOf, isSource, isAsync, type Doc, type Node } from './model';
+import { crossingLatency, behaviourOf, isSource, isAsync, qty, type Doc, type Node } from './model';
 
 export type Status = 'ok' | 'warn' | 'crit';
 export interface NodeResult { load: number; cap: number; util: number; status: Status; lat: number; cum: number }
 export interface Verdict { status: Status; node: Node | null; lat: number; converged: boolean }
 export interface Results { nodes: Record<string, NodeResult>; edges: Record<string, number>; crossings: Record<string, number>; verdict: Verdict }
 
-const num = (v: unknown) => +(v as number) || 0;
+/** see qty in model.ts */
+export const num = qty;
 const clamp01 = (v: unknown) => Math.min(1, Math.max(0, num(v)));
 
 /**

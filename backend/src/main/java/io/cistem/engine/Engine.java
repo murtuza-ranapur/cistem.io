@@ -53,7 +53,16 @@ public final class Engine {
 
     private Engine() {}
 
-    static double num(JsonNode n, String f) { JsonNode v = n.get(f); return v == null || !v.isNumber() ? 0 : v.asDouble(); }
+    /** Non-negative finite number, or 0. Numeric strings count; anything else reads as 0 (mirrors num in engine.ts). */
+    static double num(JsonNode n, String f) {
+        JsonNode v = n.get(f);
+        double x;
+        if (v == null) return 0;
+        if (v.isNumber()) x = v.asDouble();
+        else if (v.isString() && !v.asString().isBlank()) { try { x = Double.parseDouble(v.asString().trim()); } catch (NumberFormatException e) { return 0; } }
+        else return 0;
+        return Double.isFinite(x) && x > 0 ? x : 0;
+    }
     static double clamp01(double v) { return Math.min(1, Math.max(0, v)); }
     static String kind(JsonNode n) { return n.path("kind").asText(""); }
 

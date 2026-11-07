@@ -89,3 +89,11 @@ const write = (name: string, doc: any, title: string) => {
   writeFileSync(res + 'seq-text.json', JSON.stringify(out, null, 1));
   console.log('seq-text.json');
 }
+// 6. absurd inputs: negatives, numeric strings, text, booleans, NaN read the same in both engines
+{
+  const c = makeNode('entry', 0, 0, { name: 'c', rps: '250' }) as any, c2 = makeNode('entry', 0, 0, { name: 'neg', rps: -500 }) as any;
+  const s = makeNode('service', 0, 0, { name: 's', instances: '2', rpsPerInstance: true, latency: -40 }) as any;
+  const r = makeNode('cache', 0, 0, { name: 'r', hitRatio: '1.7', maxOps: 'lots' }) as any, d = makeNode('db', 0, 0, { name: 'd', replicas: -3, readShare: 'x' }) as any;
+  const doc = { nodes: [c, c2, s, r, d], edges: [{ id: 'a', from: c.id, to: s.id, calls: '3' }, { id: 'b', from: c2.id, to: s.id, calls: -1 }, { id: 'x', from: s.id, to: r.id, calls: 1 }, { id: 'y', from: r.id, to: d.id, calls: 'NaN' }], containers: [], links: [], frames: {}, detail: {} } as any;
+  write('parity-absurd.json', doc, 'Absurd inputs');
+}

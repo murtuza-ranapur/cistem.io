@@ -54,6 +54,15 @@ export type ContainerColor = 'blue' | 'violet' | 'teal' | 'green' | 'amber' | 'o
 export type ContainerFill = 'tint' | 'solid' | 'outline';
 export interface Container { id: string; kind: ContainerKind; name: string; parent: string | null; provider?: string; owner?: string; note?: string; color?: ContainerColor; fill?: ContainerFill; border?: 'dashed' | 'solid' }
 /** How two containers talk; adds latency to every edge crossing between them (or their descendants). */
+/**
+ * Every quantity in the model (rps, calls, capacities, latencies) is a non-negative finite number. Numeric
+ * strings count (imports, MCP); anything else — text, negatives, NaN, Infinity, booleans — reads as 0.
+ * io.cistem.engine.Engine.num does the same.
+ */
+export const qty = (v: unknown) => {
+  const x = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(x) && x > 0 ? x : 0;
+};
 export interface Link { id: string; from: string; to: string; type: string; latencyMs: number }
 /** Editor-side frame geometry for a container. */
 export interface Frame { x: number; y: number; w: number; h: number }
@@ -180,7 +189,7 @@ export function crossingLatency(doc: Doc, a: string | null | undefined, b: strin
   // explicit link between any ancestor pair wins (nearest first)
   for (const x of pa.length ? pa : ['']) for (const y of pb.length ? pb : ['']) {
     const l = doc.links.find(l => (l.from === x && l.to === y) || (l.from === y && l.to === x));
-    if (l) return l.latencyMs;
+    if (l) return qty(l.latencyMs);
   }
   if (!a || !b) return CROSSING_DEFAULT_MS.siblings;
   const rootA = pa[pa.length - 1], rootB = pb[pb.length - 1];

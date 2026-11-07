@@ -90,6 +90,12 @@ class ParityTest {
         layoutMatches(f);
     }
 
+    /** Negatives, numeric strings, text, booleans and NaN read the same (as 0 or the number) in both engines. */
+    @Test
+    void absurdInputsMatchTypeScript() throws Exception {
+        engineMatches(fixture("/parity-absurd.json"));
+    }
+
     @Test
     void sequenceTextMatchesTypeScript() throws Exception {
         for (JsonNode c : fixture("/seq-text.json")) {

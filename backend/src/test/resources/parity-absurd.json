@@ -1,0 +1,201 @@
+{
+ "file": {
+  "version": 4,
+  "kind": "system",
+  "meta": {
+   "title": "Absurd inputs",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "nodes": [
+    {
+     "id": "n32",
+     "kind": "entry",
+     "name": "c",
+     "platforms": [
+      "web",
+      "app"
+     ],
+     "rps": "250"
+    },
+    {
+     "id": "n33",
+     "kind": "entry",
+     "name": "neg",
+     "platforms": [
+      "web",
+      "app"
+     ],
+     "rps": -500
+    },
+    {
+     "id": "n34",
+     "kind": "service",
+     "name": "s",
+     "rpsPerInstance": true,
+     "instances": "2",
+     "latency": -40,
+     "endpoints": []
+    },
+    {
+     "id": "n35",
+     "kind": "cache",
+     "name": "r",
+     "maxOps": "lots",
+     "hitRatio": "1.7",
+     "latency": 1,
+     "eviction": "allkeys-lru"
+    },
+    {
+     "id": "n36",
+     "kind": "db",
+     "name": "d",
+     "maxQps": 5000,
+     "readShare": "x",
+     "replicas": -3,
+     "latency": 8,
+     "tables": []
+    }
+   ],
+   "edges": [
+    {
+     "id": "a",
+     "from": "n32",
+     "to": "n34",
+     "calls": "3"
+    },
+    {
+     "id": "b",
+     "from": "n33",
+     "to": "n34",
+     "calls": -1
+    },
+    {
+     "id": "x",
+     "from": "n34",
+     "to": "n35",
+     "calls": 1
+    },
+    {
+     "id": "y",
+     "from": "n35",
+     "to": "n36",
+     "calls": "NaN"
+    }
+   ],
+   "containers": [],
+   "links": []
+  },
+  "layout": {
+   "positions": {
+    "n32": {
+     "x": 0,
+     "y": 0
+    },
+    "n33": {
+     "x": 0,
+     "y": 0
+    },
+    "n34": {
+     "x": 0,
+     "y": 0
+    },
+    "n35": {
+     "x": 0,
+     "y": 0
+    },
+    "n36": {
+     "x": 0,
+     "y": 0
+    }
+   },
+   "frames": {}
+  }
+ },
+ "expected": {
+  "nodes": {
+   "n32": {
+    "load": 250,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0
+   },
+   "n33": {
+    "load": 0,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0
+   },
+   "n34": {
+    "load": 750,
+    "cap": 0,
+    "util": null,
+    "status": "crit",
+    "lat": 0,
+    "cum": 0
+   },
+   "n35": {
+    "load": 750,
+    "cap": 0,
+    "util": null,
+    "status": "crit",
+    "lat": 1,
+    "cum": 1
+   },
+   "n36": {
+    "load": 0,
+    "cap": 5000,
+    "util": 0,
+    "status": "ok",
+    "lat": 8,
+    "cum": 9
+   }
+  },
+  "edges": {
+   "a": 750,
+   "b": 0,
+   "x": 750,
+   "y": 0
+  },
+  "crossings": {
+   "a": 0,
+   "b": 0,
+   "x": 0,
+   "y": 0
+  },
+  "verdict": {
+   "status": "crit",
+   "node": "n34",
+   "lat": 9,
+   "converged": true
+  },
+  "layout": {
+   "n32": {
+    "x": 40,
+    "y": 40
+   },
+   "n33": {
+    "x": 40,
+    "y": 216
+   },
+   "n34": {
+    "x": 352,
+    "y": 128
+   },
+   "n35": {
+    "x": 672,
+    "y": 128
+   },
+   "n36": {
+    "x": 984,
+    "y": 128
+   }
+  },
+  "frames": {}
+ }
+}
