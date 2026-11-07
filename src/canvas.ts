@@ -508,8 +508,8 @@ svg.addEventListener('pointermove', ev => {
     }
     case 'frame': {
       const dx = w.x - drag.ox, dy = w.y - drag.oy;
-      if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) { drag.moved = true; mutate(() => {}); dragging = drag.start; }
-      if (!drag.moved) return;
+      if (!drag.moved && Math.hypot(dx, dy) * state.view.k > 3) { drag.moved = true; mutate(() => {}); }
+      if (!drag.moved) return; // (no `dragging` snapshot here: the frame must follow its members)
       const d = drag;
       d.nodeIds.forEach(id => { const n = state.doc.nodes.find(x => x.id === id)!; n.x = snap(d.start[id].x + dx); n.y = snap(d.start[id].y + dy); });
       // empty containers keep a stored frame; move those too

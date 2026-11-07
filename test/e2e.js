@@ -263,9 +263,12 @@ class T {
 
   await test('dragging a frame moves its members with it', async t => {
     const f = await t.frameBox('c9'); const alb = await t.node('n2');
-    await t.page.mouse.move(f.x + 60, f.y + 12); await t.page.mouse.down(); await t.page.mouse.move(f.x + 65, f.y + 17); await t.page.mouse.move(f.x + 60, f.y + 212, { steps: 10 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    await t.page.mouse.move(f.x + 60, f.y + 12); await t.page.mouse.down(); await t.page.mouse.move(f.x + 65, f.y + 17); await t.page.mouse.move(f.x + 60, f.y + 212, { steps: 10 });
+    const mid = await t.frameBox('c9'); assert(mid.y > f.y + 100, `frame follows the pointer while dragging (was ${f.y}, now ${mid.y})`);
+    await t.page.mouse.up(); await t.page.waitForTimeout(200);
     const after = await t.node('n2'); assert(after.y > alb.y + 100, 'member moved down with the frame');
     eq(after.container, 'c9', 'still in the same container');
+    const fin = await t.frameBox('c9'); assert(Math.abs(fin.y - mid.y) < 8, 'frame stays where it was dropped');
   });
 
   // ---- structured editors ----
