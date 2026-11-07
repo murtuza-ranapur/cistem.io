@@ -393,6 +393,8 @@ function nodeSheet(n: Node): string {
     h += `<div class="tabs"><button data-tab="capacity" class="${tab === 'capacity' ? 'on' : ''}">Capacity</button><button data-tab="schema" class="${tab === 'schema' ? 'on' : ''}">${schemaLabel(n)}</button></div>`;
     h += tab === 'schema' ? schemaTab(n) : capacityTab(n);
   } else h += capacityTab(n);
+  const seqs = appearsIn(n.id);
+  if (seqs.length) h += `<div class="appears"><span>Appears in</span>${seqs.map(s => `<button class="chip" data-opentab="${esc(s.key)}">⇅ ${esc(s.title)}</button>`).join('')}</div>`;
   return h;
 }
 
@@ -452,7 +454,23 @@ bar.addEventListener('click', ev => {
 });
 onPanelMode(m => { const pin = bar.querySelector<HTMLElement>('[data-panel="pin"]')!; pin.classList.toggle('on', m === 'pinned'); pin.title = m === 'pinned' ? 'Unpin — close when nothing is selected' : 'Pin — keep this panel open'; });
 
+/** The sequence editor supplies its own panel and the "appears in" lookup (set from seqview.ts). */
+let seqPanel: ((body: HTMLElement) => void) | null = null;
+let appearsIn: (nodeId: string) => { key: string; title: string }[] = () => [];
+let openTab: (key: string) => void = () => {};
+export function setSequencePanel(p: typeof seqPanel, a: typeof appearsIn, o: typeof openTab) { seqPanel = p; appearsIn = a; openTab = o; }
+body.addEventListener('click', ev => { const b = (ev.target as Element).closest<HTMLElement>('[data-opentab]'); if (b) openTab(b.dataset.opentab!); });
+
 export function drawSheet() {
+  if (state.kind === 'sequence' && seqPanel) {
+    const isOpen = !inspector.classList.contains('closed');
+    if (quietFor && quietFor !== selKey()) quietFor = '';
+    const open = panelMode === 'hidden' ? false : panelMode === 'pinned' ? true : !!state.sel && (isOpen || (!held && !quietFor));
+    inspector.classList.toggle('closed', !open);
+    teardownEditors();
+    if (open) seqPanel(body); else body.innerHTML = '';
+    return;
+  }
   const t = current();
   if (!t && state.sel) state.sel = null;
   const isOpen = !inspector.classList.contains('closed');

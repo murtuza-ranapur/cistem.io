@@ -3,8 +3,7 @@
  * ?d= / ?s= URLs. Signed out, the editor works against localStorage only.
  */
 import { api, ConflictError, AuthError, type Summary, type Stored, type Profile } from './api';
-import { toFile } from './document';
-import { state, loadFile, renderAll, esc } from './state';
+import { state, loadFile, renderAll, esc, currentFile } from './state';
 import { fit } from './canvas';
 import * as history from './history';
 import { openCloudTab, openSharedTab, newTab, closeCloudTabs, activeTab, isFirstVisit, tabs, closeTab } from './tabs';
@@ -22,7 +21,7 @@ export const cloud = {
 };
 export const signedIn = () => !!cloud.user;
 /** What the cloud has of the open document, ignoring the always-fresh `updated` stamp. */
-export function signature(): string { const f = toFile(state.doc, state.meta); f.meta.updated = ''; return JSON.stringify(f); }
+export function signature(): string { const f = currentFile(); f.meta.updated = ''; return JSON.stringify(f); }
 
 /** The cloud link of the open tab; tabs swap it in and out. */
 export interface CloudSlot { id: string | null; version: number; status: SyncStatus; readonly: boolean; lastSerialized: string }
@@ -72,7 +71,7 @@ export async function saveNow() {
   if (!cloud.id) { await saveAsNew(); return; }
   if (cloud.readonly) return;
   if (inflight) await inflight;
-  const file = toFile(state.doc, state.meta);
+  const file = currentFile();
   const serialized = signature();
   if (serialized === cloud.lastSerialized) { setStatus('saved'); return; }
   setStatus('saving');
@@ -147,7 +146,7 @@ export async function saveAsNew() {
   if (!signedIn()) { signIn(); return; }
   try {
     setStatus('saving');
-    const stored = await api.create(toFile(state.doc, state.meta));
+    const stored = await api.create(currentFile());
     cloud.id = stored.id; cloud.version = stored.version; cloud.readonly = false;
     cloud.lastSerialized = signature();
     setStatus('saved'); syncUrl(stored.id); refreshList();

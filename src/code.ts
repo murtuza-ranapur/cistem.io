@@ -12,6 +12,7 @@ import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { tags as t } from '@lezer/highlight';
 import { contextAt, avroSuggestions, avroProblems, problemRange, type Suggestion } from './avro';
 import { StreamLanguage } from '@codemirror/language';
+import { parseSeq, printSeq } from './seq';
 import { parseDbml, parseSql, toDbml, PG_TYPE_LIST, FLAG_LIST, type RefResolver } from './dbml';
 import type { Table } from './model';
 
@@ -316,6 +317,100 @@ export function mountDbml(parent: HTMLElement, o: DbmlOptions): EditorView {
     cmPlaceholder('Table payments {\n  id uuid [pk]\n}\n\n— or paste CREATE TABLE … SQL'),
   ];
   if (o.big) exts.push(lineNumbers(), highlightActiveLine());
+  parent.textContent = '';
+  return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });
+}
+// ---------- sequence diagrams as text ----------
+
+const seqLang = StreamLanguage.define<{ afterColon: boolean }>({
+  startState: () => ({ afterColon: false }),
+  token(stream, st) {
+    if (stream.sol()) st.afterColon = false;
+    if (st.afterColon) { stream.skipToEnd(); return 'string'; }
+    if (stream.eatSpace()) return null;
+    if (stream.match('#') || stream.match('//')) { stream.skipToEnd(); return 'comment'; }
+    if (stream.sol() || /^\s*$/.test(stream.string.slice(0, stream.start))) {
+      if (stream.match(/^(alt|else|and|opt|loop|par)\b/i)) { st.afterColon = true; return 'keyword'; }
+      if (stream.match(/^(participant|actor|note|over|left of|right of|end)\b/i)) return 'keyword';
+    }
+    if (stream.match(/^(over|left of|right of)\b/i)) return 'keyword';
+    if (stream.match(/^(->>|-->|->)/)) return 'operator';
+    if (stream.eat(':')) { st.afterColon = true; return 'punctuation'; }
+    if (stream.match(/^"[^"]*"?/)) return 'string';
+    if (stream.match(/^@[\w.$-]+/)) return 'number';
+    if (stream.eat(',')) return 'punctuation';
+    if (stream.match(/^[A-Za-z_$][\w.$-]*/)) {
+      const before = stream.string.slice(0, stream.start).trim();
+      return /^(participant|actor)\b/i.test(before) && /"/.test(before) ? 'typeName' : 'variableName';
+    }
+    stream.next(); return null;
+  },
+});
+const seqHighlight = HighlightStyle.define([
+  { tag: t.keyword, color: 'var(--syn-kw)', fontWeight: '600' },
+  { tag: t.variableName, color: 'var(--syn-key)' },
+  { tag: t.typeName, color: 'var(--syn-num)' },
+  { tag: t.operator, color: 'var(--fg)', fontWeight: '700' },
+  { tag: t.string, color: 'var(--fg)' },
+  { tag: t.number, color: 'var(--fk)' },
+  { tag: t.comment, color: 'var(--muted)', fontStyle: 'italic' },
+  { tag: t.punctuation, color: 'var(--muted)' },
+]);
+export interface SeqOptions { doc: string; onChange: (text: string) => void; participants: () => string[]; labels: (to: string) => string[]; big?: boolean }
+function seqSource(o: SeqOptions) {
+  return (ctx: CompletionContext): CompletionResult | null => {
+    const line = ctx.state.doc.lineAt(ctx.pos), before = line.text.slice(0, ctx.pos - line.from);
+    const ids = () => o.participants().map(id => ({ label: id, type: 'variable' }));
+    let m = /^\s*(\S+?)\s*(->>|-->|->)\s*(\S+?)\s*:\s*([^]*)$/.exec(before);
+    if (m) { const opts = o.labels(m[3]); if (!opts.length) return null; return { from: ctx.pos - m[4].length, options: opts.map(l => ({ label: l, type: 'text' })), validFor: /^[^]*$/ }; }
+    if ((m = /^\s*\S+?\s*(?:->>|-->|->)\s*([\w.$-]*)$/.exec(before))) return { from: ctx.pos - m[1].length, options: ids(), validFor: /^[\w.$-]*$/ };
+    if ((m = /^\s*([\w.$-]+)\s+$/.exec(before)) && o.participants().includes(m[1])) return { from: ctx.pos, options: [{ label: '->', detail: 'call', type: 'keyword' }, { label: '-->', detail: 'reply', type: 'keyword' }, { label: '->>', detail: 'async', type: 'keyword' }] };
+    if ((m = /^\s*note\s+over\s+(?:[\w.$-]+\s*,\s*)*([\w.$-]*)$/i.exec(before))) return { from: ctx.pos - m[1].length, options: ids(), validFor: /^[\w.$-]*$/ };
+    if ((m = /^\s*([\w.$-]*)$/.exec(before)) && (m[1].length || ctx.explicit)) {
+      const kw = [
+        { label: 'participant', apply: snippet('participant ${name}'), type: 'keyword' }, { label: 'note over', apply: snippet('note over ${who}: ${text}'), type: 'keyword' },
+        { label: 'alt', apply: snippet('alt ${condition}\n  ${}\nelse\n  \nend'), type: 'keyword', detail: 'alternatives' },
+        { label: 'opt', apply: snippet('opt ${condition}\n  ${}\nend'), type: 'keyword' }, { label: 'loop', apply: snippet('loop ${for each item}\n  ${}\nend'), type: 'keyword' },
+        { label: 'par', apply: snippet('par ${}\n  \nand\n  \nend'), type: 'keyword' }, { label: 'else', type: 'keyword' }, { label: 'end', type: 'keyword' },
+      ];
+      return { from: ctx.pos - m[1].length, options: [...ids(), ...kw], validFor: /^[\w.$-]*$/ };
+    }
+    return null;
+  };
+}
+function seqLinter(view: EditorView): Diagnostic[] {
+  const text = view.state.doc.toString();
+  if (!text.trim()) return [];
+  return parseSeq(text).errors.map(e => {
+    const l = view.state.doc.line(Math.min(e.line + 1, view.state.doc.lines));
+    const lead = l.text.length - l.text.trimStart().length;
+    return { from: l.from + lead, to: Math.max(l.from + lead + 1, l.to), severity: 'error' as const, message: e.message };
+  });
+}
+/** Paste Mermaid or PlantUML and get this format instead. */
+const seqPaste = EditorView.domEventHandlers({
+  paste(ev, view) {
+    const text = ev.clipboardData?.getData('text/plain') ?? '';
+    const p = parseSeq(text);
+    if (p.from === 'cistem') return false;
+    ev.preventDefault();
+    const printed = printSeq(p.doc);
+    const sel = view.state.selection.main;
+    const whole = sel.from === 0 && sel.to === view.state.doc.length;
+    view.dispatch({ changes: whole || !view.state.doc.length ? { from: 0, to: view.state.doc.length, insert: printed } : { from: sel.from, to: sel.to, insert: printed } });
+    return true;
+  },
+});
+export function mountSeq(parent: HTMLElement, o: SeqOptions): EditorView {
+  const exts: Extension[] = [
+    history(), drawSelection(), indentOnInput(), seqLang, syntaxHighlighting(seqHighlight), theme, EditorState.tabSize.of(2),
+    autocompletion({ override: [seqSource(o)], icons: false, activateOnTyping: true, maxRenderedOptions: 40 }),
+    EditorView.inputHandler.of((view, _f, _t, text) => { if (text === ' ' || text === '>' || text === ':' || text === ',') setTimeout(() => { if (view.hasFocus) startCompletion(view); }, 0); return false; }),
+    linter(seqLinter, { delay: 300 }), seqPaste, lineNumbers(), highlightActiveLine(),
+    keymap.of([...completionKeymap, ...lintKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap]),
+    EditorView.updateListener.of(u => { if (u.docChanged) o.onChange(u.state.doc.toString()); }),
+    cmPlaceholder('client -> api: POST /orders\napi --> client: 201 Created\n\n— or paste Mermaid / PlantUML'),
+  ];
   parent.textContent = '';
   return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });
 }

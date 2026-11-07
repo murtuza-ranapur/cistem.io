@@ -1,0 +1,280 @@
+[
+ {
+  "text": "participant merchants, proxy\nparticipant ecom \"ecom-transaction-payments\" service @n3\n\nmerchants -> proxy: POST /uploads\nalt merchant on legacy\n  proxy -> legacy: forward\n  legacy --> proxy: 202 Accepted\nelse\n  proxy -> ecom: POST /payments/batch\nend\necom ->> items: publish item\nloop for each item # comment\n  items ->> ecom: consume\n  note over ecom, items: idempotent\nend\n",
+  "participants": [
+   {
+    "id": "merchants",
+    "name": "merchants"
+   },
+   {
+    "id": "proxy",
+    "name": "proxy"
+   },
+   {
+    "id": "ecom",
+    "name": "ecom-transaction-payments",
+    "type": "service",
+    "ref": "n3"
+   },
+   {
+    "id": "legacy",
+    "name": "legacy"
+   },
+   {
+    "id": "items",
+    "name": "items"
+   }
+  ],
+  "rows": [
+   {
+    "t": "msg",
+    "from": "merchants",
+    "to": "proxy",
+    "label": "POST /uploads",
+    "style": "sync"
+   },
+   {
+    "t": "open",
+    "kind": "alt",
+    "guard": "merchant on legacy"
+   },
+   {
+    "t": "msg",
+    "from": "proxy",
+    "to": "legacy",
+    "label": "forward",
+    "style": "sync"
+   },
+   {
+    "t": "msg",
+    "from": "legacy",
+    "to": "proxy",
+    "label": "202 Accepted",
+    "style": "reply"
+   },
+   {
+    "t": "else",
+    "guard": ""
+   },
+   {
+    "t": "msg",
+    "from": "proxy",
+    "to": "ecom",
+    "label": "POST /payments/batch",
+    "style": "sync"
+   },
+   {
+    "t": "close"
+   },
+   {
+    "t": "msg",
+    "from": "ecom",
+    "to": "items",
+    "label": "publish item",
+    "style": "async"
+   },
+   {
+    "t": "open",
+    "kind": "loop",
+    "guard": "for each item"
+   },
+   {
+    "t": "msg",
+    "from": "items",
+    "to": "ecom",
+    "label": "consume",
+    "style": "async"
+   },
+   {
+    "t": "note",
+    "over": [
+     "ecom",
+     "items"
+    ],
+    "text": "idempotent"
+   },
+   {
+    "t": "close"
+   }
+  ],
+  "errors": [],
+  "printed": "participant merchants, proxy\nparticipant ecom \"ecom-transaction-payments\" service @n3\nparticipant legacy, items\n\nmerchants -> proxy: POST /uploads\nalt merchant on legacy\n  proxy -> legacy: forward\n  legacy --> proxy: 202 Accepted\nelse\n  proxy -> ecom: POST /payments/batch\nend\necom ->> items: publish item\nloop for each item\n  items ->> ecom: consume\n  note over ecom, items: idempotent\nend\n"
+ },
+ {
+  "text": "actor user\nuser->api:GET /x\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done",
+  "participants": [
+   {
+    "id": "user",
+    "name": "user",
+    "type": "actor"
+   },
+   {
+    "id": "api",
+    "name": "api"
+   },
+   {
+    "id": "a",
+    "name": "a"
+   },
+   {
+    "id": "b",
+    "name": "b"
+   }
+  ],
+  "rows": [
+   {
+    "t": "msg",
+    "from": "user",
+    "to": "api",
+    "label": "GET /x",
+    "style": "sync"
+   },
+   {
+    "t": "msg",
+    "from": "api",
+    "to": "user",
+    "label": "",
+    "style": "reply"
+   },
+   {
+    "t": "open",
+    "kind": "par",
+    "guard": ""
+   },
+   {
+    "t": "msg",
+    "from": "api",
+    "to": "a",
+    "label": "one",
+    "style": "async"
+   },
+   {
+    "t": "else",
+    "guard": "second"
+   },
+   {
+    "t": "msg",
+    "from": "api",
+    "to": "b",
+    "label": "two",
+    "style": "async"
+   },
+   {
+    "t": "close"
+   },
+   {
+    "t": "note",
+    "over": [
+     "api"
+    ],
+    "text": "done"
+   }
+  ],
+  "errors": [],
+  "printed": "participant user actor\nparticipant api, a, b\n\nuser -> api: GET /x\napi --> user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote over api: done\n"
+ },
+ {
+  "text": "a -> b: ok\nelse\nloop forever\na -> b\nwat is this\nparticipant a\nparticipant 9x\nb -> c:   spaced label  ",
+  "participants": [
+   {
+    "id": "a",
+    "name": "a"
+   },
+   {
+    "id": "b",
+    "name": "b"
+   },
+   {
+    "id": "c",
+    "name": "c"
+   }
+  ],
+  "rows": [
+   {
+    "t": "msg",
+    "from": "a",
+    "to": "b",
+    "label": "ok",
+    "style": "sync"
+   },
+   {
+    "t": "open",
+    "kind": "loop",
+    "guard": "forever"
+   },
+   {
+    "t": "msg",
+    "from": "a",
+    "to": "b",
+    "label": "",
+    "style": "sync"
+   },
+   {
+    "t": "msg",
+    "from": "b",
+    "to": "c",
+    "label": "spaced label",
+    "style": "sync"
+   },
+   {
+    "t": "close"
+   }
+  ],
+  "errors": [
+   {
+    "line": 1,
+    "message": "\"else\" outside an alt or par block"
+   },
+   {
+    "line": 2,
+    "message": "\"loop\" is never closed with \"end\""
+   },
+   {
+    "line": 4,
+    "message": "Not understood. Try  a -> b: label,  note over a: text,  alt / else / end"
+   },
+   {
+    "line": 5,
+    "message": "\"a\" is already declared"
+   },
+   {
+    "line": 6,
+    "message": "Expected: participant id \"Name\" type @component"
+   }
+  ],
+  "printed": "participant a, b, c\n\na -> b: ok\nloop forever\n  a -> b\n  b -> c: spaced label\nend\n"
+ },
+ {
+  "text": "participant p-1 \"Name \\\"q\\\"\" queue\np-1 -> p-1: self\nopt\nend",
+  "participants": [
+   {
+    "id": "p-1",
+    "name": "p-1"
+   }
+  ],
+  "rows": [
+   {
+    "t": "msg",
+    "from": "p-1",
+    "to": "p-1",
+    "label": "self",
+    "style": "sync"
+   },
+   {
+    "t": "open",
+    "kind": "opt",
+    "guard": ""
+   },
+   {
+    "t": "close"
+   }
+  ],
+  "errors": [
+   {
+    "line": 0,
+    "message": "Expected: participant id \"Name\" type @component"
+   }
+  ],
+  "printed": "participant p-1\n\np-1 -> p-1: self\nopt\nend\n"
+ }
+]

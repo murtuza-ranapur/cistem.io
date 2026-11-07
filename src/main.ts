@@ -9,7 +9,11 @@ import { togglePanel, onPanelMode } from './sheet';
 import { initTooltips } from './tooltip';
 import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, openAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
 import { onAfterRender } from './state';
-import { bootTabs, syncActiveTitle } from './tabs';
+import { bootTabs, syncActiveTitle, newTab, usesFor, tabs } from './tabs';
+import { seqKey } from './seqview';
+import { sequenceFromPath } from './seq';
+import { seqToFile } from './document';
+import { TYPES } from './model';
 import { tabKeys, menuActions } from './tabbar';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -38,9 +42,11 @@ titleInput.addEventListener('input', () => { state.meta.title = titleInput.value
 const undoBtn = $<HTMLButtonElement>('undoBtn'), redoBtn = $<HTMLButtonElement>('redoBtn');
 const refreshHistory = () => { undoBtn.disabled = !history.canUndo(); redoBtn.disabled = !history.canRedo(); };
 // undo/redo can swap the whole document (e.g. undoing "open example"), so keep the title and RPS boxes in step
+const appEl = $('app');
 onAfterRender(() => {
   if (document.activeElement !== titleInput && titleInput.value !== state.meta.title) syncTitle();
   syncTotal(); syncActiveTitle();
+  if (appEl.dataset.kind !== state.kind) { appEl.dataset.kind = state.kind; titleInput.placeholder = state.kind === 'sequence' ? 'Untitled sequence' : 'Untitled system'; }
 });
 history.onHistoryChange(refreshHistory);
 undoBtn.onclick = () => { undo(); refreshHistory(); };
@@ -112,8 +118,9 @@ function organise() {
 $('layoutBtn').onclick = organise;
 
 // ---------- view ----------
-$('zin').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
-$('zout').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
+const stageEl = $('stage');
+$('zin').onclick = () => { const r = stageEl.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
+$('zout').onclick = () => { const r = stageEl.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
 $('zfit').onclick = () => fit();
 let allExpanded = false;
 $('expandAll').onclick = () => { allExpanded = !allExpanded; setAllDetail(allExpanded ? 'expanded' : 'compact'); $('expandAll').classList.toggle('active', allExpanded); };
@@ -141,6 +148,15 @@ document.addEventListener('keydown', ev => {
   }
   if (mod && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); refreshHistory(); return; }
   if (mod && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); refreshHistory(); return; }
+  if (state.kind === 'sequence') {
+    if (mod && ev.key === '0') { ev.preventDefault(); fit(); return; }
+    if (mod && (ev.key === '=' || ev.key === '+')) { ev.preventDefault(); $('zin').click(); return; }
+    if (mod && ev.key === '-') { ev.preventDefault(); $('zout').click(); return; }
+    if (ev.key.toLowerCase() === 'i' && !mod) { togglePanel(); return; }
+    if (ev.key === 'Escape') { select(null); renderAll(); return; }
+    if (seqKey(ev)) ev.preventDefault();
+    return;
+  }
   if (mod && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelection(); return; }
   if (mod && ev.key.toLowerCase() === 'a') { ev.preventDefault(); state.multi = new Set(state.doc.nodes.map(n => n.id)); state.sel = null; renderCanvas(); return; }
   if (mod && ev.key === '0') { ev.preventDefault(); fit(); return; }
@@ -167,7 +183,23 @@ const msg = (t: string) => { const m = $('ioMsg'); m.textContent = t; setTimeout
 const openIo = (blank = false) => { io.hidden = false; jta.value = blank ? '' : serialize(); jta.placeholder = 'Paste a cistem.io diagram (.json) and press Load'; jta.focus(); };
 const closeIo = () => { io.hidden = true; };
 $('ioBtn').onclick = () => openIo();
-menuActions({ openExisting: openDrawer, importJson: () => openIo(true), example: openExample });
+/** + menu → "Sequence from a request path": follow the calls from the selected component (or the first client). */
+function pathStart() {
+  if (state.kind !== 'system') return null;
+  const sel = state.sel?.type === 'node' ? state.doc.nodes.find(n => n.id === state.sel!.id) : undefined;
+  return sel ?? state.doc.nodes.find(n => isSource(n)) ?? state.doc.nodes[0] ?? null;
+}
+menuActions({
+  openExisting: openDrawer, importJson: () => openIo(true), example: openExample,
+  fromInfo: () => { const s = pathStart(); return s ? { title: state.meta.title, start: s.name } : null; },
+  fromPath: () => {
+    const s = pathStart(); if (!s) return;
+    const asyncKinds = new Set(Object.keys(TYPES).filter(k => TYPES[k].behaviour === 'async'));
+    const seq = sequenceFromPath(state.doc, s.id, asyncKinds, usesFor(tabs.active) ?? undefined);
+    if (seq.rows.length === 0) { hint(`${s.name} doesn't call anything yet`, 2000); return; }
+    newTab('sequence', seqToFile(seq, { title: `${s.name} flow` }));
+  },
+});
 $('ioClose').onclick = closeIo;
 io.addEventListener('click', ev => { if (ev.target === io) closeIo(); });
 io.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeIo(); });

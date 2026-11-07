@@ -37,6 +37,11 @@
   <symbol id="ic-k-system" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="8.5" y="15" width="7" height="6" rx="1.5"/><path d="M6.5 10v2.5h11V10M12 12.5V15"/></symbol>
   <symbol id="ic-k-sequence" viewBox="0 0 24 24"><path d="M6 3v18M18 3v18" stroke-dasharray="2 2.5"/><path d="M6 8h11M15 6l2 2-2 2M18 15H7M9 13l-2 2 2 2"/></symbol>
   <symbol id="ic-k-class" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M4 9h16M4 14.5h16M7 6.3h6"/></symbol>
+  <symbol id="ic-sq-part" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="6" rx="1.5"/><path d="M12 9v12" stroke-dasharray="2 2"/></symbol>
+  <symbol id="ic-sq-call" viewBox="0 0 24 24"><path d="M4 4v16M20 4v16" stroke-dasharray="2 2"/><path d="M5 12h12"/><path d="M14 9l3.5 3-3.5 3z" fill="currentColor"/></symbol>
+  <symbol id="ic-sq-async" viewBox="0 0 24 24"><path d="M4 4v16M20 4v16" stroke-dasharray="2 2"/><path d="M5 12h13M14 8.5l4 3.5-4 3.5"/></symbol>
+  <symbol id="ic-sq-reply" viewBox="0 0 24 24"><path d="M4 4v16M20 4v16" stroke-dasharray="2 2"/><path d="M19 12H7" stroke-dasharray="2.5 2"/><path d="M10 8.5L6 12l4 3.5"/></symbol>
+  <symbol id="ic-sq-note" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4M8 12h8M8 16h5"/></symbol>
   <symbol id="ic-example" viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></symbol>
 </svg>
 
@@ -74,8 +79,12 @@
   <div id="newMenu" class="newmenu" role="menu" hidden>
     <div class="nm-head">New diagram</div>
     <button class="nm-item" role="menuitem" data-new="system"><span class="nm-ic k-system"><svg><use href="#ic-k-system"/></svg></span><span><strong>System</strong><span class="nm-sub">Components with capacity, environments, load</span></span><kbd>1</kbd></button>
-    <button class="nm-item" role="menuitem" data-new="sequence" disabled><span class="nm-ic k-sequence"><svg><use href="#ic-k-sequence"/></svg></span><span><strong>Sequence <em class="soon">coming next</em></strong><span class="nm-sub">Who calls whom, in order</span></span><kbd>2</kbd></button>
+    <button class="nm-item" role="menuitem" data-new="sequence"><span class="nm-ic k-sequence"><svg><use href="#ic-k-sequence"/></svg></span><span><strong>Sequence</strong><span class="nm-sub">Who calls whom, in order — drag between lifelines</span></span><kbd>2</kbd></button>
     <button class="nm-item" role="menuitem" data-new="class" disabled><span class="nm-ic k-class"><svg><use href="#ic-k-class"/></svg></span><span><strong>Class <em class="soon">later</em></strong><span class="nm-sub">Types, fields, methods and how they relate</span></span><kbd>3</kbd></button>
+    <div class="nm-from" id="nmFrom" hidden>
+      <div class="nm-head" id="nmFromHead">Made from this diagram</div>
+      <button class="nm-line" role="menuitem" data-nm="seq-path"><span class="k-sequence-ink"><svg><use href="#ic-k-sequence"/></svg></span><span id="nmPathLabel">Sequence from a request path</span><span class="nm-sub" id="nmPathSub">starts at the selected component</span></button>
+    </div>
     <div class="nm-foot">
       <button class="chip" data-nm="open">Open existing…</button>
       <button class="chip" data-nm="import">Import .json</button>
@@ -88,6 +97,19 @@
     <div class="rail-sep"></div>
     <button class="comp k-container" data-add-container="1" title="Environment (container)"><svg><use href="#ic-container"/></svg><span>Env</span></button>
     <div class="rail-hint">drag onto canvas</div>
+    <div id="railSeq" class="rail-seq">
+      <button class="comp sq-tool" data-seqtool="participant" title="Participant (P)"><svg><use href="#ic-sq-part"/></svg><span>Participant</span></button>
+      <div class="rail-group-label">Messages</div>
+      <button class="comp sq-tool" data-seqtool="sync" title="Call — then drag between lifelines (C)"><svg><use href="#ic-sq-call"/></svg><span>Call</span></button>
+      <button class="comp sq-tool" data-seqtool="async" title="Async message (A)"><svg><use href="#ic-sq-async"/></svg><span>Async</span></button>
+      <button class="comp sq-tool" data-seqtool="reply" title="Reply (R)"><svg><use href="#ic-sq-reply"/></svg><span>Reply</span></button>
+      <button class="comp sq-tool" data-seqtool="note" title="Note (N)"><svg><use href="#ic-sq-note"/></svg><span>Note</span></button>
+      <div class="rail-group-label">Blocks</div>
+      <button class="comp sq-tool" data-seqtool="alt" title="Alternatives — wraps the selected messages"><span class="sq-kw">alt</span><span>Alt</span></button>
+      <button class="comp sq-tool" data-seqtool="opt" title="Optional — wraps the selected messages"><span class="sq-kw">opt</span><span>Opt</span></button>
+      <button class="comp sq-tool" data-seqtool="loop" title="Loop — wraps the selected messages (L)"><span class="sq-kw">loop</span><span>Loop</span></button>
+      <button class="comp sq-tool" data-seqtool="par" title="Parallel — wraps the selected messages"><span class="sq-kw">par</span><span>Par</span></button>
+    </div>
   </aside>
 
   <main id="stage">
@@ -103,6 +125,19 @@
       <rect x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid)"/>
       <g id="world"><g id="frames"></g><g id="edges"></g><g id="nodes"></g><g id="fks"></g><g id="labels"></g><g id="overlay"></g></g>
     </svg>
+    <svg id="seqSvg" xmlns="http://www.w3.org/2000/svg" hidden tabindex="-1" aria-label="Sequence diagram">
+      <defs>
+        <marker id="sq-solid" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0.5L10 5L0 9.5z" fill="var(--seq-line)"/></marker>
+        <marker id="sq-solid-on" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0.5L10 5L0 9.5z" fill="var(--sel)"/></marker>
+        <marker id="sq-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1 1L9.5 5L1 9" fill="none" stroke="var(--seq-line)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        <marker id="sq-open-on" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1 1L9.5 5L1 9" fill="none" stroke="var(--sel)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+      </defs>
+      <rect x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid)"/>
+      <g id="seqWorld"></g>
+    </svg>
+    <div id="seqEmpty" hidden><strong>Empty sequence</strong><span>Add participants from the left (P), then drag from one lifeline to another to draw a message.<br>Or open the Code tab in the panel and paste Mermaid or PlantUML.</span><button class="small primary" id="seqStart">Add a participant</button></div>
+    <input id="seqEdit" type="text" hidden aria-label="Edit text" autocomplete="off">
+    <datalist id="seqLabels"></datalist>
     <div id="hint" hidden></div>
     <div id="emptyState" hidden><strong>Blank canvas</strong><span>Drag a component in from the left, or load the example.</span></div>
     <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><span id="zoomPct">100%</span><button id="zout" aria-label="Zoom out">−</button></div>

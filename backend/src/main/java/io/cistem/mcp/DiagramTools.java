@@ -4,6 +4,7 @@ import io.cistem.api.Diagram;
 import io.cistem.api.DiagramRepository;
 import io.cistem.engine.Engine;
 import io.cistem.engine.Migrate;
+import io.cistem.engine.Seq;
 import io.cistem.engine.Types;
 import io.cistem.engine.Layout;
 import org.springframework.ai.mcp.annotation.McpResource;
@@ -48,7 +49,7 @@ public class DiagramTools {
         return repo.list(user.id());
     }
 
-    @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.io file format: version, kind, meta, model, layout).")
+    @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.io file format: version, kind, meta, model, layout). For sequence diagrams get_sequence gives a readable text form.")
     public JsonNode getDiagram(@McpToolParam(description = "Diagram id (UUID)") String diagramId) {
         ObjectNode f = (ObjectNode) load(diagramId).document().deepCopy(); normalise(f); return f;
     }
@@ -62,6 +63,7 @@ public class DiagramTools {
                                @McpToolParam(description = "What-if total requests/sec across all clients; omit to use the clients' own", required = false) Double targetRps) {
         ObjectNode file = (ObjectNode) load(diagramId).document().deepCopy();
         normalise(file);
+        requireSystem(file);
         if (targetRps != null) scaleClients(file, targetRps);
         return Engine.report(file, Engine.compute(file.path("model")), om);
     }
@@ -402,6 +404,7 @@ public class DiagramTools {
         Diagram d = load(diagramId);
         JsonNode file = d.document().deepCopy();
         normalise((ObjectNode) file);
+        requireSystem(file);
         change.accept(file);
         ((ObjectNode) file.path("meta")).put("updated", Instant.now().toString());
         String title = file.path("meta").path("title").asText(d.title());
@@ -415,7 +418,102 @@ public class DiagramTools {
 
     /** Bring a stored document up to the current version in memory (the browser does the same on load). */
     private static void normalise(ObjectNode file) {
+        if (isSequence(file)) {
+            ObjectNode model = file.has("model") && file.get("model").isObject() ? (ObjectNode) file.get("model") : file.putObject("model");
+            if (!model.has("participants")) model.putArray("participants");
+            if (!model.has("rows")) model.putArray("rows");
+            if (!file.has("layout")) file.putObject("layout");
+            return;
+        }
         Migrate.toCurrent(file);
+    }
+    private static boolean isSequence(JsonNode file) { return "sequence".equals(file.path("kind").asText()); }
+    /** The component tools work on system diagrams; say so plainly for any other kind. */
+    private static void requireSystem(JsonNode file) {
+        String kind = file.path("kind").asText("system");
+        if (!kind.equals("system"))
+            throw new IllegalArgumentException("This is a " + kind + " diagram; component, container and capacity tools only apply to system diagrams."
+                    + (kind.equals("sequence") ? " Use get_sequence / set_sequence to read and change it." : ""));
+    }
+
+    // ---------- sequence diagrams ----------
+
+    private static final String SEQ_FORMAT = """
+            Text format, one statement per line:
+              participant web, api                         lifelines in order (declared ones first; others appear as used)
+              participant pay "payment-service" service @n3   id, display name, component type, linked component id
+              web -> api: POST /orders                     call
+              api --> web: 201 Created                     reply
+              api ->> events: order.created                async message
+              note over api, db: text
+              alt condition / else other / end            also opt, loop, par (par branches use `and`)
+            Ids are letters, digits, - _ . with no spaces. Link a lifeline to a component (@id) of the system diagram
+            the sequence uses to get end-to-end timings in the editor.""";
+
+    @McpTool(name = "create_sequence", description = """
+            Create a sequence diagram from text. Optionally name the system diagram it draws on (its id), so lifelines
+            can link to that diagram's components (@componentId) and the editor shows timings from its capacity model.
+            Returns the new diagram's id.
+            """ + SEQ_FORMAT)
+    public ObjectNode createSequence(@McpToolParam(description = "Title") String title,
+                                     @McpToolParam(description = "The sequence, in the text format") String text,
+                                     @McpToolParam(description = "Id of the system diagram it uses (optional)", required = false) String systemDiagramId) {
+        Seq.Parsed p = parseOrThrow(text);
+        if (systemDiagramId != null && !systemDiagramId.isBlank()) {
+            Diagram sys = load(systemDiagramId);
+            if (isSequence(sys.document())) throw new IllegalArgumentException("systemDiagramId must be a system diagram");
+            p.model().putObject("uses").put("id", sys.id().toString()).put("title", sys.title());
+        }
+        ObjectNode file = om.createObjectNode();
+        file.put("version", Migrate.VERSION).put("kind", "sequence");
+        String now = Instant.now().toString();
+        file.putObject("meta").put("title", title).put("created", now).put("updated", now);
+        file.set("model", p.model());
+        file.putObject("layout");
+        Diagram d = repo.insert(user.id(), title, "sequence", file);
+        ObjectNode out = om.createObjectNode();
+        out.put("diagramId", d.id().toString()).put("version", d.version()).put("text", Seq.print(p.model()));
+        return out;
+    }
+
+    @McpTool(name = "get_sequence", description = "Read a sequence diagram as text (the format create_sequence takes), with its lifelines and the system diagram it uses.")
+    public ObjectNode getSequence(@McpToolParam(description = "Diagram id") String diagramId) {
+        Diagram d = load(diagramId);
+        ObjectNode file = (ObjectNode) d.document().deepCopy(); normalise(file);
+        if (!isSequence(file)) throw new IllegalArgumentException("Not a sequence diagram (it's a " + file.path("kind").asText("system") + " diagram)");
+        ObjectNode out = om.createObjectNode();
+        out.put("diagramId", d.id().toString()).put("version", d.version()).put("title", d.title());
+        out.put("text", Seq.print(file.path("model")));
+        out.set("participants", file.path("model").path("participants").deepCopy());
+        if (file.path("model").has("uses")) out.set("uses", file.path("model").get("uses").deepCopy());
+        return out;
+    }
+
+    @McpTool(name = "set_sequence", description = "Replace a sequence diagram's content with new text (same format as create_sequence). The system diagram it uses is kept.\n" + SEQ_FORMAT)
+    public ObjectNode setSequence(@McpToolParam(description = "Diagram id") String diagramId,
+                                  @McpToolParam(description = "The whole sequence, in the text format") String text) {
+        Diagram d = load(diagramId);
+        ObjectNode file = (ObjectNode) d.document().deepCopy(); normalise(file);
+        if (!isSequence(file)) throw new IllegalArgumentException("Not a sequence diagram (it's a " + file.path("kind").asText("system") + " diagram)");
+        Seq.Parsed p = parseOrThrow(text);
+        Seq.keepIds(file.path("model"), p.model());
+        file.set("model", p.model());
+        ((ObjectNode) file.path("meta")).put("updated", Instant.now().toString());
+        Diagram saved = repo.update(user.id(), d.id(), d.version(), d.title(), file)
+                .orElseThrow(() -> new IllegalStateException("The diagram changed while editing; read it again and retry"));
+        ObjectNode out = om.createObjectNode();
+        out.put("diagramId", saved.id().toString()).put("version", saved.version()).put("text", Seq.print(p.model()));
+        return out;
+    }
+
+    private Seq.Parsed parseOrThrow(String text) {
+        Seq.Parsed p = Seq.parse(text == null ? "" : text, om);
+        if (!p.errors().isEmpty()) {
+            StringBuilder b = new StringBuilder("The sequence text has problems:");
+            for (Seq.Error e : p.errors()) b.append("\n  line ").append(e.line() + 1).append(": ").append(e.message());
+            throw new IllegalArgumentException(b.toString());
+        }
+        return p;
     }
 
     private static ObjectNode node(JsonNode file, String id) {

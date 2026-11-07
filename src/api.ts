@@ -2,11 +2,12 @@
  * Client for the cistem API. Same origin, cookie session (GitHub sign-in).
  * Every call can fail with AuthError when signed out; the app then works offline.
  */
-import type { DiagramFile } from './document';
+import type { DiagramFile, SequenceFile } from './document';
+type AnyFile = DiagramFile | SequenceFile;
 
 export interface Profile { id: string; login: string; name?: string; avatarUrl?: string }
 export interface Summary { id: string; title: string; kind: string; version: number; shared: boolean; createdAt: string; updatedAt: string }
-export interface Stored { id: string; title: string; kind: string; document: DiagramFile; version: number; shareToken?: string; createdAt: string; updatedAt: string }
+export interface Stored { id: string; title: string; kind: string; document: AnyFile; version: number; shareToken?: string; createdAt: string; updatedAt: string }
 
 export class ConflictError extends Error { constructor(public current: Stored) { super('Diagram changed elsewhere'); } }
 export class AuthError extends Error { constructor() { super('Sign in required'); } }
@@ -32,8 +33,8 @@ export const api = {
   me: () => call<Profile>('/api/me').then(r => r.body),
   list: () => call<Summary[]>('/api/diagrams').then(r => r.body),
   get: (id: string) => call<Stored>(`/api/diagrams/${id}`).then(r => r.body),
-  create: (document: DiagramFile) => call<Stored>('/api/diagrams', { method: 'POST', body: JSON.stringify({ document }) }).then(r => r.body),
-  update: (id: string, version: number, document: DiagramFile) =>
+  create: (document: AnyFile) => call<Stored>('/api/diagrams', { method: 'POST', body: JSON.stringify({ document }) }).then(r => r.body),
+  update: (id: string, version: number, document: AnyFile) =>
     call<Stored>(`/api/diagrams/${id}`, { method: 'PUT', body: JSON.stringify({ document }) }, version).then(r => r.body),
   remove: (id: string) => call<void>(`/api/diagrams/${id}`, { method: 'DELETE' }).then(() => undefined),
   share: (id: string) => call<Stored>(`/api/diagrams/${id}/share`, { method: 'POST' }).then(r => r.body),

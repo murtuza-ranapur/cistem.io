@@ -1,5 +1,6 @@
-import type { Doc } from './model';
 import type { DiagramFile } from './document';
+/** any JSON document (system or sequence) */
+type Doc = object;
 
 /**
  * Snapshot-based undo/redo. Documents are small, so whole-doc snapshots are fine.
@@ -27,7 +28,7 @@ export function snapshot(doc: Doc, meta?: Meta) {
   future.length = 0;
   notify();
 }
-export interface Restored { doc: Doc; meta?: Meta }
+export interface Restored { doc: unknown; meta?: Meta }
 function step(from: Entry[], to: Entry[], doc: Doc, meta: Meta): Restored | null {
   const e = from.pop(); if (e === undefined) return null;
   to.push(e.m ? { d: JSON.stringify(doc), m: JSON.stringify(meta) } : { d: JSON.stringify(doc) }); notify();

@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** The Java engine and layout must produce exactly what src/engine.ts and src/layout.ts produce. */
 class ParityTest {
 
+    static final ObjectMapper om = new ObjectMapper();
     static JsonNode fixture() throws Exception { return fixture("/parity.json"); }
     static JsonNode fixture(String name) throws Exception {
         try (InputStream in = ParityTest.class.getResourceAsStream(name)) {
@@ -87,6 +88,24 @@ class ParityTest {
         JsonNode f = fixture("/parity-types.json");
         engineMatches(f);
         layoutMatches(f);
+    }
+
+    @Test
+    void sequenceTextMatchesTypeScript() throws Exception {
+        for (JsonNode c : fixture("/seq-text.json")) {
+            String text = c.path("text").asText();
+            Seq.Parsed p = Seq.parse(text, om);
+            assertEquals(c.path("participants"), p.model().path("participants"), "participants of: " + text);
+            var rows = p.model().path("rows").deepCopy();
+            rows.forEach(r -> ((tools.jackson.databind.node.ObjectNode) r).remove("id"));
+            assertEquals(c.path("rows"), rows, "rows of: " + text);
+            assertEquals(c.path("errors").size(), p.errors().size(), "errors of: " + text);
+            for (int i = 0; i < p.errors().size(); i++) {
+                assertEquals(c.path("errors").get(i).path("line").asInt(), p.errors().get(i).line());
+                assertEquals(c.path("errors").get(i).path("message").asText(), p.errors().get(i).message());
+            }
+            assertEquals(c.path("printed").asText(), Seq.print(p.model()), "printed: " + text);
+        }
     }
 
     void layoutMatches(JsonNode f) {

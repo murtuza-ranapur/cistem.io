@@ -213,6 +213,27 @@ class McpOAuthFlowTest {
         assertEquals(Integer.valueOf(io.cistem.engine.Migrate.VERSION), JsonPath.read(doc, "$.version"));
         assertNotNull(JsonPath.read(doc, "$.layout.frames." + aws + ".w"));
 
+        // sequence diagrams: created from text, linked to this system diagram, readable and replaceable as text
+        String seqRes = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"create_sequence","arguments":{"title":"Checkout flow","systemDiagramId":"%s","text":"participant web\\nparticipant api @%s\\nweb -> api: POST /orders\\napi --> web: 201"}}}""".formatted(diagramId, svcId)));
+        String seqId = JsonPath.read(seqRes, "$.diagramId");
+        String got = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"get_sequence","arguments":{"diagramId":"%s"}}}""".formatted(seqId)));
+        assertEquals("participant web\nparticipant api @" + svcId + "\n\nweb -> api: POST /orders\napi --> web: 201\n", JsonPath.read(got, "$.text"));
+        assertEquals(diagramId, JsonPath.read(got, "$.uses.id"));
+        String set = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"set_sequence","arguments":{"diagramId":"%s","text":"web -> api: GET /orders\\nloop each\\n  api ->> q: x\\nend"}}}""".formatted(seqId)));
+        assertTrue(((String) JsonPath.read(set, "$.text")).contains("loop each"), set);
+        String badSeq = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"set_sequence","arguments":{"diagramId":"%s","text":"web -> : oops"}}}""".formatted(seqId)), false);
+        assertTrue(badSeq.contains("line 1"), badSeq);
+        // system tools refuse a sequence, plainly
+        String wrongKind = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"evaluate","arguments":{"diagramId":"%s"}}}""".formatted(seqId)), false);
+        assertTrue(wrongKind.contains("sequence diagram"), wrongKind);
+        mvc.perform(get("/api/diagrams").with(oauth2Login().oauth2User(principal)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[?(@.title=='Checkout flow')].kind").value("sequence"));
+
         // the diagram is owned by murtu and visible through the REST API as that user
         mvc.perform(get("/api/diagrams/" + diagramId).with(oauth2Login().oauth2User(principal)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("From MCP"));

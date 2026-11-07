@@ -2,6 +2,7 @@
  * Generates the fixtures the Java tests compare against (backend/src/test/resources/parity*.json), so the
  * TypeScript engine/layout/migration and their Java mirrors can't drift apart. Run: npx tsx test/parity-fixtures.ts
  */
+import { parseCistem, printSeq } from '../src/seq';
 import { writeFileSync } from 'node:fs';
 import { exampleDoc, makeNode } from '../src/model';
 import { compute } from '../src/engine';
@@ -71,4 +72,20 @@ const write = (name: string, doc: any, title: string) => {
   };
   writeFileSync(res + 'migrate-v3.json', JSON.stringify({ input: v3, expected: v3to4(JSON.parse(JSON.stringify(v3))) }, null, 1));
   console.log('migrate-v3.json');
+}
+// 5. sequence text: parse (ids aside) and print agree
+{
+  const cases = [
+    'participant merchants, proxy\nparticipant ecom "ecom-transaction-payments" service @n3\n\nmerchants -> proxy: POST /uploads\nalt merchant on legacy\n  proxy -> legacy: forward\n  legacy --> proxy: 202 Accepted\nelse\n  proxy -> ecom: POST /payments/batch\nend\necom ->> items: publish item\nloop for each item # comment\n  items ->> ecom: consume\n  note over ecom, items: idempotent\nend\n',
+    'actor user\nuser->api:GET /x\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done',
+    'a -> b: ok\nelse\nloop forever\na -> b\nwat is this\nparticipant a\nparticipant 9x\nb -> c:   spaced label  ',
+    'participant p-1 "Name \\"q\\"" queue\np-1 -> p-1: self\nopt\nend',
+  ];
+  const out = cases.map(text => {
+    const p = parseCistem(text);
+    const strip = (rows: any[]) => rows.map(({ id: _id, ...r }) => r);
+    return { text, participants: p.doc.participants, rows: strip(p.doc.rows), errors: p.errors, printed: printSeq(p.doc) };
+  });
+  writeFileSync(res + 'seq-text.json', JSON.stringify(out, null, 1));
+  console.log('seq-text.json');
 }

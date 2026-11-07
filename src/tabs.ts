@@ -4,7 +4,8 @@
  * each tab's document lives in its own localStorage slot so it opens instantly, and the cloud copy
  * (when signed in) is the source of truth.
  */
-import { state, renderAll, setDocKey, persist, readLocal, loadFile, type Selection } from './state';
+import { state, renderAll, setDocKey, persist, readLocal, loadFile, adoptLoaded, emptySystem, type Selection } from './state';
+import { blankSeq, type SeqDoc, type SeqUses } from './seq';
 import { adopt, makeNode, type Doc } from './model';
 import { fromFile, type DiagramFile, type DiagramKind } from './document';
 import * as history from './history';
@@ -13,7 +14,7 @@ import { fit } from './canvas';
 import { cloud, takeCloud, putCloud, saveNow, saveAsNew, signedIn, adoptStored, onCloudChange, setStatus, signature, refreshList, type CloudSlot } from './cloud';
 
 export interface Tab { key: string; kind: DiagramKind; title: string; cloudId?: string; version?: number; share?: string }
-interface Session { doc: Doc; meta: DiagramFile['meta']; cloud: CloudSlot; hist: history.Stacks; view: typeof state.view; sel: Selection }
+interface Session { kind: DiagramKind; doc: Doc; seq: SeqDoc; meta: DiagramFile['meta']; cloud: CloudSlot; hist: history.Stacks; view: typeof state.view; sel: Selection }
 
 const LIST_KEY = 'cistem.tabs';
 const LEGACY_KEYS = ['cistem.doc', 'loadmap.doc'];
@@ -36,7 +37,7 @@ function changed() {
 // (registered from bootTabs: cloud.ts and this module import each other)
 function followCloud() {
   const t = activeTab(); if (!t || t.share) return;
-  if (cloud.id && (t.cloudId !== cloud.id || t.version !== cloud.version)) { t.cloudId = cloud.id; t.version = cloud.version; changed(); }
+  if (cloud.id && (t.cloudId !== cloud.id || t.version !== cloud.version || t.kind !== state.kind)) { t.cloudId = cloud.id; t.version = cloud.version; t.kind = state.kind; changed(); }
 }
 export function syncActiveTitle() {
   const t = activeTab(); if (t && t.title !== state.meta.title) { t.title = state.meta.title; changed(); }
@@ -44,6 +45,13 @@ export function syncActiveTitle() {
 
 function blankDoc(): Doc {
   return adopt({ nodes: [makeNode('entry', 80, 200)], edges: [], containers: [], links: [], frames: {}, detail: {} });
+}
+/** Open a blank diagram of `kind` in the live state. */
+function blank(kind: DiagramKind, title?: string) {
+  state.kind = kind; state.sel = null; state.multi.clear();
+  if (kind === 'sequence') { state.seq = blankSeq(); state.doc = emptySystem(); }
+  else { state.doc = blankDoc(); state.seq = blankSeq(); }
+  state.meta = freshMeta(title ?? (kind === 'sequence' ? 'Untitled sequence' : 'Untitled system'));
 }
 const freshMeta = (title = 'Untitled system'): DiagramFile['meta'] => { const now = new Date().toISOString(); return { title, created: now, updated: now }; };
 const opened = () => document.dispatchEvent(new CustomEvent('cistem:opened'));
@@ -55,7 +63,7 @@ async function flush() { if (signedIn() && cloud.id && !cloud.readonly && (cloud
 function stash() {
   const t = activeTab(); if (!t) return;
   persist();
-  sessions.set(t.key, { doc: state.doc, meta: state.meta, cloud: takeCloud(), hist: history.takeStacks(), view: { ...state.view }, sel: state.sel });
+  sessions.set(t.key, { kind: state.kind, doc: state.doc, seq: state.seq, meta: state.meta, cloud: takeCloud(), hist: history.takeStacks(), view: { ...state.view }, sel: state.sel });
 }
 function show(key: string) {
   tabs.active = key; setDocKey(slot(key));
@@ -70,7 +78,7 @@ export async function activate(key: string) {
   const s = sessions.get(key);
   if (s) {
     sessions.delete(key);
-    state.doc = s.doc; state.meta = s.meta; state.view = s.view; state.sel = s.sel;
+    state.kind = s.kind; state.doc = s.doc; state.seq = s.seq; state.meta = s.meta; state.view = s.view; state.sel = s.sel;
     history.putStacks(s.hist); putCloud(s.cloud);
     changed(); renderAll(); opened();
     return;
@@ -83,7 +91,7 @@ export async function activate(key: string) {
 async function load(t: Tab, refresh = true) {
   history.reset();
   const local = readLocal(slot(t.key));
-  if (local) { state.doc = local.doc; state.meta = local.meta; } else { state.doc = blankDoc(); state.meta = freshMeta(t.title); }
+  if (local) adoptLoaded(local); else blank(t.kind, t.title === '…' ? undefined : t.title);
   putCloud(t.cloudId ? { id: t.cloudId, version: t.version ?? 0, status: 'saved', readonly: false, lastSerialized: signature() } : null);
   if (t.share) { cloud.readonly = true; setStatus('readonly'); }
   renderAll(); requestAnimationFrame(() => fit(false)); opened();
@@ -93,10 +101,11 @@ async function load(t: Tab, refresh = true) {
     if (!t.cloudId) return;
     const s = await api.get(t.cloudId);
     if (tabs.active !== t.key) return;
-    const mine = local && s.version === t.version ? { doc: state.doc, meta: state.meta } : null;
+    const mine = local && s.version === t.version ? local : null;
     adoptStored(s);
+    if (t.kind !== state.kind) { t.kind = state.kind; changed(); }
     // same version as the copy we kept, but edited since: keep the edits and let autosave send them
-    if (mine) { const theirs = cloud.lastSerialized; state.doc = mine.doc; state.meta = mine.meta; cloud.lastSerialized = theirs; renderAll(); opened(); }
+    if (mine && mine.kind === state.kind) { const theirs = cloud.lastSerialized; adoptLoaded(mine); cloud.lastSerialized = theirs; renderAll(); opened(); }
   } catch (e) {
     if (tabs.active !== t.key) return;
     if (e instanceof ApiError && (e.status === 404 || e.status === 403)) {
@@ -113,12 +122,12 @@ async function load(t: Tab, refresh = true) {
  */
 export async function newTab(kind: DiagramKind = 'system', file?: unknown, save = true) {
   await flush(); stash();
-  const t: Tab = { key: newKey(), kind, title: 'Untitled system' };
+  const t: Tab = { key: newKey(), kind, title: '' };
   const at = tabs.list.findIndex(x => x.key === tabs.active);
   tabs.list.splice(at < 0 ? tabs.list.length : at + 1, 0, t);
   show(t.key);
-  if (file !== undefined) loadFile(file); else { state.doc = blankDoc(); state.meta = freshMeta(); }
-  t.title = state.meta.title;
+  if (file !== undefined) loadFile(file); else blank(kind);
+  t.title = state.meta.title; t.kind = state.kind;
   history.reset(); putCloud(null);
   changed(); renderAll(); requestAnimationFrame(() => fit(false)); opened();
   if (save && signedIn()) await saveAsNew();
@@ -187,7 +196,7 @@ export async function bootTabs(fallback: () => unknown) {
     if (!doc) firstVisit = true;
     try { localStorage.setItem(slot(t.key), doc ?? JSON.stringify(fallback())); LEGACY_KEYS.forEach(k => localStorage.removeItem(k)); } catch { /* ignore */ }
     tabs.list = [t];
-    const r = readLocal(slot(t.key)); if (r) t.title = r.meta.title;
+    const r = readLocal(slot(t.key)); if (r) { t.title = r.meta.title; t.kind = r.kind; }
     tabs.active = t.key;
   }
   if (!tabs.list.some(t => t.key === tabs.active)) tabs.active = tabs.list[0].key;
@@ -197,3 +206,22 @@ export async function bootTabs(fallback: () => unknown) {
 function readLegacy(s: string): string | null {
   try { return fromFile(JSON.parse(s)).doc.nodes.length ? s : null; } catch { return null; }
 }
+
+/** A tab's document without opening it: the live one, a parked one, or its local copy. */
+export function peek(key: string): { kind: DiagramKind; doc?: Doc; seq?: SeqDoc; title: string } | null {
+  if (key === tabs.active) return { kind: state.kind, doc: state.doc, seq: state.seq, title: state.meta.title };
+  const s = sessions.get(key); if (s) return { kind: s.kind, doc: s.doc, seq: s.seq, title: s.meta.title };
+  const l = readLocal(slot(key)); if (!l) return null;
+  return l.kind === 'sequence' ? { kind: 'sequence', seq: l.seq, title: l.meta.title } : { kind: 'system', doc: l.doc, title: l.meta.title };
+}
+/** How a sequence refers to a system diagram tab: by cloud id once saved (stable across devices), else by tab. */
+export function usesFor(key: string): SeqUses | null {
+  const t = tabs.list.find(x => x.key === key); if (!t || t.kind !== 'system') return null;
+  return { ...(t.cloudId ? { id: t.cloudId } : { tab: t.key }), title: t.title };
+}
+/** The open tab a sequence's `uses` points at, if it's open on this device. */
+export function tabFor(uses: SeqUses | undefined): Tab | undefined {
+  if (!uses) return undefined;
+  return tabs.list.find(t => t.kind === 'system' && ((uses.id && t.cloudId === uses.id) || (uses.tab && t.key === uses.tab)));
+}
+export const systemTabs = () => tabs.list.filter(t => t.kind === 'system');

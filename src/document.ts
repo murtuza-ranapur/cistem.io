@@ -10,9 +10,11 @@
  * JSON Schema: schema/cistem.schema.json
  */
 import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
+import type { SeqDoc } from './seq';
 
 export const FORMAT_VERSION = 4;
-export type DiagramKind = 'system';
+export type DiagramKind = 'system' | 'sequence';
+export const KINDS_OF_DIAGRAM: DiagramKind[] = ['system', 'sequence'];
 
 export interface DiagramFile {
   version: number;
@@ -43,6 +45,40 @@ export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFi
     layout: { positions, frames: doc.frames ?? {}, ...(Object.keys(doc.detail ?? {}).length ? { detail: doc.detail } : {}) },
   };
 }
+
+/** A sequence diagram file: the model is the sequence itself; there's no stored layout. */
+export interface SequenceFile {
+  version: number;
+  kind: 'sequence';
+  meta: DiagramFile['meta'];
+  model: SeqDoc;
+  layout: Record<string, never>;
+}
+export function seqToFile(seq: SeqDoc, meta?: Partial<DiagramFile['meta']>): SequenceFile {
+  const now = new Date().toISOString();
+  return {
+    version: FORMAT_VERSION, kind: 'sequence',
+    meta: { title: meta?.title ?? 'Untitled sequence', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
+    model: { participants: seq.participants, rows: seq.rows, ...(seq.uses ? { uses: seq.uses } : {}) },
+    layout: {},
+  };
+}
+export type Loaded =
+  | { kind: 'system'; doc: Doc; meta: DiagramFile['meta'] }
+  | { kind: 'sequence'; seq: SeqDoc; meta: DiagramFile['meta'] };
+/** Read a file of any kind and version. */
+export function readAny(input: unknown): Loaded {
+  const d: any = input;
+  if (d && typeof d === 'object' && d.kind === 'sequence') {
+    if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
+    const m = d.model ?? {};
+    if (!Array.isArray(m.participants) || !Array.isArray(m.rows)) throw new Error('Malformed sequence');
+    const now = new Date().toISOString();
+    return { kind: 'sequence', seq: { participants: m.participants, rows: m.rows, ...(m.uses ? { uses: m.uses } : {}) }, meta: d.meta ?? { title: 'Untitled sequence', created: now, updated: now } };
+  }
+  return { kind: 'system', ...fromFile(input) };
+}
+export function kindOfFile(input: unknown): DiagramKind { return (input as any)?.kind === 'sequence' ? 'sequence' : 'system'; }
 
 /** Accepts any version this app has ever written and returns an editor Doc. */
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {

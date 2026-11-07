@@ -31,7 +31,11 @@ export const fmtMs = (ms: number) => ms >= 100 ? Math.round(ms) + 'ms' : ms >= 1
 
 const gridPattern = document.getElementById('grid') as unknown as SVGPatternElement;
 const gridDot = gridPattern.querySelector('circle')!;
+/** The sequence editor draws on its own surface; it shares the view (pan/zoom) and these entry points. */
+let seqView: { apply(): void; fit(animated: boolean): void } | null = null;
+export function setSequenceView(v: typeof seqView) { seqView = v; }
 export function applyView() {
+  if (state.kind === 'sequence' && seqView) { seqView.apply(); zoomPct.textContent = Math.round(state.view.k * 100) + '%'; return; }
   world.setAttribute('transform', `translate(${state.view.x} ${state.view.y}) scale(${state.view.k})`);
   // the dot grid lives in screen space; move and scale it with the view so the paper moves with the diagram
   // (dots keep their size; when zoomed far out every other dot is dropped so it never turns into noise)
@@ -318,6 +322,7 @@ function updateEdge(g: SVGGElement, e: Edge, a: Node, b: Node) {
 }
 
 export function draw() {
+  if (state.kind === 'sequence') { emptyEl.hidden = true; return; }
   const { doc, results } = state;
   applyView();
   const byId = Object.fromEntries(doc.nodes.map(n => [n.id, n]));
@@ -649,6 +654,7 @@ svg.addEventListener('wheel', ev => {
 }, { passive: false });
 
 export function fit(animated = true) {
+  if (state.kind === 'sequence') { seqView?.fit(animated); return; }
   const { doc } = state;
   if (!doc.nodes.length && !doc.containers.length) return;
   const r = svg.getBoundingClientRect();

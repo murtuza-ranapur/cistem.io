@@ -425,7 +425,8 @@ class T {
     const p = await t.emptyCanvasPoint(); await t.dragNodeTo('n3', p.x + 120, p.y);   // an undoable edit in tab A
     await t.page.click('#newTabBtn'); await t.page.waitForTimeout(150);
     assert(await t.page.isVisible('#newMenu'), 'menu open');
-    assert(await t.page.isDisabled('[data-new="sequence"]'), 'sequence not available yet');
+    assert(!(await t.page.isDisabled('[data-new="sequence"]')), 'sequence available');
+    assert(await t.page.isDisabled('[data-new="class"]'), 'class not yet');
     await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(300);
     const d = await t.doc(); eq(d.model.nodes.length, 1, 'blank: just clients'); eq(d.meta.title, 'Untitled system');
     eq(await t.page.$eval('.dtab.on .tt', e => e.textContent), 'Untitled system');
@@ -469,6 +470,118 @@ class T {
     eq((await t.doc()).model.nodes.length, 1, 'a blank diagram');
     const keys = await t.page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('cistem.doc.')).length);
     eq(keys, 1, 'closed tabs leave nothing behind in storage');
+  });
+
+  // ---- sequence diagrams ----
+  const newSeq = async t => { await t.page.click('#newTabBtn'); await t.page.click('[data-new="sequence"]'); await t.page.waitForTimeout(350); };
+  const addParts = async (t, names) => { for (const n of names) { await t.page.keyboard.press('p'); await t.page.waitForTimeout(150); await t.page.keyboard.type(n); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(120); } await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(150); };
+  const heads = t => t.page.$$eval('[data-head]', els => Object.fromEntries(els.map(e => { const r = e.getBoundingClientRect(); return [e.dataset.head, { x: r.x + r.width / 2, y: r.y + r.height }]; })));
+  const dragLife = async (t, a, b, y) => { await t.page.mouse.move(a.x, y); await t.page.mouse.down(); await t.page.mouse.move((a.x + b.x) / 2, y + 2, { steps: 4 }); await t.page.mouse.move(b.x, y + 2, { steps: 3 }); await t.page.mouse.up(); await t.page.waitForTimeout(200); };
+  const msgs = async t => (await t.doc()).model.rows.filter(r => r.t === 'msg').map(r => `${r.from}>${r.to}:${r.label}`);
+
+  await test('sequence: drag between lifelines adds a message where you let go, then type its label', async t => {
+    await newSeq(t);
+    assert(await t.page.isVisible('#seqEmpty'), 'empty state explains what to do');
+    eq(await t.page.getAttribute('#app', 'data-kind'), 'sequence');
+    await addParts(t, ['Browser', 'API', 'Database']);
+    const h = await heads(t);
+    eq(Object.keys(h).join(','), 'browser,api,database', 'ids follow the names');
+    await dragLife(t, h.browser, h.api, h.browser.y + 60);
+    await t.page.keyboard.type('POST /orders'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    await dragLife(t, h.api, h.database, h.browser.y + 160);
+    await t.page.keyboard.type('insert order'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    // a third one dropped above the first goes first
+    // onto its own lifeline: out and back
+    await t.page.mouse.move(h.browser.x, h.browser.y + 12); await t.page.mouse.down(); await t.page.mouse.move(h.browser.x + 50, h.browser.y + 14, { steps: 4 }); await t.page.mouse.move(h.browser.x + 3, h.browser.y + 14, { steps: 4 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    await t.page.keyboard.type('validate'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    eq((await msgs(t)).join(' | '), 'browser>browser:validate | browser>api:POST /orders | api>database:insert order');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(150);
+    eq((await msgs(t)).length, 3, 'undo takes back the label first');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(150);
+    eq((await msgs(t)).length, 2, 'then the message');
+  });
+
+  await test('sequence: drag a message to move it; drag a lifeline head to reorder', async t => {
+    await newSeq(t); await addParts(t, ['A', 'B', 'C']);
+    const h = await heads(t);
+    await dragLife(t, h.a, h.b, h.a.y + 50); await t.page.keyboard.type('one'); await t.page.keyboard.press('Enter');
+    await dragLife(t, h.b, h.c, h.a.y + 150); await t.page.keyboard.type('two'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    const two = await t.box('.sq-msg:has-text("two") .sq-label');
+    await t.page.mouse.move(two.x + 10, two.y + two.height + 6); await t.page.mouse.down();
+    await t.page.mouse.move(two.x + 10, two.y - 40, { steps: 4 }); await t.page.mouse.move(two.x + 10, h.a.y + 5, { steps: 4 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    eq((await msgs(t)).join(' | '), 'b>c:two | a>b:one', 'moved above');
+    const hc = (await heads(t)).c;
+    await t.page.mouse.move(hc.x, hc.y - 20); await t.page.mouse.down(); await t.page.mouse.move(hc.x - 100, hc.y - 20, { steps: 4 }); await t.page.mouse.move(h.a.x - 80, hc.y - 20, { steps: 6 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.participants.map(p => p.id).join(','), 'c,a,b', 'C dragged to the front');
+  });
+
+  await test('sequence: shift-select messages and wrap them in a loop; deleting the block keeps them', async t => {
+    await newSeq(t); await addParts(t, ['A', 'B']);
+    const h = await heads(t);
+    for (const [y, l] of [[50, 'one'], [120, 'two'], [190, 'three']]) { await dragLife(t, h.a, h.b, h.a.y + y); await t.page.keyboard.type(l); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(120); }
+    await t.page.click('.sq-msg:has-text("one") .sq-label'); await t.page.click('.sq-msg:has-text("two") .sq-label', { modifiers: ['Shift'] });
+    await t.page.click('[data-seqtool="loop"]'); await t.page.waitForTimeout(200);
+    await t.page.keyboard.type('for each item'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    const rows = (await t.doc()).model.rows.map(r => r.t === 'msg' ? r.label : r.t === 'open' ? `loop[${r.guard}]` : r.t);
+    eq(rows.join(','), 'loop[for each item],one,two,close,three');
+    assert(await t.page.$('.sq-block .sq-bkind'), 'block drawn');
+    await t.page.click('.sq-bkind'); await t.page.keyboard.press('Delete'); await t.page.waitForTimeout(150);
+    eq((await t.doc()).model.rows.map(r => r.label ?? r.t).join(','), 'one,two,three', 'unwrapped, messages kept');
+  });
+
+  await test('sequence: the Code tab converts pasted Mermaid; a typo keeps the last good drawing', async t => {
+    await newSeq(t);
+    await t.page.keyboard.press('i'); await t.page.waitForTimeout(250);
+    await t.page.click('[data-sqtab="code"]'); await t.page.waitForSelector('.sq-cm .cm-content');
+    await t.page.click('.sq-cm .cm-content');
+    await t.page.evaluate(() => {
+      const text = 'sequenceDiagram\n  actor U as User\n  U->>S: GET /items\n  S-->>U: 200 OK\n';
+      const dt = new DataTransfer(); dt.setData('text/plain', text);
+      document.querySelector('.sq-cm .cm-content').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await t.page.waitForTimeout(500);
+    const code = await t.page.textContent('.sq-cm .cm-content');
+    assert(code.includes('U -> S: GET /items') && code.includes('S --> U: 200 OK'), 'converted to this format: ' + code);
+    eq((await msgs(t)).join(' | '), 'U>S:GET /items | S>U:200 OK', 'drawing follows the code');
+    await t.page.keyboard.press('Control+End'); await t.page.keyboard.type('\nU -> : oops'); await t.page.waitForTimeout(600);
+    assert((await t.page.textContent('.sq-status')).includes('1 problem'), 'says there is a problem');
+    eq((await msgs(t)).length, 2, 'drawing keeps the last valid version');
+    eq(await t.page.$$eval('.sq-msg', e => e.length), 2);
+  });
+
+  await test('sequence: made from a request path is linked and timed; the component says where it appears', async t => {
+    await t.clickNode('n3'); // checkout-api
+    await t.page.click('#newTabBtn'); await t.page.waitForTimeout(100);
+    assert((await t.page.textContent('#nmPathSub')).includes('checkout-api'));
+    await t.page.click('[data-nm="seq-path"]'); await t.page.waitForTimeout(600);
+    eq(await t.page.getAttribute('#app', 'data-kind'), 'sequence');
+    const d = await t.doc();
+    eq(d.kind, 'sequence'); assert(d.model.uses, 'uses the system diagram');
+    assert(d.model.participants.length >= 4 && d.model.participants.every(p => p.ref), 'all lifelines linked');
+    assert((await t.page.textContent('#verdict')).startsWith('End to end ~'), 'end-to-end time from the model');
+    assert(await t.page.$$eval('.sq-time', e => e.length) > 0, 'running time per call');
+    // back on the system diagram the component links to the sequence
+    await t.page.keyboard.press('Alt+2'); await t.page.waitForTimeout(300);   // the system tab it was made from (setup opens the example twice)
+    await t.clickNode('n3');
+    const chip = await t.page.$('.appears [data-opentab]'); assert(chip, 'appears in');
+    await chip.click(); await t.page.waitForTimeout(300);
+    eq(await t.page.getAttribute('#app', 'data-kind'), 'sequence', 'the chip opens the sequence');
+  });
+
+  await test('sequence: survives a reload; the panel edits a message and adds its reply', async t => {
+    await newSeq(t); await addParts(t, ['Web', 'Api']);
+    const h = await heads(t);
+    await dragLife(t, h.web, h.api, h.web.y + 60); await t.page.keyboard.type('GET /x'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(200);
+    await t.page.click('.sq-msg .sq-label'); await t.page.waitForTimeout(300);
+    await t.page.click('[data-sq="add-reply"]'); await t.page.waitForTimeout(200);
+    await t.page.keyboard.type('200 OK'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(200);
+    await t.page.click('.sq-msg:has-text("GET /x") .sq-label'); await t.page.waitForTimeout(250);
+    await t.page.click('[data-sqstyle="async"]'); await t.page.waitForTimeout(150);
+    const rows = (await t.doc()).model.rows;
+    eq(rows.map(r => `${r.from}${r.style === 'reply' ? '-->' : r.style === 'async' ? '->>' : '->'}${r.to}:${r.label}`).join(' | '), 'web->>api:GET /x | api-->web:200 OK');
+    await t.page.reload(); await t.page.waitForTimeout(800);
+    eq(await t.page.getAttribute('#app', 'data-kind'), 'sequence', 'reopens as a sequence');
+    eq(await t.page.$$eval('.sq-msg', e => e.length), 2);
   });
 
   // ---- tooltips ----

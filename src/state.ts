@@ -1,12 +1,17 @@
-import { exampleDoc, type Doc, type Node, type Edge, type Container } from './model';
-import { toFile, fromFile, type DiagramFile } from './document';
+import { exampleDoc, adopt, type Doc, type Node, type Edge, type Container } from './model';
+import { toFile, seqToFile, readAny, type DiagramFile, type DiagramKind, type Loaded } from './document';
+import { blankSeq, type SeqDoc } from './seq';
 import { compute, type Results } from './engine';
 import * as history from './history';
 
-export type Selection = { type: 'node' | 'edge' | 'container'; id: string } | null;
+/** System: node / edge / container. Sequence: a row (message, note, block) or a participant (lifeline). */
+export type Selection = { type: 'node' | 'edge' | 'container' | 'row' | 'part'; id: string } | null;
 
 export const state = {
+  /** what the open tab is; `doc` is the system diagram, `seq` the sequence (the other one sits empty) */
+  kind: 'system' as DiagramKind,
   doc: {} as Doc,
+  seq: blankSeq() as SeqDoc,
   view: { x: 0, y: 0, k: 1 },
   sel: null as Selection,
   /** extra node ids selected alongside `sel` (multi-select) */
@@ -39,29 +44,43 @@ export function select(sel: Selection, additive = false) {
 
 export function recompute() { state.results = compute(state.doc); }
 
+/** The document being edited, whichever kind it is. */
+export const live = (): Doc | SeqDoc => (state.kind === 'sequence' ? state.seq : state.doc);
+export const emptySystem = (): Doc => adopt({ nodes: [], edges: [], containers: [], links: [], frames: {}, detail: {} });
 /** Record an undo point, then mutate. */
-export function mutate(fn: () => void) { history.snapshot(state.doc); fn(); }
-function restoreStep(r: history.Restored | null) { if (!r) return; state.doc = r.doc; if (r.meta) state.meta = r.meta; state.sel = null; state.multi.clear(); renderAll(); }
-export function undo() { restoreStep(history.undo(state.doc, state.meta)); }
-export function redo() { restoreStep(history.redo(state.doc, state.meta)); }
+export function mutate(fn: () => void) { history.snapshot(live()); fn(); }
+function restoreStep(r: history.Restored | null) {
+  if (!r) return;
+  if (state.kind === 'sequence') state.seq = r.doc as SeqDoc; else state.doc = r.doc as Doc;
+  if (r.meta) state.meta = r.meta; state.sel = null; state.multi.clear(); renderAll();
+}
+export function undo() { restoreStep(history.undo(live(), state.meta)); }
+export function redo() { restoreStep(history.redo(live(), state.meta)); }
 
 /** Each open tab keeps its document in its own localStorage slot; this is the active tab's. */
 let docKey = '';
 export function setDocKey(k: string) { docKey = k; }
-export function serialize(): string { return JSON.stringify(toFile(state.doc, state.meta), null, 2); }
-export function persist() { if (!docKey) return; try { localStorage.setItem(docKey, JSON.stringify(toFile(state.doc, state.meta))); } catch { /* storage unavailable */ } }
-/** Read a stored document (any version); null when absent or unreadable. */
-export function readLocal(key: string): { doc: Doc; meta: DiagramFile['meta'] } | null {
-  try { const s = localStorage.getItem(key); if (s) return fromFile(JSON.parse(s)); } catch { /* ignore */ }
+/** The open document as a file, whichever kind it is. */
+export function currentFile() { return state.kind === 'sequence' ? seqToFile(state.seq, state.meta) : toFile(state.doc, state.meta); }
+export function serialize(): string { return JSON.stringify(currentFile(), null, 2); }
+export function persist() { if (!docKey) return; try { localStorage.setItem(docKey, JSON.stringify(currentFile())); } catch { /* storage unavailable */ } }
+/** Read a stored document (any kind or version); null when absent or unreadable. */
+export function readLocal(key: string): Loaded | null {
+  try { const s = localStorage.getItem(key); if (s) return readAny(JSON.parse(s)); } catch { /* ignore */ }
   return null;
 }
+/** Make a loaded document the open one. */
+export function adoptLoaded(l: Loaded) {
+  state.kind = l.kind; state.meta = l.meta; state.sel = null; state.multi.clear();
+  if (l.kind === 'sequence') { state.seq = l.seq; state.doc = emptySystem(); } else { state.doc = l.doc; state.seq = blankSeq(); }
+}
 export function replaceDoc(d: Doc, meta?: DiagramFile['meta']) {
-  history.snapshot(state.doc, state.meta); state.doc = d; state.sel = null; state.multi.clear();
+  history.snapshot(live(), state.meta); state.kind = 'system'; state.doc = d; state.sel = null; state.multi.clear();
   const now = new Date().toISOString();
   state.meta = meta ?? { title: 'Untitled system', created: now, updated: now };
 }
-/** Load any supported file version (migrating as needed). */
-export function loadFile(input: unknown) { const { doc, meta } = fromFile(input); replaceDoc(doc, meta); }
+/** Load any supported file (kind and version, migrating as needed). */
+export function loadFile(input: unknown) { adoptLoaded(readAny(input)); }
 export function loadExample() { replaceDoc(exampleDoc(), { title: 'Checkout example', created: new Date().toISOString(), updated: new Date().toISOString() }); }
 
 type Listener = () => void;

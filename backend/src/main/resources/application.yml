@@ -26,9 +26,11 @@ spring:
     type: SYNC
     annotation-scanner.enabled: true
     instructions: >
-      cistem.io stores system-design diagrams whose components have behaviour. Use list_diagrams to find
-      the user's diagrams, evaluate to run the capacity model at a target RPS, and the add/connect/set tools
-      to change a design. Every edit returns a fresh evaluation so you can see its effect.
+      cistem.io stores system-design diagrams whose components have behaviour, and sequence diagrams that
+      draw on them. Use list_diagrams to find the user's diagrams (kind: system or sequence). For system
+      diagrams, evaluate runs the capacity model and the add/connect/set tools change the design; every edit
+      returns a fresh evaluation. For sequences, get_sequence / set_sequence / create_sequence work with a
+      short text format (a -> b: call, b --> a: reply, a ->> q: async, alt/opt/loop/par ... end).
     capabilities:
       tool: true
       resource: true

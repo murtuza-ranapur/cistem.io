@@ -69,11 +69,15 @@ list.addEventListener('click', ev => {
 list.addEventListener('auxclick', ev => { if (ev.button === 1) ev.preventDefault(); });
 
 // ---------- + menu ----------
-let onOpenExisting = () => {}, onImport = () => {}, onExample = () => {};
-export function menuActions(a: { openExisting: () => void; importJson: () => void; example: () => void }) {
-  onOpenExisting = a.openExisting; onImport = a.importJson; onExample = a.example;
+let onOpenExisting = () => {}, onImport = () => {}, onExample = () => {}, onFromPath = () => {};
+let fromInfo: () => { title: string; start: string } | null = () => null;
+export function menuActions(a: { openExisting: () => void; importJson: () => void; example: () => void; fromPath: () => void; fromInfo: typeof fromInfo }) {
+  onOpenExisting = a.openExisting; onImport = a.importJson; onExample = a.example; onFromPath = a.fromPath; fromInfo = a.fromInfo;
 }
 export function openMenu() {
+  const info = fromInfo();
+  ($('nmFrom') as HTMLElement).hidden = !info;
+  if (info) { $('nmFromHead').textContent = `Made from “${info.title}”`; $('nmPathSub').textContent = `starting at ${info.start}`; }
   const r = plus.getBoundingClientRect();
   menu.style.left = Math.max(12, Math.min(r.left, window.innerWidth - 412)) + 'px';
   menu.style.top = r.bottom + 6 + 'px';
@@ -88,14 +92,14 @@ menu.addEventListener('click', ev => {
   const a = (ev.target as Element).closest('[data-nm]') as HTMLElement | null;
   if (!a) return;
   closeMenu();
-  ({ open: onOpenExisting, import: onImport, example: onExample } as Record<string, () => void>)[a.dataset.nm!]?.();
+  ({ open: onOpenExisting, import: onImport, example: onExample, 'seq-path': onFromPath } as Record<string, () => void>)[a.dataset.nm!]?.();
 });
 menu.addEventListener('keydown', ev => {
   if (ev.key === 'Escape') { ev.stopPropagation(); closeMenu(); plus.focus(); return; }
   if (/^[1-3]$/.test(ev.key)) { ev.preventDefault(); (menu.querySelectorAll<HTMLButtonElement>('[data-new]')[+ev.key - 1])?.click(); return; }
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
     ev.preventDefault();
-    const items = [...menu.querySelectorAll<HTMLElement>('.nm-item:not(:disabled), .chip')];
+    const items = [...menu.querySelectorAll<HTMLElement>('.nm-item:not(:disabled), .nm-line, .chip')].filter(x => x.offsetParent);
     const i = items.indexOf(document.activeElement as HTMLElement);
     items[(i + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
   }
