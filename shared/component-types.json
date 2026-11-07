@@ -1,0 +1,411 @@
+{
+  "$comment": "Component types for system diagrams. Read by the browser (src/types.ts) and the server (io.cistem.engine.Types). Adding a type = adding an entry here (plus an icon symbol in index.html). The engine only knows behaviours; each behaviour reads the fixed field names listed under behaviours.",
+  "behaviours": {
+    "source": {
+      "about": "Injects its peak rps into the system.",
+      "reads": [
+        "rps"
+      ]
+    },
+    "balancer": {
+      "about": "Capacity maxRps; splits its load evenly across what it connects to.",
+      "reads": [
+        "maxRps",
+        "latency"
+      ]
+    },
+    "limit": {
+      "about": "Capacity maxRps; passes all of its load on to everything it connects to.",
+      "reads": [
+        "maxRps",
+        "latency"
+      ]
+    },
+    "scaled": {
+      "about": "Capacity instances × rpsPerInstance.",
+      "reads": [
+        "instances",
+        "rpsPerInstance",
+        "latency"
+      ]
+    },
+    "cache": {
+      "about": "Capacity maxOps; only misses (1 − hitRatio) go downstream.",
+      "reads": [
+        "maxOps",
+        "hitRatio",
+        "latency"
+      ]
+    },
+    "store": {
+      "about": "Reads spread over primary + replicas, writes hit the primary; capacity from maxQps per node.",
+      "reads": [
+        "maxQps",
+        "replicas",
+        "readShare",
+        "latency"
+      ]
+    },
+    "async": {
+      "about": "A queue/topic: capacity maxThroughput; consumers pull, and what they consumed is never republished into it.",
+      "reads": [
+        "maxThroughput",
+        "latency"
+      ]
+    }
+  },
+  "types": {
+    "entry": {
+      "label": "Clients",
+      "short": "Clients",
+      "icon": "ic-entry",
+      "color": "#b86a12",
+      "w": 190,
+      "group": "traffic",
+      "behaviour": "source",
+      "detail": null,
+      "defaults": {
+        "name": "Clients",
+        "platforms": [
+          "web",
+          "app"
+        ],
+        "rps": 1000
+      },
+      "fields": [
+        {
+          "key": "rps",
+          "label": "Peak rps",
+          "type": "number",
+          "min": 0,
+          "step": 100
+        }
+      ]
+    },
+    "lb": {
+      "label": "Load balancer",
+      "short": "LB",
+      "icon": "ic-lb",
+      "color": "#5b6b7c",
+      "w": 190,
+      "group": "traffic",
+      "behaviour": "balancer",
+      "detail": null,
+      "defaults": {
+        "name": "LB",
+        "maxRps": 50000,
+        "latency": 1
+      },
+      "fields": [
+        {
+          "key": "maxRps",
+          "label": "Max rps",
+          "type": "number"
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "apigw": {
+      "label": "API gateway",
+      "short": "Gateway",
+      "icon": "ic-apigw",
+      "color": "#0e7490",
+      "w": 190,
+      "group": "traffic",
+      "behaviour": "limit",
+      "detail": null,
+      "defaults": {
+        "name": "api-gateway",
+        "maxRps": 10000,
+        "latency": 8
+      },
+      "fields": [
+        {
+          "key": "maxRps",
+          "label": "Max rps (throttle)",
+          "type": "number"
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "cdn": {
+      "label": "CDN",
+      "short": "CDN",
+      "icon": "ic-cdn",
+      "color": "#c2410c",
+      "w": 180,
+      "group": "traffic",
+      "behaviour": "cache",
+      "detail": null,
+      "defaults": {
+        "name": "cdn",
+        "maxOps": 1000000,
+        "hitRatio": 0.9,
+        "latency": 15
+      },
+      "fields": [
+        {
+          "key": "maxOps",
+          "label": "Max rps",
+          "type": "number"
+        },
+        {
+          "key": "hitRatio",
+          "label": "Hit ratio (0–1)",
+          "type": "number",
+          "step": 0.05,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "service": {
+      "label": "Microservice",
+      "short": "Service",
+      "icon": "ic-service",
+      "color": "#2f6fa8",
+      "w": 200,
+      "group": "compute",
+      "behaviour": "scaled",
+      "detail": "endpoints",
+      "defaults": {
+        "name": "api",
+        "rpsPerInstance": 800,
+        "instances": 3,
+        "latency": 20,
+        "endpoints": []
+      },
+      "fields": [
+        {
+          "key": "instances",
+          "label": "Instances",
+          "type": "number",
+          "min": 0
+        },
+        {
+          "key": "rpsPerInstance",
+          "label": "Rps per instance",
+          "type": "number"
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "cache": {
+      "label": "Redis",
+      "short": "Redis",
+      "icon": "ic-cache",
+      "color": "#c0392b",
+      "w": 190,
+      "group": "data",
+      "behaviour": "cache",
+      "detail": null,
+      "defaults": {
+        "name": "redis",
+        "maxOps": 100000,
+        "hitRatio": 0.9,
+        "latency": 1,
+        "eviction": "allkeys-lru"
+      },
+      "fields": [
+        {
+          "key": "maxOps",
+          "label": "Max ops/s",
+          "type": "number"
+        },
+        {
+          "key": "hitRatio",
+          "label": "Hit ratio (0–1)",
+          "type": "number",
+          "step": 0.05,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        },
+        {
+          "key": "eviction",
+          "label": "Eviction policy",
+          "type": "select",
+          "options": [
+            "allkeys-lru",
+            "volatile-lru",
+            "allkeys-lfu",
+            "volatile-ttl",
+            "noeviction"
+          ],
+          "wide": true
+        }
+      ]
+    },
+    "db": {
+      "label": "Postgres",
+      "short": "Postgres",
+      "icon": "ic-db",
+      "color": "#336791",
+      "w": 200,
+      "group": "data",
+      "behaviour": "store",
+      "detail": "tables",
+      "defaults": {
+        "name": "postgres",
+        "maxQps": 5000,
+        "readShare": 0.8,
+        "replicas": 1,
+        "latency": 8,
+        "tables": []
+      },
+      "fields": [
+        {
+          "key": "maxQps",
+          "label": "Max qps per node",
+          "type": "number"
+        },
+        {
+          "key": "replicas",
+          "label": "Read replicas",
+          "type": "number",
+          "min": 0
+        },
+        {
+          "key": "readShare",
+          "label": "Read share (0–1)",
+          "type": "number",
+          "step": 0.05,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "mongodb": {
+      "label": "MongoDB",
+      "short": "MongoDB",
+      "icon": "ic-mongodb",
+      "color": "#3f8f4f",
+      "w": 200,
+      "group": "data",
+      "behaviour": "store",
+      "detail": null,
+      "defaults": {
+        "name": "mongodb",
+        "maxQps": 5000,
+        "replicas": 2,
+        "readShare": 0.8,
+        "latency": 5
+      },
+      "fields": [
+        {
+          "key": "maxQps",
+          "label": "Max ops/s per node",
+          "type": "number"
+        },
+        {
+          "key": "replicas",
+          "label": "Secondaries (read)",
+          "type": "number",
+          "min": 0
+        },
+        {
+          "key": "readShare",
+          "label": "Read share (0–1)",
+          "type": "number",
+          "step": 0.05,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "queue": {
+      "label": "Kafka topic",
+      "short": "Kafka",
+      "icon": "ic-queue",
+      "color": "#3b3f45",
+      "w": 200,
+      "group": "messaging",
+      "behaviour": "async",
+      "detail": "topic",
+      "defaults": {
+        "name": "domain.events",
+        "maxThroughput": 20000,
+        "latency": 5,
+        "partitions": 6,
+        "schema": ""
+      },
+      "fields": [
+        {
+          "key": "maxThroughput",
+          "label": "Max msg/s",
+          "type": "number"
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ]
+    },
+    "sqs": {
+      "label": "SQS queue",
+      "short": "SQS",
+      "icon": "ic-sqs",
+      "color": "#b45309",
+      "w": 190,
+      "group": "messaging",
+      "behaviour": "async",
+      "detail": "message",
+      "defaults": {
+        "name": "work-queue",
+        "maxThroughput": 3000,
+        "latency": 20,
+        "schema": "",
+        "fifo": false
+      },
+      "fields": [
+        {
+          "key": "maxThroughput",
+          "label": "Max msg/s",
+          "type": "number"
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        },
+        {
+          "key": "fifo",
+          "label": "FIFO",
+          "type": "boolean"
+        }
+      ]
+    }
+  }
+}

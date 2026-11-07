@@ -57,7 +57,7 @@
       "properties": {
         "positions": {
           "type": "object",
-          "description": "Node id \u2192 top-left corner in canvas units.",
+          "description": "Node id → top-left corner in canvas units.",
           "additionalProperties": {
             "type": "object",
             "required": [
@@ -76,7 +76,7 @@
         },
         "frames": {
           "type": "object",
-          "description": "Container id \u2192 drawn frame in canvas units (optional; the editor fits frames to members when absent).",
+          "description": "Container id → drawn frame in canvas units (optional; the editor fits frames to members when absent).",
           "additionalProperties": {
             "type": "object",
             "required": [
@@ -103,7 +103,7 @@
         },
         "detail": {
           "type": "object",
-          "description": "Node id \u2192 compact | expanded (how much of a component's schema is drawn on the canvas).",
+          "description": "Node id → compact | expanded (how much of a component's schema is drawn on the canvas).",
           "additionalProperties": {
             "enum": [
               "compact",
@@ -153,26 +153,7 @@
       }
     },
     "node": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/entry"
-        },
-        {
-          "$ref": "#/$defs/lb"
-        },
-        {
-          "$ref": "#/$defs/service"
-        },
-        {
-          "$ref": "#/$defs/cache"
-        },
-        {
-          "$ref": "#/$defs/db"
-        },
-        {
-          "$ref": "#/$defs/queue"
-        }
-      ]
+      "$ref": "#/$defs/nodeBase"
     },
     "nodeBase": {
       "type": "object",
@@ -199,207 +180,100 @@
             "null"
           ],
           "description": "Id of the container this component lives in, or null if unplaced."
+        },
+        "kind": {
+          "type": "string",
+          "description": "A component type key from shared/component-types.json (entry, lb, apigw, cdn, service, cache, db, mongodb, queue, sqs, …). The type's behaviour decides which fields matter."
+        },
+        "rps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "source: peak requests per second it sends."
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "maxRps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "balancer / limit: maximum requests per second."
+        },
+        "instances": {
+          "type": "number",
+          "minimum": 0,
+          "description": "scaled: number of instances."
+        },
+        "rpsPerInstance": {
+          "type": "number",
+          "minimum": 0,
+          "description": "scaled: requests per second one instance sustains."
+        },
+        "maxOps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "cache: operations per second."
+        },
+        "hitRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "eviction": {
+          "type": "string"
+        },
+        "maxQps": {
+          "type": "number",
+          "minimum": 0,
+          "description": "store: queries per second per node."
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maxThroughput": {
+          "type": "number",
+          "minimum": 0,
+          "description": "async: messages per second."
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/endpoint"
+          }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/table"
+          }
+        },
+        "partitions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "schema": {
+          "type": "string",
+          "description": "Avro schema of the message value, JSON text."
+        },
+        "key": {
+          "type": "string",
+          "description": "Field used as the message / partition / group key."
+        },
+        "cluster": {
+          "type": "string"
+        },
+        "fifo": {
+          "type": "boolean"
         }
       }
-    },
-    "entry": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/nodeBase"
-        },
-        {
-          "properties": {
-            "kind": {
-              "const": "entry"
-            },
-            "platforms": {
-              "type": "array",
-              "items": {
-                "enum": [
-                  "web",
-                  "app"
-                ]
-              }
-            },
-            "rps": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Peak requests per second these clients send. The diagram is tested at the sum over all clients."
-            }
-          },
-          "required": [
-            "rps"
-          ]
-        }
-      ]
-    },
-    "lb": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/nodeBase"
-        },
-        {
-          "required": [
-            "maxRps"
-          ],
-          "properties": {
-            "kind": {
-              "const": "lb"
-            },
-            "maxRps": {
-              "type": "number",
-              "minimum": 0
-            }
-          }
-        }
-      ]
-    },
-    "service": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/nodeBase"
-        },
-        {
-          "required": [
-            "rpsPerInstance",
-            "instances"
-          ],
-          "properties": {
-            "kind": {
-              "const": "service"
-            },
-            "rpsPerInstance": {
-              "type": "number",
-              "minimum": 0
-            },
-            "instances": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "endpoints": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/endpoint"
-              }
-            }
-          }
-        }
-      ]
-    },
-    "cache": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/nodeBase"
-        },
-        {
-          "required": [
-            "maxOps",
-            "hitRatio"
-          ],
-          "properties": {
-            "kind": {
-              "const": "cache"
-            },
-            "maxOps": {
-              "type": "number",
-              "minimum": 0
-            },
-            "hitRatio": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1,
-              "description": "Fraction of lookups served without going downstream."
-            },
-            "eviction": {
-              "enum": [
-                "allkeys-lru",
-                "volatile-lru",
-                "allkeys-lfu",
-                "volatile-ttl",
-                "noeviction"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    "db": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/nodeBase"
-        },
-        {
-          "required": [
-            "maxQps"
-          ],
-          "properties": {
-            "kind": {
-              "const": "db"
-            },
-            "maxQps": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Per node (primary or replica)."
-            },
-            "replicas": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "readShare": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "tables": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/table"
-              }
-            }
-          }
-        }
-      ]
-    },
-    "queue": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/nodeBase"
-        },
-        {
-          "required": [
-            "maxThroughput"
-          ],
-          "properties": {
-            "kind": {
-              "const": "queue"
-            },
-            "maxThroughput": {
-              "type": "number",
-              "minimum": 0
-            },
-            "name": {
-              "type": "string",
-              "description": "The topic name."
-            },
-            "partitions": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "schema": {
-              "type": "string",
-              "description": "Avro schema of the message value, JSON text."
-            },
-            "key": {
-              "type": "string",
-              "description": "Field (or expression) used as the message/partition key."
-            },
-            "cluster": {
-              "type": "string",
-              "description": "Optional label for the Kafka cluster the topic lives on."
-            }
-          }
-        }
-      ]
     },
     "edge": {
       "type": "object",

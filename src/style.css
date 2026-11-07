@@ -80,7 +80,7 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 #rail .comp:active{cursor:grabbing}
 #rail .comp svg{width:22px;height:22px;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 #rail .comp span{font-size:10px;letter-spacing:.01em}
-.k-entry svg{stroke:var(--c-entry)}.k-lb svg{stroke:var(--c-lb)}.k-service svg{stroke:var(--c-service)}.k-cache svg{stroke:var(--c-cache)}.k-db svg{stroke:var(--c-db)}.k-queue svg{stroke:var(--c-queue)}
+.comp svg{stroke:var(--kc)}
 .rail-hint{margin-top:auto;font-size:10px;color:var(--muted);text-align:center;line-height:1.3;writing-mode:vertical-rl;transform:rotate(180deg);opacity:.7}
 
 #stage{grid-area:stage;position:relative;min-width:0;min-height:0;touch-action:none;overflow:hidden}
@@ -111,9 +111,9 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .node rect.fill.ok{fill:var(--ok)}.node rect.fill.warn{fill:var(--warn)}.node rect.fill.crit{fill:var(--crit)}
 .node .glyph{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .node .accent{transition:fill var(--t) var(--ease)}
-.k-entry .glyph,.k-entry .accent{stroke:var(--c-entry);fill:var(--c-entry)}.k-lb .glyph,.k-lb .accent{stroke:var(--c-lb);fill:var(--c-lb)}.k-service .glyph,.k-service .accent{stroke:var(--c-service);fill:var(--c-service)}.k-cache .glyph,.k-cache .accent{stroke:var(--c-cache);fill:var(--c-cache)}.k-db .glyph,.k-db .accent{stroke:var(--c-db);fill:var(--c-db)}.k-queue .glyph,.k-queue .accent{stroke:var(--c-queue);fill:var(--c-queue)}
+.node .glyph,.node .accent{stroke:var(--kc);fill:var(--kc)}
 .node .glyph{fill:none!important}
-.k-entry .kind{fill:var(--c-entry)}.k-lb .kind{fill:var(--c-lb)}.k-service .kind{fill:var(--c-service)}.k-cache .kind{fill:var(--c-cache)}.k-db .kind{fill:var(--c-db)}.k-queue .kind{fill:var(--c-queue)}
+.node .kind{fill:var(--kc)}
 .node.enter{animation:nodeIn 260ms var(--ease) both}
 @keyframes nodeIn{from{opacity:0;transform:translate(var(--nx),var(--ny)) scale(.9)}to{opacity:1;transform:translate(var(--nx),var(--ny)) scale(1)}}
 .node.exit{animation:nodeOut 180ms var(--ease) both}
@@ -180,6 +180,8 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .frame .fkind{font-size:10.5px;fill:var(--muted);letter-spacing:.04em}
 .frame .fmeta{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
 .edge.cross path.line{stroke-dasharray:7 4}
+.rail-group{display:flex;flex-direction:column;align-items:center;gap:2px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--line-2)}
+#railTypes{display:contents}
 .rail-sep{width:32px;height:1px;background:var(--line);margin:6px 0}
 .k-container svg{stroke:var(--muted)}
 

@@ -40,6 +40,9 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// shared/component-types.json is read by both the browser and the server
+sourceSets { main { resources { srcDir(file("../shared")) } } }
+
 tasks.withType<Test> {
     useJUnitPlatform()
     // manual probes (see src/test/java/io/cistem/probe) are enabled with -Dprobe=…

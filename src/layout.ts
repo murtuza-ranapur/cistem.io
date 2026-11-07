@@ -1,4 +1,4 @@
-import { FRAME_PAD, FRAME_HEAD, nodeWidthFor, nodeHeight, ancestry, type Doc, type Frame } from './model';
+import { isSource, FRAME_PAD, FRAME_HEAD, nodeWidthFor, nodeHeight, ancestry, type Doc, type Frame } from './model';
 
 const COL_GAP = 120;   // horizontal space between columns (beyond node width)
 const ROW_GAP = 40;    // vertical space between nodes in a column
@@ -60,7 +60,7 @@ function layoutLevel(doc: Doc, container: string | null, positions: Positions, f
     const a = itemOf(e.from), b = itemOf(e.to);
     if (a && b && a !== b && itemIds.has(a) && itemIds.has(b)) edges.push([a, b]);
   }
-  const roots = items.filter(i => doc.nodes.some(n => n.id === i.id && n.kind === 'entry') || containsEntry(doc, i.id)).map(i => i.id);
+  const roots = items.filter(i => doc.nodes.some(n => n.id === i.id && isSource(n)) || containsEntry(doc, i.id)).map(i => i.id);
 
   // 3. arrange the items
   const placed = arrange({ items, edges, roots }, container === null ? COL_GAP : COL_GAP / 2, container === null ? GROUP_GAP : ROW_GAP);
@@ -87,7 +87,7 @@ function layoutLevel(doc: Doc, container: string | null, positions: Positions, f
 }
 
 function containsEntry(doc: Doc, containerId: string): boolean {
-  return doc.nodes.some(n => n.kind === 'entry' && ancestry(doc, n.container).includes(containerId));
+  return doc.nodes.some(n => isSource(n) && ancestry(doc, n.container).includes(containerId));
 }
 
 /** Move a container's frame and everything inside it (recursively). */

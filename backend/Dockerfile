@@ -8,6 +8,8 @@ RUN npm ci --no-audit --no-fund
 COPY index.html vite.config.ts tsconfig.json ./
 COPY src src
 COPY schema schema
+COPY shared shared
+COPY public public
 RUN npm run build
 
 FROM eclipse-temurin:25-jdk AS build
@@ -17,6 +19,8 @@ COPY backend/gradle gradle
 COPY backend/settings.gradle.kts backend/build.gradle.kts ./
 RUN chmod +x gradlew && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
 COPY backend/src src
+# component types shared with the browser (build.gradle.kts adds ../shared as a resource folder)
+COPY shared /shared
 COPY --from=web /web/dist src/main/resources/static
 RUN ./gradlew --no-daemon bootJar -x test
 

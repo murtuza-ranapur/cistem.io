@@ -17,7 +17,6 @@ public final class Layout {
 
     static final int COL_GAP = 120, ROW_GAP = 40, GROUP_GAP = 80, NODE_H = 92, ORIGIN_X = 40, ORIGIN_Y = 40;
     static final int FRAME_PAD = 28, FRAME_HEAD = 30;
-    static final Map<String, Integer> WIDTHS = Map.of("entry", 190, "lb", 190, "service", 200, "cache", 190, "db", 200, "queue", 200);
 
     private Layout() {}
 
@@ -26,11 +25,11 @@ public final class Layout {
 
     public static int nodeHeight(JsonNode n, boolean expanded) {
         if (!expanded) return NODE_H;
-        String kind = n.path("kind").asText();
+        String detail = Types.detail(n);   // what the type expands to show (shared/component-types.json)
         int extra = 0;
-        if ("db".equals(kind)) { JsonNode ts = n.path("tables"); for (JsonNode t : ts) extra += TABLE_HEAD + t.path("columns").size() * ROW + TABLE_PAD; extra += Math.max(0, ts.size() - 1) * TABLE_GAP; }
-        else if ("service".equals(kind)) extra = n.path("endpoints").size() * ENDPOINT_ROW;
-        else if ("queue".equals(kind)) { int f = topicFieldCount(n); extra = f > 0 ? TOPIC_HEAD + f * TOPIC_ROW : 0; }   // one topic per node (v4)
+        if ("tables".equals(detail)) { JsonNode ts = n.path("tables"); for (JsonNode t : ts) extra += TABLE_HEAD + t.path("columns").size() * ROW + TABLE_PAD; extra += Math.max(0, ts.size() - 1) * TABLE_GAP; }
+        else if ("endpoints".equals(detail)) extra = n.path("endpoints").size() * ENDPOINT_ROW;
+        else if ("topic".equals(detail) || "message".equals(detail)) { int f = topicFieldCount(n); extra = f > 0 ? TOPIC_HEAD + f * TOPIC_ROW : 0; }   // one topic per node (v4)
         if (extra == 0) return NODE_H;
         return Math.min(MAX_H, NODE_H + SECTION_PAD + extra + SECTION_PAD);
     }
@@ -38,8 +37,8 @@ public final class Layout {
     public static int nodeWidthFor(JsonNode n, boolean expanded) {
         int w = nodeWidth(n);
         if (!expanded) return w;
-        String kind = n.path("kind").asText();
-        if ("db".equals(kind)) {
+        String detail = Types.detail(n);
+        if ("tables".equals(detail)) {
             int longest = 0;
             for (JsonNode t : n.path("tables")) for (JsonNode c : t.path("columns")) {
                 int len = c.path("name").asText("").length() + c.path("type").asText("").length() + 3 + (c.path("references").isTextual() && !c.path("references").asText().isEmpty() ? 6 : 0);
@@ -47,7 +46,7 @@ public final class Layout {
             }
             return (int) Math.min(360, Math.max(w, 40 + longest * 6.4 + 60));
         }
-        if ("service".equals(kind) || "queue".equals(kind)) return Math.max(w, 280);
+        if ("endpoints".equals(detail) || "topic".equals(detail) || "message".equals(detail)) return Math.max(w, 280);
         return w;
     }
 
@@ -60,7 +59,7 @@ public final class Layout {
 
     /** Mirror of model.ts nodeWidth: deterministic, no font metrics. */
     public static int nodeWidth(JsonNode n) {
-        int base = WIDTHS.getOrDefault(n.path("kind").asText(), 200);
+        int base = Types.of(n.path("kind").asText()).width();
         double need = 56 + n.path("name").asText("").length() * 7.8 + 16;
         return Math.min(320, Math.max(base, (int) Math.round(need / 8) * 8));
     }
@@ -110,7 +109,7 @@ public final class Layout {
                 String a = itemOf(e.path("from").asText(), container), b = itemOf(e.path("to").asText(), container);
                 if (a != null && b != null && !a.equals(b) && itemSet.contains(a) && itemSet.contains(b)) edges.add(new String[]{ a, b });
             }
-            List<String> roots = itemIds.stream().filter(id -> (nodes.containsKey(id) && "entry".equals(nodes.get(id).path("kind").asText())) || containsEntry(id)).toList();
+            List<String> roots = itemIds.stream().filter(id -> (nodes.containsKey(id) && Types.isSource(nodes.get(id))) || containsEntry(id)).toList();
 
             Map<String, double[]> placed = arrange(itemIds, size, edges, roots, container == null ? COL_GAP : COL_GAP / 2, container == null ? GROUP_GAP : ROW_GAP);
 
@@ -143,7 +142,7 @@ public final class Layout {
         }
 
         boolean containsEntry(String containerId) {
-            for (JsonNode n : nodes.values()) if ("entry".equals(n.path("kind").asText()) && Engine.ancestry(model, Engine.containerOf(n)).contains(containerId)) return true;
+            for (JsonNode n : nodes.values()) if (Types.isSource(n) && Engine.ancestry(model, Engine.containerOf(n)).contains(containerId)) return true;
             return false;
         }
 

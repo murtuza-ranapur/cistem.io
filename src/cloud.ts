@@ -3,6 +3,7 @@
  * ?d= / ?s= URLs. Signed out, the editor works against localStorage only.
  */
 import { api, ConflictError, AuthError, type Summary, type Stored, type Profile } from './api';
+import { isSource } from './model';
 import { toFile } from './document';
 import { state, loadFile, loadExample, renderAll, esc } from './state';
 import { fit } from './canvas';
@@ -159,7 +160,7 @@ export async function openAsNew(file: unknown) {
 
 export async function newDiagram() {
   loadExample();
-  state.doc.nodes = state.doc.nodes.filter(n => n.kind === 'entry'); state.doc.edges = [];
+  state.doc.nodes = state.doc.nodes.filter(n => isSource(n)); state.doc.edges = [];
   state.meta.title = 'Untitled system';
   cloud.id = null; cloud.version = 0; cloud.readonly = false; cloud.lastSerialized = '';
   history.reset(); renderAll(); requestAnimationFrame(() => fit(false));

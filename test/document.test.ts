@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import { exampleDoc, crossingLatency } from '../src/model';
+import { exampleDoc, crossingLatency, TYPES, makeNode } from '../src/model';
 import { compute } from '../src/engine';
 import { toFile, fromFile, migrate, FORMAT_VERSION } from '../src/document';
 
@@ -104,3 +104,12 @@ const noLayout = { ...file, layout: { positions: {} } };
 assert.equal(fromFile(noLayout).doc.nodes[0].x, 0);
 
 console.log('document tests passed');
+
+// every component type in shared/component-types.json makes a node the schema accepts
+{
+  const nodes = Object.keys(TYPES).map((k, i) => makeNode(k, i * 250, 0));
+  const f = toFile({ nodes, edges: [], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'all types', created: '2026-01-01T00:00:00Z', updated: '2026-01-01T00:00:00Z' });
+  assert.ok(validate(f), JSON.stringify(validate.errors, null, 1));
+  assert.ok(Object.keys(TYPES).length >= 10, 'new types are present');
+  console.log('component types validate');
+}

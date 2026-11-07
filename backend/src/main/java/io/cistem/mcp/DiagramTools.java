@@ -4,6 +4,7 @@ import io.cistem.api.Diagram;
 import io.cistem.api.DiagramRepository;
 import io.cistem.engine.Engine;
 import io.cistem.engine.Migrate;
+import io.cistem.engine.Types;
 import io.cistem.engine.Layout;
 import org.springframework.ai.mcp.annotation.McpResource;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -28,14 +29,7 @@ import java.util.function.Consumer;
 @Component
 public class DiagramTools {
 
-    static final Set<String> KINDS = Set.of("entry", "lb", "service", "cache", "db", "queue");
-    static final Map<String, Map<String, Object>> DEFAULTS = Map.of(
-            "entry", Map.of("platforms", List.of("web", "app"), "rps", 1000),
-            "lb", Map.of("maxRps", 50000, "latency", 1),
-            "service", Map.of("rpsPerInstance", 800, "instances", 3, "latency", 20, "endpoints", List.of()),
-            "cache", Map.of("maxOps", 100000, "hitRatio", 0.9, "latency", 1, "eviction", "allkeys-lru"),
-            "db", Map.of("maxQps", 5000, "readShare", 0.8, "replicas", 1, "latency", 8, "tables", List.of()),
-            "queue", Map.of("maxThroughput", 20000, "latency", 5, "partitions", 6, "schema", ""));
+    // component types (kinds, defaults, behaviours) come from shared/component-types.json via Types
 
     private final DiagramRepository repo;
     private final CurrentUser user;
@@ -75,7 +69,7 @@ public class DiagramTools {
     /** Set the clients' peak rps so they add up to `total`, keeping their proportions (equal split if all are 0). */
     private static void scaleClients(JsonNode file, double total) {
         List<ObjectNode> clients = new java.util.ArrayList<>();
-        for (JsonNode n : file.path("model").path("nodes")) if ("entry".equals(n.path("kind").asText())) clients.add((ObjectNode) n);
+        for (JsonNode n : file.path("model").path("nodes")) if (Types.isSource(n)) clients.add((ObjectNode) n);
         if (clients.isEmpty()) throw new IllegalArgumentException("This diagram has no Clients component to carry the load");
         double sum = clients.stream().mapToDouble(c -> c.path("rps").asDouble(0)).sum();
         for (ObjectNode c : clients) c.put("rps", sum > 0 ? c.path("rps").asDouble(0) * total / sum : total / clients.size());
@@ -117,13 +111,27 @@ public class DiagramTools {
 
     // ---------- edit ----------
 
+    @McpTool(name = "list_component_types", description = """
+            The component types a system diagram can use: key, label, behaviour (how the capacity model treats it:
+            source | balancer | limit | scaled | cache | store | async), what it expands to show, and its default fields.""")
+    public ArrayNode listComponentTypes() {
+        ArrayNode out = om.createArrayNode();
+        Types.all().values().forEach(t -> {
+            ObjectNode o = out.addObject();
+            o.put("kind", t.key()).put("label", t.label()).put("behaviour", t.behaviour());
+            if (t.detail() != null) o.put("detail", t.detail()); else o.putNull("detail");
+            o.set("defaults", t.defaults());
+        });
+        return out;
+    }
+
     @McpTool(name = "set_client_rps", description = "Set one Clients component's peak requests/sec (the load it sends into the system).")
     public ObjectNode setClientRps(@McpToolParam(description = "Diagram id") String diagramId,
                                    @McpToolParam(description = "Clients component id") String componentId,
                                    @McpToolParam(description = "Peak requests per second") double rps) {
         return edit(diagramId, f -> {
             ObjectNode n = node(f, componentId);
-            if (!"entry".equals(n.path("kind").asText())) throw new IllegalArgumentException(componentId + " is not a Clients component");
+            if (!Types.isSource(n)) throw new IllegalArgumentException(componentId + " is not a Clients component");
             n.put("rps", rps);
         });
     }
@@ -142,7 +150,8 @@ public class DiagramTools {
     }
 
     @McpTool(name = "add_component", description = """
-            Add a component. kind: entry (Clients) | lb (load balancer) | service | cache (Redis) | db (Postgres) | queue (one Kafka topic).
+            Add a component. kind is a component type key — list_component_types gives them all with their behaviour and
+            fields; common ones: entry (Clients) | lb | apigw | cdn | service | cache (Redis) | db (Postgres) | mongodb | queue (one Kafka topic) | sqs.
             properties (optional JSON object) override defaults, e.g. entry: {"rps":2000}; service: {"instances":6,"rpsPerInstance":600,"latency":25};
             cache: {"maxOps":100000,"hitRatio":0.85}; db: {"maxQps":4000,"replicas":2,"readShare":0.85};
             queue: {"partitions":12,"key":"paymentId","cluster":"msk-payments","schema":"<Avro JSON>","maxThroughput":20000} — name it with the topic name;
@@ -153,7 +162,7 @@ public class DiagramTools {
                                    @McpToolParam(description = "Display name") String name,
                                    @McpToolParam(description = "Property overrides as a JSON object", required = false) Map<String, Object> properties,
                                    @McpToolParam(description = "Container (environment) id to place it in", required = false) String containerId) {
-        if (!KINDS.contains(kind)) throw new IllegalArgumentException("kind must be one of " + KINDS);
+        if (!Types.known(kind)) throw new IllegalArgumentException("kind must be one of " + Types.all().keySet() + " (see list_component_types)");
         String[] newId = new String[1];
         ObjectNode result = edit(diagramId, f -> {
             ArrayNode nodes = (ArrayNode) f.path("model").path("nodes");
@@ -162,7 +171,8 @@ public class DiagramTools {
             ObjectNode n = nodes.addObject();
             n.put("id", id).put("kind", kind).put("name", name);
             if (containerId != null && !containerId.isBlank()) { container(f, containerId); n.put("container", containerId); } else n.putNull("container");
-            Map<String, Object> props = new LinkedHashMap<>(DEFAULTS.get(kind));
+            Map<String, Object> props = new LinkedHashMap<>();
+            Types.of(kind).defaults().properties().forEach(e -> { if (!e.getKey().equals("name")) props.put(e.getKey(), om.treeToValue(e.getValue(), Object.class)); });
             if (properties != null) props.putAll(properties);
             props.forEach((k, v) -> n.set(k, om.valueToTree(v)));
             // place to the right of the current right-most node
@@ -191,7 +201,6 @@ public class DiagramTools {
                                       @McpToolParam(description = "Component id") String componentId) {
         return edit(diagramId, f -> {
             node(f, componentId); // existence check
-            if ("entry".equals(node(f, componentId).path("kind").asText())) throw new IllegalArgumentException("The entry node can't be removed");
             removeWhere((ArrayNode) f.path("model").path("nodes"), n -> componentId.equals(n.path("id").asText()));
             removeWhere((ArrayNode) f.path("model").path("edges"), e -> componentId.equals(e.path("from").asText()) || componentId.equals(e.path("to").asText()));
             ((ObjectNode) f.path("layout").path("positions")).remove(componentId);

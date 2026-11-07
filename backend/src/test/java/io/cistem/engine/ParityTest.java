@@ -81,6 +81,14 @@ class ParityTest {
     @Test
     void layoutMatchesTypeScript() throws Exception { layoutMatches(fixture()); }
 
+    /** CDN, API gateway, MongoDB and SQS exist only in shared/component-types.json — and still behave identically. */
+    @Test
+    void newComponentTypesMatchTypeScript() throws Exception {
+        JsonNode f = fixture("/parity-types.json");
+        engineMatches(f);
+        layoutMatches(f);
+    }
+
     void layoutMatches(JsonNode f) {
         var got = Layout.layered(f.path("file").path("model"), f.path("file").path("layout").path("detail"));
         JsonNode exp = f.path("expected").path("layout");

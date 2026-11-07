@@ -1,0 +1,275 @@
+{
+ "file": {
+  "version": 4,
+  "kind": "system",
+  "meta": {
+   "title": "Types fixture",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "nodes": [
+    {
+     "id": "n25",
+     "kind": "entry",
+     "name": "Shoppers",
+     "platforms": [
+      "web",
+      "app"
+     ],
+     "rps": 12000
+    },
+    {
+     "id": "n26",
+     "kind": "cdn",
+     "name": "edge-cdn",
+     "maxOps": 1000000,
+     "hitRatio": 0.75,
+     "latency": 15
+    },
+    {
+     "id": "n27",
+     "kind": "apigw",
+     "name": "gateway",
+     "maxRps": 5000,
+     "latency": 8
+    },
+    {
+     "id": "n28",
+     "kind": "service",
+     "name": "orders",
+     "rpsPerInstance": 600,
+     "instances": 6,
+     "latency": 20,
+     "endpoints": [
+      {
+       "method": "POST",
+       "path": "/orders",
+       "headers": [],
+       "req": "",
+       "res": ""
+      }
+     ]
+    },
+    {
+     "id": "n29",
+     "kind": "mongodb",
+     "name": "orders-db",
+     "maxQps": 4000,
+     "replicas": 2,
+     "readShare": 0.7,
+     "latency": 5
+    },
+    {
+     "id": "n30",
+     "kind": "sqs",
+     "name": "fulfilment",
+     "maxThroughput": 3000,
+     "latency": 20,
+     "schema": "{\"type\":\"record\",\"name\":\"Fulfil\",\"fields\":[{\"name\":\"orderId\",\"type\":\"string\"}]}",
+     "fifo": true,
+     "key": "orderId"
+    },
+    {
+     "id": "n31",
+     "kind": "service",
+     "name": "fulfilment-worker",
+     "rpsPerInstance": 300,
+     "instances": 2,
+     "latency": 20,
+     "endpoints": []
+    }
+   ],
+   "edges": [
+    {
+     "id": "e1",
+     "from": "n25",
+     "to": "n26",
+     "calls": 1
+    },
+    {
+     "id": "e2",
+     "from": "n26",
+     "to": "n27",
+     "calls": 1
+    },
+    {
+     "id": "e3",
+     "from": "n27",
+     "to": "n28",
+     "calls": 1
+    },
+    {
+     "id": "e4",
+     "from": "n28",
+     "to": "n29",
+     "calls": 2
+    },
+    {
+     "id": "e5",
+     "from": "n28",
+     "to": "n30",
+     "calls": 1
+    },
+    {
+     "id": "e6",
+     "from": "n30",
+     "to": "n31",
+     "calls": 1
+    }
+   ],
+   "containers": [],
+   "links": []
+  },
+  "layout": {
+   "positions": {
+    "n25": {
+     "x": 0,
+     "y": 0
+    },
+    "n26": {
+     "x": 0,
+     "y": 0
+    },
+    "n27": {
+     "x": 0,
+     "y": 0
+    },
+    "n28": {
+     "x": 0,
+     "y": 0
+    },
+    "n29": {
+     "x": 0,
+     "y": 0
+    },
+    "n30": {
+     "x": 0,
+     "y": 0
+    },
+    "n31": {
+     "x": 0,
+     "y": 0
+    }
+   },
+   "frames": {},
+   "detail": {
+    "n28": "expanded",
+    "n30": "expanded"
+   }
+  }
+ },
+ "expected": {
+  "nodes": {
+   "n25": {
+    "load": 12000,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0
+   },
+   "n26": {
+    "load": 12000,
+    "cap": 1000000,
+    "util": 0.012,
+    "status": "ok",
+    "lat": 15.182186234817815,
+    "cum": 15.182186234817815
+   },
+   "n27": {
+    "load": 3000,
+    "cap": 5000,
+    "util": 0.6,
+    "status": "ok",
+    "lat": 20,
+    "cum": 35.18218623481781
+   },
+   "n28": {
+    "load": 3000,
+    "cap": 3600,
+    "util": 0.8333333333333334,
+    "status": "warn",
+    "lat": 120.00000000000003,
+    "cum": 155.18218623481783
+   },
+   "n29": {
+    "load": 6000,
+    "cap": 7500,
+    "util": 0.8,
+    "status": "warn",
+    "lat": 25.000000000000007,
+    "cum": 180.18218623481783
+   },
+   "n30": {
+    "load": 3000,
+    "cap": 3000,
+    "util": 1,
+    "status": "crit",
+    "lat": 200,
+    "cum": 355.18218623481783
+   },
+   "n31": {
+    "load": 3000,
+    "cap": 600,
+    "util": 5,
+    "status": "crit",
+    "lat": 200,
+    "cum": 555.1821862348179
+   }
+  },
+  "edges": {
+   "e1": 12000,
+   "e2": 3000,
+   "e3": 3000,
+   "e4": 6000,
+   "e5": 3000,
+   "e6": 3000
+  },
+  "crossings": {
+   "e1": 0,
+   "e2": 0,
+   "e3": 0,
+   "e4": 0,
+   "e5": 0,
+   "e6": 0
+  },
+  "verdict": {
+   "status": "crit",
+   "node": "n30",
+   "lat": 555.1821862348179,
+   "converged": true
+  },
+  "layout": {
+   "n25": {
+    "x": 40,
+    "y": 152
+   },
+   "n26": {
+    "x": 352,
+    "y": 152
+   },
+   "n27": {
+    "x": 648,
+    "y": 152
+   },
+   "n28": {
+    "x": 960,
+    "y": 136
+   },
+   "n29": {
+    "x": 1360,
+    "y": 40
+   },
+   "n30": {
+    "x": 1360,
+    "y": 216
+   },
+   "n31": {
+    "x": 1760,
+    "y": 152
+   }
+  },
+  "frames": {}
+ }
+}

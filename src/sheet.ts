@@ -1,4 +1,4 @@
-import { totalRps, CONTAINER_COLORS, KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
+import { totalRps, typeDef, isSource, detailOf as typeDetail, hasSchemaDetail, CONTAINER_COLORS, KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
 import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select } from './state';
 import * as history from './history';
 import { toDbml, parseDbml, quickColumn, PG_TYPE_LIST } from './dbml';
@@ -11,7 +11,7 @@ const tblMode = new Map<string, 'rows' | 'code'>();
 const dbDrafts = new Map<string, string>(); // text that doesn't parse yet (kept so a redraw doesn't lose it)
 let focusAfterDraw = '';
 const refResolver = () => ({
-  nameToId: (name: string) => state.doc.nodes.find(x => x.kind === 'db' && x.name === name)?.id ?? null,
+  nameToId: (name: string) => state.doc.nodes.find(x => typeDetail(x) === 'tables' && x.name === name)?.id ?? null,
   idToName: (id: string) => state.doc.nodes.find(x => x.id === id)?.name ?? null,
 });
 const refLabel = (r: string) => { const m = /^([^:]+):(.+)$/.exec(r); return m ? `${state.doc.nodes.find(x => x.id === m[1])?.name ?? m[1]}.${m[2]}` : r; };
@@ -75,8 +75,8 @@ function bodyVocab(nodeId: string) {
   const linked = new Set(doc.edges.filter(e => e.from === nodeId).map(e => e.to).concat(doc.edges.filter(e => e.to === nodeId).map(e => e.from)));
   for (const n of doc.nodes) {
     if (!linked.has(n.id)) continue;
-    if (n.kind === 'db') for (const t of (n as DbNode).tables || []) for (const c of t.columns || []) if (c.name) keys.push({ name: c.name, from: `${n.name}.${t.name}` });
-    if (n.kind === 'queue') for (const f of parseAvro((n as QueueNode).schema)?.fields ?? []) if (f.name) keys.push({ name: f.name, from: n.name });
+    if (typeDetail(n) === 'tables') for (const t of (n as DbNode).tables || []) for (const c of t.columns || []) if (c.name) keys.push({ name: c.name, from: `${n.name}.${t.name}` });
+    if (hasSchemaDetail(n)) for (const f of parseAvro((n as QueueNode).schema)?.fields ?? []) if (f.name) keys.push({ name: f.name, from: n.name });
   }
   const walk = (v: unknown, from: string) => {
     if (Array.isArray(v)) { v.forEach(x => walk(x, from)); return; }
@@ -84,7 +84,7 @@ function bodyVocab(nodeId: string) {
     for (const [k, x] of Object.entries(v)) { keys.push({ name: k, from, example: x !== null && typeof x === 'object' ? undefined : x }); walk(x, from); }
   };
   const services = [...doc.nodes.filter(n => n.id === nodeId), ...doc.nodes.filter(n => n.id !== nodeId)];
-  for (const n of services) if (n.kind === 'service') for (const ep of (n as ServiceNode).endpoints || []) for (const body of [ep.req, ep.res]) {
+  for (const n of services) if (typeDetail(n) === 'endpoints') for (const ep of (n as ServiceNode).endpoints || []) for (const body of [ep.req, ep.res]) {
     try { walk(JSON.parse(body), `${ep.method} ${ep.path}`); } catch { /* skip */ }
   }
   return { keys };
@@ -96,7 +96,7 @@ function dbEditorOptions(nodeId: string, big = false) {
     big,
     doc: dbDrafts.get(nodeId) ?? toDbml(n()?.tables || [], refResolver()),
     resolver: refResolver(),
-    externalTargets: () => state.doc.nodes.filter(x => x.kind === 'db' && x.id !== nodeId).flatMap(x => ((x as DbNode).tables || []).flatMap(t => (t.columns || []).filter(c => c.pk).map(c => `${x.name}.${t.name}.${c.name}`))),
+    externalTargets: () => state.doc.nodes.filter(x => typeDetail(x) === 'tables' && x.id !== nodeId).flatMap(x => ((x as DbNode).tables || []).flatMap(t => (t.columns || []).filter(c => c.pk).map(c => `${x.name}.${t.name}.${c.name}`))),
     onFocus: () => history.snapshot(state.doc),
     onChange: (text: string) => {
       const node = n(); if (!node) return;
@@ -227,21 +227,28 @@ function editTree(fe: HTMLElement, fn: (root: any[], rec: ARecord | null) => boo
 }
 const fieldAt = (root: any[], fpath: string) => { const idx = fpath.split('.'); const last = idx.pop()!; return listAt(root, idx.join('.'))[+last]; };
 
-function hasSchema(n: Node) { return n.kind === 'service' || n.kind === 'db' || n.kind === 'queue'; }
-const schemaLabel = (n: Node) => n.kind === 'service' ? 'Endpoints' : n.kind === 'db' ? 'Tables' : 'Topic';
+function hasSchema(n: Node) { return !!typeDetail(n); }
+const schemaLabel = (n: Node) => ({ endpoints: 'Endpoints', tables: 'Tables', topic: 'Topic', message: 'Message' } as Record<string, string>)[typeDetail(n) ?? ''] ?? 'Detail';
 
 function capacityTab(n: Node): string {
   const r = state.results.nodes[n.id];
   let h = '<div class="tab"><div class="props">' + inp('name', 'name', n.name).replace('<label>', '<label class="wide">');
   h += `<label class="wide">Environment<select data-path="container" data-nullable="1"><option value="" ${!n.container ? 'selected' : ''}>No environment</option>${containerOptions(n.container ?? null)}</select></label>`;
-  KINDS[n.kind].fields.forEach(([key, lbl]) => { h += inp(key, lbl, (n as any)[key], 'number'); });
-  if (n.kind === 'cache') h += selIn('eviction', 'Eviction policy', n.eviction, EVICTIONS).replace('<label>', '<label class="wide">');
-  if (n.kind === 'entry') {
+  // the type's own fields, as declared in shared/component-types.json
+  for (const f of typeDef(n.kind).fields) {
+    const v = (n as Record<string, unknown>)[f.key];
+    let field = f.type === 'select' ? selIn(f.key, f.label, String(v ?? f.options?.[0] ?? ''), f.options ?? [])
+      : f.type === 'boolean' ? chk(f.key, f.label, !!v)
+      : inp(f.key, f.label, v ?? '', f.type === 'number' ? 'number' : 'text', [f.min !== undefined ? `min="${f.min}"` : '', f.max !== undefined ? `max="${f.max}"` : '', f.step !== undefined ? `step="${f.step}"` : ''].join(' '));
+    if (f.wide) field = field.replace('<label>', '<label class="wide">').replace('<label class="check">', '<label class="check wide">');
+    h += field;
+  }
+  if (isSource(n)) {
     const ps = (n as EntryNode).platforms || [];
     h += `<label class="wide">Platforms<div class="chips">${['web', 'app'].map(p => `<button data-platform="${p}" class="${ps.includes(p) ? 'on' : ''}">${p === 'web' ? 'Web' : 'App'}</button>`).join('')}</div></label>`;
   }
   h += '</div>';
-  if (n.kind === 'entry') h += `<p class="note">Peak requests per second these clients send. The diagram is tested at the sum of all clients — ${fmt(totalRps(state.doc))} rps — shown in the top bar.</p>`;
+  if (isSource(n)) h += `<p class="note">Peak requests per second these clients send. The diagram is tested at the sum of all clients — ${fmt(totalRps(state.doc))} rps — shown in the top bar.</p>`;
   else {
     const pct = isFinite(r.util) ? Math.round(r.util * 100) : 100;
     h += `<div class="stats">
@@ -258,7 +265,8 @@ function capacityTab(n: Node): string {
 
 function schemaTab(n: Node): string {
   let h = '<div class="tab">';
-  if (n.kind === 'service') {
+  const dk = typeDetail(n);
+  if (dk === 'endpoints') {
     const eps = (n as ServiceNode).endpoints || [];
     h += `<section class="list"><h3>Endpoints <span class="spacer"></span>${addBtn('add-endpoint', 'endpoint')}</h3>`;
     eps.forEach((ep, i) => {
@@ -273,7 +281,7 @@ function schemaTab(n: Node): string {
     if (!eps.length) h += '<p class="empty">No endpoints yet.</p>';
     h += `<datalist id="hdrNames">${COMMON_HEADERS.map(v => `<option value="${v}">`).join('')}</datalist></section>`;
   }
-  if (n.kind === 'db') {
+  if (dk === 'tables') {
     const ts = (n as DbNode).tables || [];
     const mode = tblMode.get(n.id) ?? 'rows';
     h += `<section class="list"><h3>Tables <span class="spacer"></span><span class="seg"><button data-tblmode="rows" class="${mode === 'rows' ? 'on' : ''}">Rows</button><button data-tblmode="code" class="${mode === 'code' ? 'on' : ''}">Code</button></span>`;
@@ -301,7 +309,7 @@ function schemaTab(n: Node): string {
           const base = `tables.${i}.columns.${j}`;
           const targets: string[] = [];
           for (const ot of ts) if (ot !== t) for (const oc of ot.columns || []) targets.push(`${ot.name}.${oc.name}`);
-          for (const on of state.doc.nodes) if (on.kind === 'db' && on.id !== n.id) for (const ot of (on as DbNode).tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
+          for (const on of state.doc.nodes) if (typeDetail(on) === 'tables' && on.id !== n.id) for (const ot of (on as DbNode).tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
           const refOpts = ['', ...(c.references && !targets.includes(c.references) ? [c.references] : []), ...targets];
           const pill = (prop: string, label: string, on: boolean, cls: string) => `<button class="pill ${cls} ${on ? 'on' : ''}" data-flip="${base}.${prop}" aria-pressed="${on}">${label}</button>`;
           h += `<div class="tedit" data-col="${i}:${j}">`;
@@ -316,7 +324,14 @@ function schemaTab(n: Node): string {
     }
     h += `<datalist id="pgTypes">${PG_TYPE_LIST.map(v => `<option value="${v}">`).join('')}</datalist></section>`;
   }
-  if (n.kind === 'queue') {
+  if (dk === 'message') {
+    const q = n as QueueNode;
+    const keyOpts = (parseAvro(q.schema)?.fields ?? []).map(f => f.name).filter(Boolean);
+    h += `<section class="list"><h3>Message</h3>`;
+    if (q.fifo) h += `<div class="props">${inp('key', 'Message group key', q.key ?? '', 'text', 'list="tkeys" placeholder="e.g. merchantId"').replace('<label>', '<label class="wide">')}<datalist id="tkeys">${keyOpts.map(v => `<option value="${esc(v)}">`).join('')}</datalist></div>`;
+    h += `<div class="row stack">${fieldEditor('schema', 'Message schema (Avro)', q.schema, 'avro')}</div></section>`;
+  }
+  if (dk === 'topic') {
     const q = n as QueueNode;
     const keyOpts = (parseAvro(q.schema)?.fields ?? []).map(f => f.name).filter(Boolean);
     h += `<section class="list"><h3>Topic</h3><div class="props">`;
@@ -384,10 +399,10 @@ function nodeSheet(n: Node): string {
 function edgeSheet(e: Edge): string {
   const a = state.doc.nodes.find(n => n.id === e.from)!, b = state.doc.nodes.find(n => n.id === e.to)!;
   let h = `<div class="head"><span class="k">Edge</span><strong>${esc(a.name)} → ${esc(b.name)}</strong><span class="spacer"></span><button class="icon danger" data-action="delete-edge" title="Delete" aria-label="Delete"><svg><use href="#ic-trash"/></svg></button></div><div class="tab"><div class="props">${inp('calls', 'Calls per incoming request', e.calls, 'number', 'min="0"').replace('<label>', '<label class="wide">')}`;
-  if (b.kind === 'service' && (b.endpoints || []).length) {
-    h += `<label class="wide">Endpoint called<select data-path="endpoint" data-int="1"><option value="">Unspecified</option>${b.endpoints.map((ep, i) => `<option value="${i}" ${e.endpoint === i ? 'selected' : ''}>${esc(ep.method + ' ' + ep.path)}</option>`).join('')}</select></label>`;
+  if (typeDetail(b) === 'endpoints' && (b.endpoints || []).length) {
+    h += `<label class="wide">Endpoint called<select data-path="endpoint" data-int="1"><option value="">Unspecified</option>${(b.endpoints ?? []).map((ep, i) => `<option value="${i}" ${e.endpoint === i ? 'selected' : ''}>${esc(ep.method + ' ' + ep.path)}</option>`).join('')}</select></label>`;
   }
-  h += `</div><div class="stats"><div class="stat-tile"><div class="l">Carries</div><div class="v">${fmt(state.results.edges[e.id] || 0)} <small>rps</small></div></div></div>${a.kind === 'cache' ? '<p class="note">Only cache misses travel down this edge.</p>' : ''}${a.kind === 'lb' ? '<p class="note">The load balancer splits its traffic evenly across outgoing edges.</p>' : ''}</div>`;
+  h += `</div><div class="stats"><div class="stat-tile"><div class="l">Carries</div><div class="v">${fmt(state.results.edges[e.id] || 0)} <small>rps</small></div></div></div>${typeDef(a.kind).behaviour === 'cache' ? '<p class="note">Only cache misses travel down this edge.</p>' : ''}${typeDef(a.kind).behaviour === 'balancer' ? `<p class="note">The ${esc(typeDef(a.kind).label.toLowerCase())} splits its traffic evenly across outgoing edges.</p>` : ''}</div>`;
   return h;
 }
 

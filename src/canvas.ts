@@ -1,4 +1,4 @@
-import { KINDS, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, frameColor, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
+import { KINDS, typeDef, isSource, detailOf as typeDetail, hasSchemaDetail, NODE_H, ICON, EXP, nodeWidth, nodeWidthFor, nodeHeight, topicFields, foreignKeys, FRAME_PAD, FRAME_HEAD, CONTAINER_KINDS, frameColor, nextId, makeNode, makeContainer, ancestry, type Node, type Edge, type Kind, type Container, type Frame, type ContainerKind } from './model';
 import { state, fmt, on, renderCanvas, renderAll, mutate, select, selectedNodeIds } from './state';
 import { holdPanel, releasePanel } from './sheet';
 
@@ -78,15 +78,18 @@ function pathBetween(p: { x: number; y: number }, q: { x: number; y: number }, s
   return `M${p.x} ${p.y} C${c1.x} ${c1.y} ${c2.x} ${c2.y} ${q.x} ${q.y}`;
 }
 
+/** The one-line summary under a node's name, from its type's detail (or behaviour). */
 function summary(n: Node): string {
-  switch (n.kind) {
-    case 'entry': return (n.platforms || []).map(p => ({ web: 'Web', app: 'App' } as Record<string, string>)[p] || p).join(' · ') || 'no platforms';
-    case 'service': { const e = n.endpoints || []; return e.length ? e.slice(0, 2).map(x => `${x.method} ${x.path}`).join('  ') + (e.length > 2 ? `  +${e.length - 2}` : '') : 'no endpoints'; }
-    case 'cache': return n.eviction || '';
-    case 'db': { const t = n.tables || []; return t.length ? t.slice(0, 3).map(x => x.name).join(', ') + (t.length > 3 ? ` +${t.length - 3}` : '') : 'no tables'; }
-    case 'queue': return [n.cluster, `${n.partitions ?? '?'} partitions`, n.key ? `key ${n.key}` : ''].filter(Boolean).join(' · ');
-    default: return '';
+  if (isSource(n)) return (n.platforms || []).map(p => ({ web: 'Web', app: 'App' } as Record<string, string>)[p] || p).join(' · ') || 'no platforms';
+  switch (typeDetail(n)) {
+    case 'endpoints': { const e = n.endpoints || []; return e.length ? e.slice(0, 2).map(x => `${x.method} ${x.path}`).join('  ') + (e.length > 2 ? `  +${e.length - 2}` : '') : 'no endpoints'; }
+    case 'tables': { const t = n.tables || []; return t.length ? t.slice(0, 3).map(x => x.name).join(', ') + (t.length > 3 ? ` +${t.length - 3}` : '') : 'no tables'; }
+    case 'topic': return [n.cluster, `${n.partitions ?? '?'} partitions`, n.key ? `key ${n.key}` : ''].filter(Boolean).join(' · ');
+    case 'message': return [n.fifo ? 'FIFO' : 'standard', n.key ? `group ${n.key}` : ''].filter(Boolean).join(' · ');
   }
+  if (typeof n.eviction === 'string') return n.eviction;
+  if (typeof n.hitRatio === 'number') return `${Math.round(n.hitRatio * 100)}% hits`;
+  return '';
 }
 
 // ---------- container frames ----------
@@ -169,19 +172,20 @@ function buildNode(n: Node): SVGGElement {
   const g = el('g', { class: 'node', 'data-node': n.id });
   g.appendChild(el('rect', { class: 'body', width: w, height: NODE_H, rx: 9 }));
   g.appendChild(el('rect', { class: 'accent', x: 0, y: 0, width: 3, height: NODE_H, rx: 1.5 }));
-  g.appendChild(el('use', { href: '#ic-' + n.kind, class: 'glyph', x: 12, y: 12, width: ICON, height: ICON }));
+  g.appendChild(el('use', { href: '#' + typeDef(n.kind).icon, class: 'glyph', x: 12, y: 12, width: ICON, height: ICON }));
+  g.style.setProperty('--kc', `var(--c-${n.kind}, ${typeDef(n.kind).color})`);
   const tx = 12 + ICON + 9;
   g.appendChild(el('text', { class: 'kind', x: tx, y: 20 }));
   g.appendChild(el('text', { class: 'name', x: tx, y: 37 }));
   g.appendChild(el('text', { class: 'sum', x: 12, y: 56 }));
   g.appendChild(el('text', { class: 'stat', x: 12, y: 71 }));
-  if (n.kind !== 'entry') {
+  if (!isSource(n)) {
     g.appendChild(el('rect', { class: 'bar', x: 12, y: 78, width: w - 24, height: 6, rx: 3 }));
     g.appendChild(el('rect', { class: 'fill ok', x: 12, y: 78, width: 0, height: 6, rx: 3 }));
     g.appendChild(el('text', { class: 'stat pct', x: w - 12, y: 71, 'text-anchor': 'end' }));
   }
   g.appendChild(el('g', { class: 'detail' }));
-  if (n.kind === 'db' || n.kind === 'service' || n.kind === 'queue') {
+  if (typeDetail(n)) {
     const c = el('g', { class: 'chev', 'data-toggle': n.id });
     c.appendChild(el('rect', { x: -10, y: -10, width: 20, height: 20, rx: 5 }));
     c.appendChild(el('path', { d: 'M-4 -2 L0 2 L4 -2' }));
@@ -206,7 +210,8 @@ function drawDetail(g: SVGGElement, n: Node, w: number) {
   if (detailOf(n) !== 'expanded') return;
   let y = NODE_H + EXP.sectionPad;
   d.appendChild(el('line', { class: 'sep', x1: 12, y1: NODE_H + 2, x2: w - 12, y2: NODE_H + 2 }));
-  if (n.kind === 'db') {
+  const dk = typeDetail(n);
+  if (dk === 'tables') {
     for (const t of n.tables ?? []) {
       d.appendChild(el('rect', { class: 'tbl', x: 12, y, width: w - 24, height: EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, rx: 5 }));
       d.appendChild(el('rect', { class: 'tblhead', x: 12, y, width: w - 24, height: EXP.tableHead, rx: 5 }));
@@ -226,7 +231,7 @@ function drawDetail(g: SVGGElement, n: Node, w: number) {
       }
       y += EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad + EXP.tableGap;
     }
-  } else if (n.kind === 'service') {
+  } else if (dk === 'endpoints') {
     for (const ep of n.endpoints ?? []) {
       const m = el('text', { class: 'method m-' + ep.method.toLowerCase(), x: 14, y: y + 12 }); m.textContent = ep.method; d.appendChild(m);
       const pth = el('text', { class: 'path', x: 62, y: y + 12 }); pth.textContent = trunc(ep.path, (w - 74 - 40) / 6.4); d.appendChild(pth);
@@ -234,10 +239,10 @@ function drawDetail(g: SVGGElement, n: Node, w: number) {
       const meta = el('text', { class: 'ctype', x: w - 14, y: y + 12, 'text-anchor': 'end' }); meta.textContent = [hc ? `${hc}h` : '', ep.req ? 'req' : '', ep.res ? 'res' : ''].filter(Boolean).join(' '); d.appendChild(meta);
       y += EXP.endpointRow;
     }
-  } else if (n.kind === 'queue') {
+  } else if (dk === 'topic' || dk === 'message') {
     const fields = topicFields(n);
     if (fields.length) {
-      let rec = ''; try { rec = JSON.parse(n.schema).name ?? ''; } catch { /* no record name */ }
+      let rec = ''; try { rec = JSON.parse(n.schema ?? "").name ?? ''; } catch { /* no record name */ }
       const tn = el('text', { class: 'tname', x: 14, y: y + 13 }); tn.textContent = trunc(rec || 'value', (w - 110) / 7); d.appendChild(tn);
       const pc = el('text', { class: 'tcount', x: w - 14, y: y + 13, 'text-anchor': 'end' }); pc.textContent = `${n.partitions ?? '?'} partitions`; d.appendChild(pc);
       y += EXP.topicHead;
@@ -255,20 +260,20 @@ function updateNode(g: SVGGElement, n: Node) {
   const r = state.results.nodes[n.id], w = W(n), h = H(n), expanded = detailOf(n) === 'expanded';
   set(g.querySelector('rect.body')!, { width: w, height: h });
   set(g.querySelector('rect.accent')!, { height: h });
-  if (n.kind !== 'entry') { set(g.querySelector('rect.bar')!, { width: w - 24 }); set(g.querySelector('.pct')!, { x: w - 12 }); }
+  if (!isSource(n)) { set(g.querySelector('rect.bar')!, { width: w - 24 }); set(g.querySelector('.pct')!, { x: w - 12 }); }
   (['e', 'n', 's', 'w'] as Side[]).forEach(sd => { const p = port({ ...n, x: 0, y: 0 } as Node, sd); set(g.querySelector(`[data-handle="${sd}"]`)!, { cx: p.x, cy: p.y }); });
   const chev = g.querySelector('.chev'); if (chev) { chev.setAttribute('transform', `translate(${w - 20} 20)${expanded ? ' rotate(180 0 0)' : ''}`); }
   drawDetail(g, n, w);
   const isSel = (state.sel?.type === 'node' && state.sel.id === n.id) || state.multi.has(n.id);
-  g.setAttribute('class', 'node k-' + n.kind + (isSel ? ' sel' : '') + (expanded ? ' expanded' : '') + (r.status === 'crit' ? ' crit' : '') + (g.classList.contains('enter') ? ' enter' : '') + (g.classList.contains('dragging') ? ' dragging' : ''));
+  g.setAttribute('class', 'node k-' + n.kind + ' b-' + typeDef(n.kind).behaviour + (isSel ? ' sel' : '') + (expanded ? ' expanded' : '') + (r.status === 'crit' ? ' crit' : '') + (g.classList.contains('enter') ? ' enter' : '') + (g.classList.contains('dragging') ? ' dragging' : ''));
   g.setAttribute('transform', `translate(${n.x} ${n.y})`);
   g.style.setProperty('--nx', n.x + 'px'); g.style.setProperty('--ny', n.y + 'px');
   const tx = 12 + ICON + 9;
-  g.querySelector('.kind')!.textContent = KINDS[n.kind].label;
+  g.querySelector('.kind')!.textContent = typeDef(n.kind).label;
   g.querySelector('.name')!.textContent = trunc(n.name || '', (w - tx - 12) / 7.2);
   g.querySelector('.sum')!.textContent = trunc(summary(n), (w - 24) / 6.3);
-  g.querySelector('.stat')!.textContent = n.kind === 'entry' ? `${fmt(n.rps)} rps peak` : `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}`;
-  if (n.kind !== 'entry') {
+  g.querySelector('.stat')!.textContent = isSource(n) ? `${fmt(n.rps ?? 0)} rps peak` : `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}`;
+  if (!isSource(n)) {
     const u = Math.min(1, isFinite(r.util) ? r.util : 1);
     const fill = g.querySelector('.fill')!;
     set(fill, { width: (w - 24) * u, class: 'fill ' + r.status });
@@ -692,7 +697,15 @@ export function addNode(kind: Kind, x?: number, y?: number) {
   if (x === undefined || y === undefined) {
     const r = svg.getBoundingClientRect();
     const c = toWorld(r.left + r.width / 2, r.top + r.height / 2);
-    x = c.x - KINDS[kind].w / 2; y = c.y - NODE_H / 2;
+    x = c.x - typeDef(kind).w / 2; y = c.y - NODE_H / 2;
+    // the centre may be taken: spiral outwards to the nearest spot that overlaps nothing
+    const w = typeDef(kind).w, free = (px: number, py: number) => state.doc.nodes.every(o => px + w + 16 <= o.x || o.x + W(o) + 16 <= px || py + NODE_H + 16 <= o.y || o.y + H(o) + 16 <= py);
+    const start = { x, y };
+    outer: for (let ring = 0; ring < 12; ring++) for (let dx = -ring; dx <= ring; dx++) for (let dy = -ring; dy <= ring; dy++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+      const px = start.x + dx * (w + 24), py = start.y + dy * (NODE_H + 24);
+      if (free(px, py)) { x = px; y = py; break outer; }
+    }
   }
   const n = makeNode(kind, snap(x), snap(y));
   n.container = containerAt(n.x + nodeWidth(n) / 2, n.y + NODE_H / 2);
@@ -702,6 +715,26 @@ export function addNode(kind: Kind, x?: number, y?: number) {
   return n;
 }
 // drag from rail → drop on canvas
+// ---------- the component rail, built from shared/component-types.json ----------
+const GROUPS: Record<string, string> = { traffic: 'Traffic', compute: 'Compute', data: 'Data', messaging: 'Messaging' };
+(() => {
+  const host = document.getElementById('railTypes'); if (!host) return;
+  const byGroup = new Map<string, string[]>();
+  for (const k of Object.keys(KINDS)) { const g = typeDef(k).group; byGroup.set(g, [...(byGroup.get(g) ?? []), k]); }
+  let i = 0, h = '';
+  for (const [g, kinds] of byGroup) {
+    h += `<div class="rail-group" title="${GROUPS[g] ?? g}">`;
+    for (const k of kinds) {
+      const t = typeDef(k); i++;
+      h += `<button class="comp k-${k}" data-add="${k}" draggable="true" style="--kc: var(--c-${k}, ${t.color})" title="${t.label}${i <= 9 ? ` (${i})` : ''}"><svg><use href="#${t.icon}"/></svg><span>${t.short}</span></button>`;
+    }
+    h += '</div>';
+  }
+  host.innerHTML = h;
+})();
+/** Quick-add order for the 1–9 keys: the rail's order. */
+export const RAIL_ORDER = (): string[] => [...document.querySelectorAll<HTMLElement>('#railTypes [data-add]')].map(b => b.dataset.add!);
+
 document.querySelectorAll<HTMLElement>('#rail [data-add]').forEach(b => {
   b.addEventListener('dragstart', ev => { ev.dataTransfer!.setData('text/kind', b.dataset.add!); ev.dataTransfer!.effectAllowed = 'copy'; });
   b.addEventListener('click', () => addNode(b.dataset.add as Kind));
@@ -712,8 +745,8 @@ stage.addEventListener('drop', ev => {
   ev.preventDefault(); stage.classList.remove('dropping');
   const w = toWorld(ev.clientX, ev.clientY);
   if (ev.dataTransfer!.getData('text/container')) { addContainer('cloud', w.x - 130, w.y - 70); return; }
-  const kind = ev.dataTransfer!.getData('text/kind') as Kind; if (!KINDS[kind]) return;
-  addNode(kind, w.x - KINDS[kind].w / 2, w.y - NODE_H / 2);
+  const kind = ev.dataTransfer!.getData('text/kind') as Kind; if (!(kind in KINDS)) return;
+  addNode(kind, w.x - typeDef(kind).w / 2, w.y - NODE_H / 2);
 });
 
 export function addContainer(kind: ContainerKind = 'cloud', x?: number, y?: number) {
@@ -783,7 +816,7 @@ export function toggleDetail(id: string, to?: 'compact' | 'expanded') {
 }
 export function setAllDetail(to: 'compact' | 'expanded') {
   mutate(() => {
-    const ids = state.doc.nodes.filter(n => (n.kind === 'db' && n.tables?.length) || (n.kind === 'service' && n.endpoints?.length) || (n.kind === 'queue' && topicFields(n).length))
+    const ids = state.doc.nodes.filter(n => (typeDetail(n) === 'tables' && n.tables?.length) || (typeDetail(n) === 'endpoints' && n.endpoints?.length) || (hasSchemaDetail(n) && topicFields(n).length))
       .sort((a, b) => a.y - b.y || a.x - b.x).map(n => n.id);
     if (to === 'expanded') {
       for (const id of ids) { if (state.doc.detail[id] === 'expanded') continue; const n = state.doc.nodes.find(x => x.id === id)!; const { w, h } = sizeOf(n); state.doc.detail[id] = 'expanded'; makeRoom(id, w, h); }

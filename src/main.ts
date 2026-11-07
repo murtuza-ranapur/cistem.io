@@ -1,8 +1,8 @@
 import './style.css';
-import { type Kind, exampleDoc, totalRps } from './model';
+import { exampleDoc, totalRps, isSource } from './model';
 import { toFile, fromFile } from './document';
 import { state, current, restore, loadExample, serialize, renderAll, renderCanvas, mutate, select, selectedNodeIds, undo, redo, fmt } from './state';
-import { fit, zoomAt, hint, addNode, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
+import { fit, zoomAt, hint, addNode, RAIL_ORDER, addContainer, nudge, toggleDetail, setAllDetail, revealSelection } from './canvas';
 import { layeredLayout, type Positions } from './layout';
 import * as history from './history';
 import { togglePanel, onPanelMode } from './sheet';
@@ -19,7 +19,7 @@ const totalVal = $('totalVal');
 const syncTotal = () => { totalVal.textContent = fmt(totalRps(state.doc)); };
 let clientCursor = 0;
 $('totalRps').onclick = () => {
-  const clients = state.doc.nodes.filter(n => n.kind === 'entry');
+  const clients = state.doc.nodes.filter(n => isSource(n));
   if (!clients.length) { hint('Add a Clients component — its peak rps is the load'); return; }
   const n = clients[clientCursor++ % clients.length];
   select({ type: 'node', id: n.id }); renderAll(); revealSelection();
@@ -152,9 +152,8 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'ArrowRight') { ev.preventDefault(); nudge(step, 0); }
   if (ev.key === 'ArrowUp') { ev.preventDefault(); nudge(0, -step); }
   if (ev.key === 'ArrowDown') { ev.preventDefault(); nudge(0, step); }
-  // quick-add: 1-6
-  const kinds: Kind[] = ['entry', 'lb', 'service', 'cache', 'db', 'queue'];
-  if (!mod && /^[1-6]$/.test(ev.key)) addNode(kinds[+ev.key - 1]);
+  // quick-add: 1–9 in rail order
+  if (!mod && /^[1-9]$/.test(ev.key)) { const k = RAIL_ORDER()[+ev.key - 1]; if (k) addNode(k); }
 });
 
 // ---------- save / load ----------

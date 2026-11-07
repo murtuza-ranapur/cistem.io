@@ -1,4 +1,22 @@
-export type Kind = 'entry' | 'lb' | 'service' | 'cache' | 'db' | 'queue';
+import TYPES_FILE from '../shared/component-types.json';
+
+/** A component type's key in shared/component-types.json ("service", "db", "sqs"…). */
+export type Kind = string;
+export type Behaviour = 'source' | 'balancer' | 'limit' | 'scaled' | 'cache' | 'store' | 'async';
+/** What a node expands to show on the canvas, and its second panel tab. */
+export type DetailKind = 'endpoints' | 'tables' | 'topic' | 'message' | null;
+export interface FieldDef { key: string; label: string; type: 'number' | 'text' | 'select' | 'boolean'; options?: string[]; min?: number; max?: number; step?: number; wide?: boolean }
+export interface TypeDef { label: string; short: string; icon: string; color: string; w: number; group: string; behaviour: Behaviour; detail: DetailKind; defaults: Record<string, unknown>; fields: FieldDef[] }
+export const TYPES = (TYPES_FILE as unknown as { types: Record<string, TypeDef> }).types;
+/** A kind this build doesn't know (a newer file, a typo) still loads: drawn plainly, no capacity. */
+const UNKNOWN: TypeDef = { label: 'Component', short: '?', icon: 'ic-service', color: '#6b7280', w: 200, group: 'other', behaviour: 'limit', detail: null, defaults: {}, fields: [] };
+export const typeDef = (kind: Kind): TypeDef => TYPES[kind] ?? { ...UNKNOWN, label: kind };
+export const behaviourOf = (n: { kind: Kind }) => typeDef(n.kind).behaviour;
+export const detailOf = (n: { kind: Kind }) => typeDef(n.kind).detail;
+export const isSource = (n: { kind: Kind }) => behaviourOf(n) === 'source';
+export const isAsync = (n: { kind: Kind }) => behaviourOf(n) === 'async';
+/** Has a message schema (Kafka topic, SQS queue…). */
+export const hasSchemaDetail = (n: { kind: Kind }) => detailOf(n) === 'topic' || detailOf(n) === 'message';
 
 export interface Header { k: string; v: string }
 export interface Endpoint { method: string; path: string; headers: Header[]; req: string; res: string }
@@ -7,16 +25,26 @@ export interface Column { name: string; type: string; pk: boolean; nullable: boo
 export interface Table { name: string; columns: Column[] }
 export interface Topic { name: string; partitions: number; schema: string; key?: string }
 
-export interface NodeBase { id: string; kind: Kind; x: number; y: number; name: string; latency?: number; container?: string | null }
-/** A source of traffic. `rps` is its peak requests per second — the load the diagram is tested against. */
-export interface EntryNode extends NodeBase { kind: 'entry'; platforms: string[]; rps: number }
-export interface LbNode extends NodeBase { kind: 'lb'; maxRps: number; latency: number }
-export interface ServiceNode extends NodeBase { kind: 'service'; rpsPerInstance: number; instances: number; latency: number; endpoints: Endpoint[] }
-export interface CacheNode extends NodeBase { kind: 'cache'; maxOps: number; hitRatio: number; latency: number; eviction: string }
-export interface DbNode extends NodeBase { kind: 'db'; maxQps: number; readShare: number; replicas: number; latency: number; tables: Table[] }
-/** One Kafka topic. `name` is the topic name; `cluster` an optional label for the cluster it lives on. */
-export interface QueueNode extends NodeBase { kind: 'queue'; maxThroughput: number; latency: number; partitions: number; schema: string; key?: string; cluster?: string }
-export type Node = EntryNode | LbNode | ServiceNode | CacheNode | DbNode | QueueNode;
+/**
+ * A component. Which fields matter depends on its type's behaviour (see shared/component-types.json):
+ * source: rps · balancer/limit: maxRps · scaled: instances, rpsPerInstance · cache: maxOps, hitRatio ·
+ * store: maxQps, replicas, readShare · async: maxThroughput — plus latency, and the type's detail
+ * (endpoints, tables, or topic/message schema).
+ */
+export interface NodeData {
+  id: string; kind: Kind; name: string; latency?: number; container?: string | null;
+  rps?: number; platforms?: string[];
+  maxRps?: number; instances?: number; rpsPerInstance?: number; maxOps?: number; hitRatio?: number; eviction?: string;
+  maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number;
+  endpoints?: Endpoint[]; tables?: Table[];
+  /** topic / message detail */
+  partitions?: number; schema?: string; key?: string; cluster?: string; fifo?: boolean;
+  [extra: string]: unknown;
+}
+/** A component on the canvas: its data plus where it sits. */
+export interface Node extends NodeData { x: number; y: number }
+// Names kept for readability at call sites; they're all the same shape now.
+export type EntryNode = Node; export type ServiceNode = Node; export type DbNode = Node & { tables: Table[] }; export type QueueNode = Node & { schema: string };
 
 export interface Edge { id: string; from: string; to: string; calls: number; endpoint?: number | null }
 
@@ -55,29 +83,28 @@ export const LINK_TYPES: Record<string, number> = {
 export const CROSSING_DEFAULT_MS = { sameContainer: 0, siblings: 1, differentRoots: 10 };
 export const FRAME_PAD = 28, FRAME_HEAD = 30;
 
+/** Panel-facing view of the types (label, width, defaults, [key, label] fields), derived from TYPES. */
 export interface KindDef { label: string; w: number; defaults: Record<string, unknown>; fields: [string, string][] }
-
-export const KINDS: Record<Kind, KindDef> = {
-  entry:   { label: 'Clients',       w: 190, defaults: { name: 'Clients', platforms: ['web', 'app'], rps: 1000 }, fields: [['rps', 'Peak rps']] },
-  lb:      { label: 'Load balancer', w: 190, defaults: { name: 'LB', maxRps: 50000, latency: 1 }, fields: [['maxRps', 'Max rps'], ['latency', 'Latency (ms)']] },
-  service: { label: 'Microservice',  w: 200, defaults: { name: 'api', rpsPerInstance: 800, instances: 3, latency: 20, endpoints: [] }, fields: [['instances', 'Instances'], ['rpsPerInstance', 'Rps per instance'], ['latency', 'Latency (ms)']] },
-  cache:   { label: 'Redis',         w: 190, defaults: { name: 'redis', maxOps: 100000, hitRatio: 0.9, latency: 1, eviction: 'allkeys-lru' }, fields: [['maxOps', 'Max ops/s'], ['hitRatio', 'Hit ratio (0–1)'], ['latency', 'Latency (ms)']] },
-  db:      { label: 'Postgres',      w: 200, defaults: { name: 'postgres', maxQps: 5000, readShare: 0.8, replicas: 1, latency: 8, tables: [] }, fields: [['maxQps', 'Max qps per node'], ['replicas', 'Read replicas'], ['readShare', 'Read share (0–1)'], ['latency', 'Latency (ms)']] },
-  queue:   { label: 'Kafka topic',   w: 200, defaults: { name: 'domain.events', maxThroughput: 20000, latency: 5, partitions: 6, schema: '' }, fields: [['maxThroughput', 'Max msg/s'], ['latency', 'Latency (ms)']] },
-};
+export const KINDS: Record<Kind, KindDef> = new Proxy({} as Record<Kind, KindDef>, {
+  get: (_t, k: string) => { const d = typeDef(k); return { label: d.label, w: d.w, defaults: d.defaults, fields: d.fields.map(f => [f.key, f.label] as [string, string]) }; },
+  has: (_t, k: string) => k in TYPES,
+  ownKeys: () => Object.keys(TYPES),
+  getOwnPropertyDescriptor: (_t, k: string) => (k in TYPES ? { enumerable: true, configurable: true } : undefined),
+});
 
 export const NODE_H = 92;
 /** Sum of every client's peak rps: the load the whole diagram is tested at. */
-export const totalRps = (doc: { nodes: Node[] }) => doc.nodes.reduce((a, n) => a + (n.kind === 'entry' ? Number(n.rps) || 0 : 0), 0);
+export const totalRps = (doc: { nodes: Node[] }) => doc.nodes.reduce((a, n) => a + (isSource(n) ? Number(n.rps) || 0 : 0), 0);
 /** Row heights for the expanded view. Deterministic so Java agrees. */
 export const EXP = { tableHead: 22, row: 16, tablePad: 8, tableGap: 10, endpointRow: 18, topicHead: 20, topicRow: 15, sectionPad: 10, max: 560 };
 /** Expanded node height from its content; compact nodes are NODE_H. */
 export function nodeHeight(n: { kind: Kind; endpoints?: Endpoint[]; tables?: Table[]; schema?: string }, detail: Detail | undefined): number {
   if (detail !== 'expanded') return NODE_H;
   let extra = 0;
-  if (n.kind === 'db') { const ts = n.tables ?? []; extra = ts.reduce((h, t) => h + EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, 0) + Math.max(0, ts.length - 1) * EXP.tableGap; }
-  else if (n.kind === 'service') extra = (n.endpoints?.length ?? 0) * EXP.endpointRow;
-  else if (n.kind === 'queue') { const f = topicFields({ schema: n.schema ?? '' }).length; extra = f ? EXP.topicHead + f * EXP.topicRow : 0; }
+  const d = detailOf(n);
+  if (d === 'tables') { const ts = n.tables ?? []; extra = ts.reduce((h, t) => h + EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, 0) + Math.max(0, ts.length - 1) * EXP.tableGap; }
+  else if (d === 'endpoints') extra = (n.endpoints?.length ?? 0) * EXP.endpointRow;
+  else if (d === 'topic' || d === 'message') { const f = topicFields({ schema: n.schema ?? '' }).length; extra = f ? EXP.topicHead + f * EXP.topicRow : 0; }
   if (extra === 0) return NODE_H;
   return Math.min(EXP.max, NODE_H + EXP.sectionPad + extra + EXP.sectionPad);
 }
@@ -85,13 +112,13 @@ export function nodeHeight(n: { kind: Kind; endpoints?: Endpoint[]; tables?: Tab
 export function nodeWidthFor(n: { kind: Kind; name?: string; tables?: Table[] }, detail: Detail | undefined): number {
   const w = nodeWidth(n);
   if (detail !== 'expanded') return w;
-  if (n.kind === 'db') { const longest = (n.tables ?? []).reduce((m, t) => Math.max(m, ...(t.columns ?? []).map(c => c.name.length + c.type.length + 3 + (c.references ? 6 : 0))), 0); return Math.min(360, Math.max(w, 40 + longest * 6.4 + 60)); }
-  if (n.kind === 'service') return Math.max(w, 280);
-  if (n.kind === 'queue') return Math.max(w, 280);
+  if (detailOf(n) === 'tables') { const longest = (n.tables ?? []).reduce((m, t) => Math.max(m, ...(t.columns ?? []).map(c => c.name.length + c.type.length + 3 + (c.references ? 6 : 0))), 0); return Math.min(360, Math.max(w, 40 + longest * 6.4 + 60)); }
+  if (detailOf(n) === 'endpoints') return Math.max(w, 280);
+  if (detailOf(n) === 'topic' || detailOf(n) === 'message') return Math.max(w, 280);
   return w;
 }
 /** Avro record fields as [name, type] pairs, from the schema text; empty if it doesn't parse. */
-export function topicFields(t: { schema: string }): [string, string][] {
+export function topicFields(t: { schema?: string }): [string, string][] {
   try {
     const j = JSON.parse(t.schema || '');
     if (!j || !Array.isArray(j.fields)) return [];
@@ -107,7 +134,7 @@ function avroType(t: any): string {
 /** Foreign keys: [fromNode, fromTable, fromCol, toNode, toTable, toCol]. */
 export function foreignKeys(doc: Doc): Array<{ from: { node: string; table: string; col: string }; to: { node: string; table: string; col: string } }> {
   const out: Array<{ from: { node: string; table: string; col: string }; to: { node: string; table: string; col: string } }> = [];
-  for (const n of doc.nodes) if (n.kind === 'db') for (const t of n.tables ?? []) for (const c of t.columns ?? []) {
+  for (const n of doc.nodes) if (detailOf(n) === 'tables') for (const t of n.tables ?? []) for (const c of t.columns ?? []) {
     if (!c.references) continue;
     let ref = c.references, node = n.id;
     if (ref.includes(':')) { const [nid, rest] = ref.split(':'); node = nid; ref = rest; }
@@ -118,7 +145,7 @@ export function foreignKeys(doc: Doc): Array<{ from: { node: string; table: stri
 }
 /** Node width follows the name so long names aren't clipped; deterministic (no font metrics) so Java agrees. */
 export function nodeWidth(n: { kind: Kind; name?: string }): number {
-  const base = KINDS[n.kind].w;
+  const base = typeDef(n.kind).w;
   const need = 56 + (n.name?.length ?? 0) * 7.8 + 16;
   return Math.min(320, Math.max(base, Math.round(need / 8) * 8));
 }
@@ -164,7 +191,7 @@ export function containerDepth(doc: Doc, id: string): number { return ancestry(d
 export function membersOf(doc: Doc, id: string): Node[] { return doc.nodes.filter(n => ancestry(doc, n.container).includes(id)); }
 
 export function makeNode(kind: Kind, x: number, y: number, props: Record<string, unknown> = {}): Node {
-  return { id: nextId(), kind, x, y, ...clone(KINDS[kind].defaults), ...props } as Node;
+  return { id: nextId(), kind, x, y, ...clone(typeDef(kind).defaults), ...props } as Node;
 }
 
 /** Fill in any fields a loaded document is missing (older saves, hand-edited JSON). */
@@ -172,8 +199,7 @@ export function adopt(d: unknown): Doc {
   const doc = d as Doc;
   if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a cistem.io document');
   doc.nodes.forEach(n => {
-    if (!KINDS[n.kind]) throw new Error('unknown kind ' + n.kind);
-    const defs = KINDS[n.kind].defaults;
+    const defs = typeDef(n.kind).defaults;
     Object.keys(defs).forEach(k => { if ((n as any)[k] === undefined) (n as any)[k] = clone(defs[k]); });
     if (n.container === undefined) n.container = null;
   });

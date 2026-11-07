@@ -59,25 +59,25 @@ public final class Engine {
 
     /** Sustainable requests/sec a node can take before it saturates. */
     public static double capacity(JsonNode n) {
-        return switch (kind(n)) {
-            case "lb" -> num(n, "maxRps");
-            case "service" -> num(n, "rpsPerInstance") * num(n, "instances");
+        return switch (Types.behaviour(n)) {   // by behaviour (shared/component-types.json), never by type name
+            case "balancer", "limit" -> num(n, "maxRps");
+            case "scaled" -> num(n, "rpsPerInstance") * num(n, "instances");
             case "cache" -> num(n, "maxOps");
-            case "db" -> {
+            case "store" -> {
                 double q = num(n, "maxQps"), r = Math.max(0, num(n, "replicas")), rs = clamp01(num(n, "readShare"));
                 double perReq = Math.max((1 - rs) + rs / (1 + r), rs / (1 + r));
                 yield perReq > 0 ? q / perReq : Double.POSITIVE_INFINITY;
             }
-            case "queue" -> num(n, "maxThroughput");
+            case "async" -> num(n, "maxThroughput");
             default -> Double.POSITIVE_INFINITY;
         };
     }
 
     /** Fraction of a node's incoming load that travels down each outgoing edge. */
     public static double outFactor(JsonNode n, int outCount) {
-        return switch (kind(n)) {
+        return switch (Types.behaviour(n)) {
             case "cache" -> 1 - clamp01(num(n, "hitRatio"));
-            case "lb" -> outCount > 0 ? 1.0 / outCount : 1;
+            case "balancer" -> outCount > 0 ? 1.0 / outCount : 1;
             default -> 1;
         };
     }
@@ -113,7 +113,7 @@ public final class Engine {
             Map<String, Map<String, Double>> next = new HashMap<>(); Map<String, Double> ncum = new HashMap<>();
             for (var en : byId.entrySet()) {
                 Map<String, Double> m = new HashMap<>();
-                if ("entry".equals(kind(en.getValue()))) m.put("sync", en.getValue().has("rps") ? num(en.getValue(), "rps") : legacyTarget);
+                if (Types.isSource(en.getValue())) m.put("sync", en.getValue().has("rps") ? num(en.getValue(), "rps") : legacyTarget);
                 next.put(en.getKey(), m); ncum.put(en.getKey(), 0.0);
             }
             for (JsonNode e : edges) {
@@ -121,7 +121,7 @@ public final class Engine {
                 JsonNode s = byId.get(from), t = byId.get(to);
                 if (s == null || t == null) continue;
                 double factor = outFactor(s, outs.get(from)) * num(e, "calls");
-                boolean toQueue = "queue".equals(kind(t)), fromQueue = "queue".equals(kind(s));
+                boolean toQueue = Types.isAsync(t), fromQueue = Types.isAsync(s);
                 for (var o : bd.get(from).entrySet()) {
                     if (toQueue && o.getKey().equals(to)) continue;
                     String tag = fromQueue ? from : o.getKey();
@@ -146,7 +146,7 @@ public final class Engine {
             Status status = util >= 1 ? Status.crit : util >= 0.7 ? Status.warn : Status.ok;
             double lat = effLatency(n, L);
             results.put(id, new NodeResult(L, cap, util, status, lat, cum.get(id) + lat));
-            if (!"entry".equals(kind(n)) && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;
+            if (!Types.isSource(n) && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;
             if (status == Status.crit && worst != Status.crit) { worst = Status.crit; worstNode = id; }
             else if (status == Status.warn && worst == Status.ok) { worst = Status.warn; worstNode = id; }
         }
@@ -154,7 +154,7 @@ public final class Engine {
         for (JsonNode e : edges) {
             String from = e.path("from").asText(), to = e.path("to").asText(); JsonNode s = byId.get(from), t = byId.get(to);
             if (s == null || t == null) continue;
-            boolean toQueue = "queue".equals(kind(t));
+            boolean toQueue = Types.isAsync(t);
             double eligible = bd.get(from).entrySet().stream().filter(o -> !(toQueue && o.getKey().equals(to))).mapToDouble(Map.Entry::getValue).sum();
             edgeLoad.put(e.path("id").asText(), eligible * outFactor(s, outs.get(from)) * num(e, "calls"));
             crossings.put(e.path("id").asText(), crossingLatency(model, containerOf(s), containerOf(t)));
@@ -169,7 +169,7 @@ public final class Engine {
         Map<String, String> names = new HashMap<>(), cnames = new HashMap<>(), nodeContainer = new HashMap<>();
         for (JsonNode c : model.path("containers")) cnames.put(c.path("id").asText(), c.path("name").asText());
         for (JsonNode n : model.path("nodes")) { names.put(n.path("id").asText(), n.path("name").asText()); if (containerOf(n) != null) nodeContainer.put(n.path("id").asText(), cnames.getOrDefault(containerOf(n), containerOf(n))); }
-        double total = 0; for (JsonNode n : model.path("nodes")) if ("entry".equals(n.path("kind").asText())) total += n.has("rps") ? num(n, "rps") : num(model, "targetRps");
+        double total = 0; for (JsonNode n : model.path("nodes")) if (Types.isSource(n)) total += n.has("rps") ? num(n, "rps") : num(model, "targetRps");
         out.put("totalRps", total);
         out.put("verdict", switch (r.verdict().status()) { case ok -> "handles it"; case warn -> "near limit"; case crit -> "breaks"; });
         if (r.verdict().nodeId() != null) { out.put("bottleneck", names.get(r.verdict().nodeId())); out.put("bottleneckId", r.verdict().nodeId()); }

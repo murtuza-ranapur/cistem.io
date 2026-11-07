@@ -9,7 +9,7 @@
  *
  * JSON Schema: schema/cistem.schema.json
  */
-import { adopt, type Doc, type Node, type Edge, type Container, type Link, type Frame } from './model';
+import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
 
 export const FORMAT_VERSION = 4;
 export type DiagramKind = 'system';
@@ -19,7 +19,7 @@ export interface DiagramFile {
   kind: DiagramKind;
   meta: { title: string; created: string; updated: string; tags?: string[] };
   model: {
-    nodes: Array<Omit<Node, 'x' | 'y'>>;
+    nodes: NodeData[];
     edges: Edge[];
     containers: Container[];
     links: Link[];
