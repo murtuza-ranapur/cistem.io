@@ -40,4 +40,8 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-tasks.withType<Test> { useJUnitPlatform() }
+tasks.withType<Test> {
+    useJUnitPlatform()
+    // manual probes (see src/test/java/io/cistem/probe) are enabled with -Dprobe=…
+    listOf("probe", "probe.out").forEach { k -> System.getProperty(k)?.let { systemProperty(k, it) } }
+}

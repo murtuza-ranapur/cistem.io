@@ -733,16 +733,62 @@ document.querySelectorAll<HTMLElement>('#rail [data-add-container]').forEach(b =
   b.addEventListener('click', () => addContainer());
 });
 
+// ---------- making room when a node grows ----------
+const ROOM_GAP = 40;
+/** Where neighbours were pushed from, per grown node, so collapsing can put them back. */
+const pushes = new Map<string, { id: string; dx: number; dy: number; x: number; y: number }[]>();
+const sizeOf = (n: Node) => ({ w: nodeWidthFor(n, state.doc.detail?.[n.id]), h: nodeHeight(n, state.doc.detail?.[n.id]) });
+
+/** Node `id` changed size from (w0, h0): push the nodes below / to its right just enough to clear it. */
+function makeRoom(id: string, w0: number, h0: number) {
+  const n = state.doc.nodes.find(x => x.id === id); if (!n) return;
+  const { w, h } = sizeOf(n);
+  const moved: { id: string; dx: number; dy: number; x: number; y: number }[] = [];
+  const others = state.doc.nodes.filter(o => o.id !== id);
+  if (h > h0) {
+    // the column below it: overlapping horizontally (with the new width) and starting below its old bottom
+    const below = others.filter(o => { const s = sizeOf(o); return o.x < n.x + w + 8 && o.x + s.w > n.x - 8 && o.y >= n.y + h0 - 8; });
+    const top = Math.min(...below.map(o => o.y));
+    const dy = below.length ? Math.max(0, n.y + h + ROOM_GAP - top) : 0;
+    if (dy) below.forEach(o => { o.y += dy; moved.push({ id: o.id, dx: 0, dy, x: o.x, y: o.y }); });
+  }
+  if (w > w0) {
+    const right = others.filter(o => { const s = sizeOf(o); return o.y < n.y + h + 8 && o.y + s.h > n.y - 8 && o.x >= n.x + w0 - 8 && !moved.some(m => m.id === o.id); });
+    const left = Math.min(...right.map(o => o.x));
+    const dx = right.length ? Math.max(0, n.x + w + ROOM_GAP / 2 - left) : 0;
+    if (dx) right.forEach(o => { o.x += dx; moved.push({ id: o.id, dx, dy: 0, x: o.x, y: o.y }); });
+  }
+  if (moved.length) pushes.set(id, moved);
+}
+/** Node `id` shrank back: return what it pushed, if those nodes haven't been moved by hand since. */
+function giveBackRoom(id: string) {
+  const list = pushes.get(id); if (!list) return;
+  pushes.delete(id);
+  for (const m of list) { const o = state.doc.nodes.find(x => x.id === m.id); if (o && o.x === m.x && o.y === m.y) { o.x -= m.dx; o.y -= m.dy; } }
+}
+
 export function toggleDetail(id: string, to?: 'compact' | 'expanded') {
   const cur = state.doc.detail[id] ?? 'compact';
   const next = to ?? (cur === 'expanded' ? 'compact' : 'expanded');
-  mutate(() => { if (next === 'compact') delete state.doc.detail[id]; else state.doc.detail[id] = next; });
+  if (next === cur) return;
+  const n = state.doc.nodes.find(x => x.id === id); if (!n) return;
+  mutate(() => {
+    const { w: w0, h: h0 } = sizeOf(n);
+    if (next === 'compact') { delete state.doc.detail[id]; giveBackRoom(id); }
+    else { state.doc.detail[id] = next; makeRoom(id, w0, h0); }
+  });
   renderAll();
 }
 export function setAllDetail(to: 'compact' | 'expanded') {
   mutate(() => {
-    state.doc.detail = {};
-    if (to === 'expanded') state.doc.nodes.forEach(n => { if ((n.kind === 'db' && n.tables?.length) || (n.kind === 'service' && n.endpoints?.length) || (n.kind === 'queue' && n.topics?.length)) state.doc.detail[n.id] = 'expanded'; });
+    const ids = state.doc.nodes.filter(n => (n.kind === 'db' && n.tables?.length) || (n.kind === 'service' && n.endpoints?.length) || (n.kind === 'queue' && n.topics?.length))
+      .sort((a, b) => a.y - b.y || a.x - b.x).map(n => n.id);
+    if (to === 'expanded') {
+      for (const id of ids) { if (state.doc.detail[id] === 'expanded') continue; const n = state.doc.nodes.find(x => x.id === id)!; const { w, h } = sizeOf(n); state.doc.detail[id] = 'expanded'; makeRoom(id, w, h); }
+    } else {
+      for (const id of [...ids].reverse()) { if (!state.doc.detail[id]) continue; delete state.doc.detail[id]; giveBackRoom(id); }
+      state.doc.detail = {};
+    }
   });
   renderAll();
 }

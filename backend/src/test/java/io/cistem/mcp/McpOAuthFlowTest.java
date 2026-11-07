@@ -55,6 +55,45 @@ class McpOAuthFlowTest {
                 .andExpect(jsonPath("$.code_challenge_methods_supported", hasItem("S256")));
     }
 
+    /** A confidential client (how Claude registers) must be able to refresh — with or without `resource`. */
+    @Test
+    void confidentialClientRefreshes() throws Exception {
+        User murtu = users.upsert("github", "4243", "murtu2", "Murtu", null);
+        String reg = mvc.perform(post("/oauth2/register").contentType(MediaType.APPLICATION_JSON).content("""
+                {"client_name":"Claude","redirect_uris":["http://localhost:9999/callback"],
+                 "grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}"""))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String clientId = JsonPath.read(reg, "$.client_id"), secret = JsonPath.read(reg, "$.client_secret");
+        byte[] vb = new byte[32]; new java.security.SecureRandom().nextBytes(vb);
+        String verifier = Base64.getUrlEncoder().withoutPadding().encodeToString(vb);
+        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
+        var principal = new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")),
+                Map.of("id", "4243", "login", "murtu2", SecurityConfig.USER_ID_ATTR, murtu.id().toString()), "login");
+        String location = mvc.perform(get("/oauth2/authorize").accept(MediaType.TEXT_HTML).with(oauth2Login().oauth2User(principal))
+                        .queryParam("response_type", "code").queryParam("client_id", clientId).queryParam("redirect_uri", "http://localhost:9999/callback")
+                        .queryParam("code_challenge", challenge).queryParam("code_challenge_method", "S256").queryParam("state", "s")
+                        .queryParam("resource", "http://localhost/mcp"))
+                .andExpect(status().is3xxRedirection()).andReturn().getResponse().getRedirectedUrl();
+        String tok = mvc.perform(post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "authorization_code").param("code", param(location, "code")).param("redirect_uri", "http://localhost:9999/callback")
+                        .param("client_id", clientId).param("client_secret", secret).param("code_verifier", verifier).param("resource", "http://localhost/mcp"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String refresh = JsonPath.read(tok, "$.refresh_token");
+        assertNotNull(refresh, "confidential client gets a refresh token: " + tok);
+        for (boolean withResource : new boolean[] { true, false }) {
+            var req = post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .param("grant_type", "refresh_token").param("refresh_token", refresh).param("client_id", clientId).param("client_secret", secret);
+            if (withResource) req = req.param("resource", "http://localhost/mcp");
+            var res = mvc.perform(req).andReturn().getResponse();
+            assertEquals(200, res.getStatus(), "refresh (resource=" + withResource + "): " + res.getContentAsString());
+            String at = JsonPath.read(res.getContentAsString(), "$.access_token");
+            String payload = new String(Base64.getUrlDecoder().decode(at.split("\\.")[1]), StandardCharsets.UTF_8);
+            assertEquals(murtu.id().toString(), JsonPath.read(payload, "$.sub"), "refreshed token keeps our user id as sub");
+            assertTrue(payload.contains("http://localhost/mcp"), "refreshed token is for /mcp: " + payload);
+            if (res.getContentAsString().contains("refresh_token")) refresh = JsonPath.read(res.getContentAsString(), "$.refresh_token");
+        }
+    }
+
     @Test
     void dynamicRegistrationCodeFlowAndToolCalls() throws Exception {
         User murtu = users.upsert("github", "4242", "murtu", "Murtu", null);

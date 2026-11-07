@@ -204,6 +204,9 @@ export function exampleDoc(): Doc {
   const aws = makeContainer('cloud', 'AWS'); aws.provider = 'aws';
   const edge = makeContainer('account', 'acq-edge', aws.id);
   const core = makeContainer('account', 'acq-core', aws.id);
+  // the database starts expanded: keep what sits under it clear of its tables
+  const below = db.y + nodeHeight(db, 'expanded') + 48;
+  if (q.y < below) { q.y = below; worker.y = below; }
   lb.container = edge.id; api.container = edge.id;
   cache.container = core.id; db.container = core.id; q.container = core.id; worker.container = core.id;
   const doc: Doc = {

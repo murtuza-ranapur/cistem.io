@@ -282,6 +282,37 @@ class T {
     const g2 = await grid(); assert(g2.w !== g1.w, `grid spacing follows zoom (${g1.w} → ${g2.w})`);
   });
 
+  const overlaps = t => t.page.evaluate(() => {
+    const boxes = [...document.querySelectorAll('[data-node] rect.body')].map(r => ({ id: r.closest('[data-node]').dataset.node, b: r.getBoundingClientRect() }));
+    const out = [];
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i].b, c = boxes[j].b;
+      if (a.left < c.right - 1 && c.left < a.right - 1 && a.top < c.bottom - 1 && c.top < a.bottom - 1) out.push(boxes[i].id + '×' + boxes[j].id);
+    }
+    return out;
+  });
+
+  await test('the example opens without overlapping boxes', async t => {
+    eq((await overlaps(t)).join(','), '', 'overlaps');
+  });
+
+  await test('expanding a node pushes its neighbours out of the way; collapsing brings them back', async t => {
+    // stack a node right under the database first, then expand the database
+    const db = await t.node('n5'); const before = (await t.doc()).layout.positions;
+    await t.page.evaluate(([x, y]) => { const d = JSON.parse(localStorage.getItem('cistem.doc')); d.layout.positions.n4 = { x, y }; d.layout.detail = {}; localStorage.setItem('cistem.doc', JSON.stringify(d)); }, [db.x, db.y + 110]);
+    await t.page.reload(); await t.page.waitForTimeout(500);
+    eq((await overlaps(t)).length, 0, 'no overlaps to start with');
+    const n4 = (await t.doc()).layout.positions.n4;
+    await t.clickNode('n5'); await t.page.keyboard.press('Escape'); await t.clickNode('n5');
+    await t.page.keyboard.press('Space'); await t.page.waitForTimeout(400);
+    eq((await overlaps(t)).join(','), '', 'expanded database overlaps nothing');
+    const pushed = (await t.doc()).layout.positions.n4; assert(pushed.y > n4.y, 'node below moved down');
+    await t.page.keyboard.press('Space'); await t.page.waitForTimeout(400);
+    eq(JSON.stringify((await t.doc()).layout.positions.n4), JSON.stringify(n4), 'collapsing put it back');
+    await t.page.keyboard.press('Shift+Space'); await t.page.waitForTimeout(500);
+    eq((await overlaps(t)).join(','), '', 'expand all overlaps nothing');
+  });
+
   // ---- details panel ----
   const panelOpen = t => t.page.$eval('#inspector', e => !e.classList.contains('closed'));
 

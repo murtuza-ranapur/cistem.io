@@ -158,10 +158,17 @@ public class McpAuthConfig {
         return new JdbcOAuth2AuthorizationConsentService(jdbc, clients);
     }
 
-    /** Put our user id in `sub` so the resource side never has to trust a mutable GitHub login. */
+    /**
+     * Put our user id in `sub` so the resource side never has to trust a mutable GitHub login, and make every
+     * access token — including ones minted by a refresh — for the /mcp resource. (The MCP library only sets the
+     * audience from the `resource` of the original authorization request; refreshed tokens came out addressed
+     * to the client, /mcp rejected them, and Claude's connector dropped an hour after connecting.)
+     */
     @Bean
-    OAuth2TokenCustomizer<JwtEncodingContext> userIdSubject() {
+    OAuth2TokenCustomizer<JwtEncodingContext> userIdSubject(CistemProperties props) {
+        String resource = props.publicUrl().replaceAll("/+$", "") + MCP_PATH;
         return ctx -> {
+            if (OAuth2TokenType.ACCESS_TOKEN.equals(ctx.getTokenType())) ctx.getClaims().audience(new java.util.ArrayList<>(List.of(resource))); // (an ArrayList: the stored authorization is JSON with an allow-list of types)
             if (!OAuth2TokenType.ACCESS_TOKEN.equals(ctx.getTokenType()) && !OidcParameterNames.ID_TOKEN.equals(ctx.getTokenType().getValue())) return;
             Object principal = ctx.getPrincipal().getPrincipal();
             if (principal instanceof OAuth2User u && u.getAttribute(SecurityConfig.USER_ID_ATTR) != null) {
