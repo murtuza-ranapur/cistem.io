@@ -300,7 +300,7 @@ svg.addEventListener('pointerup', ev => {
 });
 svg.addEventListener('dblclick', ev => {
   if (!isSeq()) return;
-  const t = ev.target as Element;
+  const t = (document.elementFromPoint(ev.clientX, ev.clientY) ?? ev.target) as Element;
   const part = t.closest('[data-head]') as SVGElement | null;
   if (part) { startEditPart(part.dataset.head!); return; }
   const r = t.closest('[data-edit],[data-row],[data-grip]') as SVGElement | null;

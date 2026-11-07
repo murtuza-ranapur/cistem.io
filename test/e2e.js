@@ -426,7 +426,7 @@ class T {
     await t.page.click('#newTabBtn'); await t.page.waitForTimeout(150);
     assert(await t.page.isVisible('#newMenu'), 'menu open');
     assert(!(await t.page.isDisabled('[data-new="sequence"]')), 'sequence available');
-    assert(await t.page.isDisabled('[data-new="class"]'), 'class not yet');
+    assert(!(await t.page.isDisabled('[data-new="class"]')), 'class available');
     await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(300);
     const d = await t.doc(); eq(d.model.nodes.length, 1, 'blank: just clients'); eq(d.meta.title, 'Untitled system');
     eq(await t.page.$eval('.dtab.on .tt', e => e.textContent), 'Untitled system');
@@ -582,6 +582,101 @@ class T {
     await t.page.reload(); await t.page.waitForTimeout(800);
     eq(await t.page.getAttribute('#app', 'data-kind'), 'sequence', 'reopens as a sequence');
     eq(await t.page.$$eval('.sq-msg', e => e.length), 2);
+  });
+
+  // ---- class diagrams ----
+  const newCls = async t => { await t.page.click('#newTabBtn'); await t.page.click('[data-new="class"]'); await t.page.waitForTimeout(350); };
+  const pasteOnCanvas = (t, text) => t.page.evaluate(x => { const dt = new DataTransfer(); dt.setData('text/plain', x); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, text);
+  const JAVA = `public class Order extends Entity implements Auditable {
+  private final UUID id;
+  private List<LineItem> items;
+  public Money total() { return null; }
+}
+public record LineItem(String sku, Money price) {}
+public record Money(long amountMinor, String currency) {}
+public interface Auditable { Instant createdAt(); }
+abstract class Entity { protected long version; }`;
+
+  await test('class: pasting Java anywhere reads classes, members and relations', async t => {
+    await newCls(t);
+    assert(await t.page.isVisible('#clsEmpty'));
+    await pasteOnCanvas(t, JAVA); await t.page.waitForTimeout(500);
+    const d = await t.doc();
+    eq(d.kind, 'class');
+    eq(d.model.classes.map(c => `${c.kind}:${c.name}`).join(','), 'class:Order,record:LineItem,record:Money,interface:Auditable,abstract:Entity');
+    const rels = d.model.relations.map(r => `${r.from} ${r.type} ${r.to}`).sort();
+    eq(rels.join(' | '), ['LineItem assoc Money', 'Order assoc LineItem', 'Order implement Auditable', 'Order inherit Entity'].sort().join(' | '));
+    eq(Object.keys(d.layout.positions).length, 5, 'every class placed');
+    eq(await t.page.$$eval('.cl-box', e => e.length), 5);
+    // boxes don't overlap
+    const boxes = await t.page.$$eval('.cl-box .cl-body', els => els.map(e => e.getBoundingClientRect()).map(r => ({ x: r.x, y: r.y, w: r.width, h: r.height })));
+    for (let a = 0; a < boxes.length; a++) for (let b = a + 1; b < boxes.length; b++) { const A = boxes[a], B = boxes[b]; assert(A.x + A.w <= B.x || B.x + B.w <= A.x || A.y + A.h <= B.y || B.y + B.h <= A.y, 'no overlap'); }
+    eq((await t.page.textContent('#verdict')), '5 classes · 4 relations');
+  });
+
+  await test('class: drag a box\'s dot onto another class and pick the relation', async t => {
+    await newCls(t);
+    await t.page.click('[data-clstool="class"]'); await t.page.waitForTimeout(200); await t.page.keyboard.type('Card'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    await t.page.click('[data-clstool="interface"]'); await t.page.waitForTimeout(200); await t.page.keyboard.type('Chargeable'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    eq((await t.doc()).model.classes.map(c => c.name).join(','), 'Card,Chargeable');
+    await t.page.hover('[data-class="Card"] .cl-body');
+    const port = await t.center('[data-class="Card"] .cl-port'), target = await t.center('[data-class="Chargeable"] .cl-body');
+    await t.page.mouse.move(port.x, port.y); await t.page.mouse.down(); await t.page.mouse.move((port.x + target.x) / 2, (port.y + target.y) / 2, { steps: 5 }); await t.page.mouse.move(target.x, target.y, { steps: 5 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    assert(await t.page.isVisible('#clsRelPick'), 'picker shows');
+    assert((await t.page.textContent('#clsRelPick .sug')).includes('implements'), 'implements suggested for an interface');
+    await t.page.click('#clsRelPick .sug'); await t.page.waitForTimeout(200);
+    const r = (await t.doc()).model.relations; eq(r.length, 1); eq(`${r[0].from} ${r[0].type} ${r[0].to}`, 'Card implement Chargeable');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(150);
+    eq((await t.doc()).model.relations.length, 0, 'undoable');
+  });
+
+  await test('class: add members by typing one line; renaming a class updates its references', async t => {
+    await newCls(t); await pasteOnCanvas(t, JAVA); await t.page.waitForTimeout(400);
+    await t.page.click('[data-class="Order"] .cl-name'); await t.page.waitForTimeout(300);
+    await t.page.fill('[data-cladd="f"]', '- discount: Money'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(200);
+    await t.page.fill('[data-cladd="m"]', 'cancel(reason: String)'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(200);
+    const o = (await t.doc()).model.classes.find(c => c.name === 'Order');
+    assert(o.fields.some(f => f.name === 'discount' && f.type === 'Money' && f.vis === '-'), JSON.stringify(o.fields));
+    assert(o.methods.some(m => m.name === 'cancel' && m.params === 'reason: String' && m.vis === '+'), JSON.stringify(o.methods));
+    await t.page.dblclick('[data-class="Money"] .cl-name'); await t.page.waitForTimeout(150);
+    await t.page.keyboard.press('Control+a'); await t.page.keyboard.type('Amount'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(250);
+    const d = await t.doc();
+    assert(d.model.classes.some(c => c.name === 'Amount') && !d.model.classes.some(c => c.name === 'Money'));
+    assert(d.model.classes.find(c => c.name === 'Order').fields.some(f => f.type === 'Amount'), 'member types follow the rename');
+    assert(d.model.relations.some(r => r.to === 'Amount'), 'relations follow the rename');
+    assert(d.layout.positions.Amount, 'position kept');
+  });
+
+  await test('class: the Code tab edits the diagram and converts pasted Mermaid', async t => {
+    await newCls(t);
+    await t.page.keyboard.press('i'); await t.page.waitForTimeout(200);
+    await t.page.click('[data-cltab="code"]'); await t.page.waitForSelector('.cl-cm .cm-content');
+    await t.page.click('.cl-cm .cm-content');
+    await t.page.keyboard.insertText('class Basket {\n  - id: UUID\n}\nBasket *-- "*" Item : items\n');
+    await t.page.waitForTimeout(500);
+    let d = await t.doc();
+    eq(d.model.classes.map(c => c.name).join(','), 'Basket,Item'); eq(d.model.relations[0].type, 'composition'); eq(d.model.relations[0].toMult, '*');
+    eq(await t.page.$$eval('.cl-box', e => e.length), 2, 'drawn');
+    await t.page.evaluate(() => { const dt = new DataTransfer(); dt.setData('text/plain', 'classDiagram\n  class Item {\n    +String sku\n    +price() Money\n  }\n  Item <|-- GiftCard'); document.querySelector('.cl-cm .cm-content').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
+    await t.page.waitForTimeout(500);
+    d = await t.doc();
+    const item = d.model.classes.find(c => c.name === 'Item');
+    assert(item.fields.some(f => f.name === 'sku' && f.type === 'String'), JSON.stringify(item));
+    assert(d.model.relations.some(r => r.from === 'GiftCard' && r.type === 'inherit' && r.to === 'Item'));
+    assert((await t.page.textContent('.cl-cm .cm-content')).includes('GiftCard --|> Item'), 'printed in this format');
+    await t.page.keyboard.press('Control+End'); await t.page.keyboard.type('\nBasket ~~ x'); await t.page.waitForTimeout(500);
+    assert((await t.page.textContent('.sq-status')).includes('1 problem'));
+  });
+
+  await test('class: generated from the example\'s database tables; survives a reload', async t => {
+    await t.page.click('#newTabBtn'); await t.page.waitForTimeout(150);
+    await t.page.click('#nmFromExtra button:has-text("payments-db tables")'); await t.page.waitForTimeout(500);
+    let d = await t.doc();
+    eq(d.kind, 'class'); eq(d.model.classes.map(c => c.name).join(','), 'Payments,Refunds');
+    assert(d.model.relations.some(r => r.from === 'Refunds' && r.to === 'Payments' && r.label === 'paymentId'));
+    await t.page.reload(); await t.page.waitForTimeout(800);
+    eq(await t.page.getAttribute('#app', 'data-kind'), 'class');
+    eq(await t.page.$$eval('.cl-box', e => e.length), 2);
   });
 
   // ---- tooltips ----

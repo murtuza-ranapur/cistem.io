@@ -1,17 +1,19 @@
 import { exampleDoc, adopt, type Doc, type Node, type Edge, type Container } from './model';
-import { toFile, seqToFile, readAny, type DiagramFile, type DiagramKind, type Loaded } from './document';
+import { toFile, seqToFile, clsToFile, readAny, type DiagramFile, type DiagramKind, type Loaded } from './document';
 import { blankSeq, type SeqDoc } from './seq';
+import { blankCls, type ClassDoc } from './cls';
 import { compute, type Results } from './engine';
 import * as history from './history';
 
 /** System: node / edge / container. Sequence: a row (message, note, block) or a participant (lifeline). */
-export type Selection = { type: 'node' | 'edge' | 'container' | 'row' | 'part'; id: string } | null;
+export type Selection = { type: 'node' | 'edge' | 'container' | 'row' | 'part' | 'class' | 'rel'; id: string } | null;
 
 export const state = {
   /** what the open tab is; `doc` is the system diagram, `seq` the sequence (the other one sits empty) */
   kind: 'system' as DiagramKind,
   doc: {} as Doc,
   seq: blankSeq() as SeqDoc,
+  cls: blankCls() as ClassDoc,
   view: { x: 0, y: 0, k: 1 },
   sel: null as Selection,
   /** extra node ids selected alongside `sel` (multi-select) */
@@ -45,13 +47,13 @@ export function select(sel: Selection, additive = false) {
 export function recompute() { state.results = compute(state.doc); }
 
 /** The document being edited, whichever kind it is. */
-export const live = (): Doc | SeqDoc => (state.kind === 'sequence' ? state.seq : state.doc);
+export const live = (): Doc | SeqDoc | ClassDoc => (state.kind === 'sequence' ? state.seq : state.kind === 'class' ? state.cls : state.doc);
 export const emptySystem = (): Doc => adopt({ nodes: [], edges: [], containers: [], links: [], frames: {}, detail: {} });
 /** Record an undo point, then mutate. */
 export function mutate(fn: () => void) { history.snapshot(live()); fn(); }
 function restoreStep(r: history.Restored | null) {
   if (!r) return;
-  if (state.kind === 'sequence') state.seq = r.doc as SeqDoc; else state.doc = r.doc as Doc;
+  if (state.kind === 'sequence') state.seq = r.doc as SeqDoc; else if (state.kind === 'class') state.cls = r.doc as ClassDoc; else state.doc = r.doc as Doc;
   if (r.meta) state.meta = r.meta; state.sel = null; state.multi.clear(); renderAll();
 }
 export function undo() { restoreStep(history.undo(live(), state.meta)); }
@@ -61,7 +63,7 @@ export function redo() { restoreStep(history.redo(live(), state.meta)); }
 let docKey = '';
 export function setDocKey(k: string) { docKey = k; }
 /** The open document as a file, whichever kind it is. */
-export function currentFile() { return state.kind === 'sequence' ? seqToFile(state.seq, state.meta) : toFile(state.doc, state.meta); }
+export function currentFile() { return state.kind === 'sequence' ? seqToFile(state.seq, state.meta) : state.kind === 'class' ? clsToFile(state.cls, state.meta) : toFile(state.doc, state.meta); }
 export function serialize(): string { return JSON.stringify(currentFile(), null, 2); }
 export function persist() { if (!docKey) return; try { localStorage.setItem(docKey, JSON.stringify(currentFile())); } catch { /* storage unavailable */ } }
 /** Read a stored document (any kind or version); null when absent or unreadable. */
@@ -72,7 +74,9 @@ export function readLocal(key: string): Loaded | null {
 /** Make a loaded document the open one. */
 export function adoptLoaded(l: Loaded) {
   state.kind = l.kind; state.meta = l.meta; state.sel = null; state.multi.clear();
-  if (l.kind === 'sequence') { state.seq = l.seq; state.doc = emptySystem(); } else { state.doc = l.doc; state.seq = blankSeq(); }
+  state.seq = l.kind === 'sequence' ? l.seq : blankSeq();
+  state.cls = l.kind === 'class' ? l.cls : blankCls();
+  state.doc = l.kind === 'system' ? l.doc : emptySystem();
 }
 export function replaceDoc(d: Doc, meta?: DiagramFile['meta']) {
   history.snapshot(live(), state.meta); state.kind = 'system'; state.doc = d; state.sel = null; state.multi.clear();

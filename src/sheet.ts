@@ -455,20 +455,22 @@ bar.addEventListener('click', ev => {
 onPanelMode(m => { const pin = bar.querySelector<HTMLElement>('[data-panel="pin"]')!; pin.classList.toggle('on', m === 'pinned'); pin.title = m === 'pinned' ? 'Unpin — close when nothing is selected' : 'Pin — keep this panel open'; });
 
 /** The sequence editor supplies its own panel and the "appears in" lookup (set from seqview.ts). */
-let seqPanel: ((body: HTMLElement) => void) | null = null;
+const kindPanels: Partial<Record<string, (body: HTMLElement) => void>> = {};
 let appearsIn: (nodeId: string) => { key: string; title: string }[] = () => [];
 let openTab: (key: string) => void = () => {};
-export function setSequencePanel(p: typeof seqPanel, a: typeof appearsIn, o: typeof openTab) { seqPanel = p; appearsIn = a; openTab = o; }
+export function setSequencePanel(p: (body: HTMLElement) => void, a: typeof appearsIn, o: typeof openTab) { kindPanels.sequence = p; appearsIn = a; openTab = o; }
+export function setKindPanel(kind: 'class', p: (body: HTMLElement) => void) { kindPanels[kind] = p; }
 body.addEventListener('click', ev => { const b = (ev.target as Element).closest<HTMLElement>('[data-opentab]'); if (b) openTab(b.dataset.opentab!); });
 
 export function drawSheet() {
-  if (state.kind === 'sequence' && seqPanel) {
+  const kindPanel = kindPanels[state.kind];
+  if (state.kind !== 'system' && kindPanel) {
     const isOpen = !inspector.classList.contains('closed');
     if (quietFor && quietFor !== selKey()) quietFor = '';
     const open = panelMode === 'hidden' ? false : panelMode === 'pinned' ? true : !!state.sel && (isOpen || (!held && !quietFor));
     inspector.classList.toggle('closed', !open);
     teardownEditors();
-    if (open) seqPanel(body); else body.innerHTML = '';
+    if (open) kindPanel(body); else body.innerHTML = '';
     return;
   }
   const t = current();

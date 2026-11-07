@@ -11,10 +11,11 @@
  */
 import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
 import type { SeqDoc } from './seq';
+import type { ClassDoc } from './cls';
 
 export const FORMAT_VERSION = 4;
-export type DiagramKind = 'system' | 'sequence';
-export const KINDS_OF_DIAGRAM: DiagramKind[] = ['system', 'sequence'];
+export type DiagramKind = 'system' | 'sequence' | 'class';
+export const KINDS_OF_DIAGRAM: DiagramKind[] = ['system', 'sequence', 'class'];
 
 export interface DiagramFile {
   version: number;
@@ -63,12 +64,39 @@ export function seqToFile(seq: SeqDoc, meta?: Partial<DiagramFile['meta']>): Seq
     layout: {},
   };
 }
+/** A class diagram file: classes and relations; where each box sits is layout. */
+export interface ClassFile {
+  version: number;
+  kind: 'class';
+  meta: DiagramFile['meta'];
+  model: { classes: ClassDoc['classes']; relations: ClassDoc['relations'] };
+  layout: { positions: ClassDoc['pos'] };
+}
+export function clsToFile(c: ClassDoc, meta?: Partial<DiagramFile['meta']>): ClassFile {
+  const now = new Date().toISOString();
+  const positions: ClassDoc['pos'] = {};
+  for (const k of c.classes) if (c.pos[k.name]) positions[k.name] = c.pos[k.name];
+  return {
+    version: FORMAT_VERSION, kind: 'class',
+    meta: { title: meta?.title ?? 'Untitled classes', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
+    model: { classes: c.classes, relations: c.relations },
+    layout: { positions },
+  };
+}
 export type Loaded =
+  | { kind: 'class'; cls: ClassDoc; meta: DiagramFile['meta'] }
   | { kind: 'system'; doc: Doc; meta: DiagramFile['meta'] }
   | { kind: 'sequence'; seq: SeqDoc; meta: DiagramFile['meta'] };
 /** Read a file of any kind and version. */
 export function readAny(input: unknown): Loaded {
   const d: any = input;
+  if (d && typeof d === 'object' && d.kind === 'class') {
+    if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
+    const m = d.model ?? {};
+    if (!Array.isArray(m.classes) || !Array.isArray(m.relations)) throw new Error('Malformed class diagram');
+    const now = new Date().toISOString();
+    return { kind: 'class', cls: { classes: m.classes, relations: m.relations, pos: { ...(d.layout?.positions ?? {}) } }, meta: d.meta ?? { title: 'Untitled classes', created: now, updated: now } };
+  }
   if (d && typeof d === 'object' && d.kind === 'sequence') {
     if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
     const m = d.model ?? {};
@@ -78,7 +106,7 @@ export function readAny(input: unknown): Loaded {
   }
   return { kind: 'system', ...fromFile(input) };
 }
-export function kindOfFile(input: unknown): DiagramKind { return (input as any)?.kind === 'sequence' ? 'sequence' : 'system'; }
+export function kindOfFile(input: unknown): DiagramKind { const k = (input as any)?.kind; return k === 'sequence' || k === 'class' ? k : 'system'; }
 
 /** Accepts any version this app has ever written and returns an editor Doc. */
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {

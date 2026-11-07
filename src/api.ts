@@ -2,8 +2,8 @@
  * Client for the cistem API. Same origin, cookie session (GitHub sign-in).
  * Every call can fail with AuthError when signed out; the app then works offline.
  */
-import type { DiagramFile, SequenceFile } from './document';
-type AnyFile = DiagramFile | SequenceFile;
+import type { DiagramFile, SequenceFile, ClassFile } from './document';
+type AnyFile = DiagramFile | SequenceFile | ClassFile;
 
 export interface Profile { id: string; login: string; name?: string; avatarUrl?: string }
 export interface Summary { id: string; title: string; kind: string; version: number; shared: boolean; createdAt: string; updatedAt: string }

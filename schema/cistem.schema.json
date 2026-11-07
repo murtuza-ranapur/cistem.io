@@ -19,9 +19,10 @@
     "kind": {
       "enum": [
         "system",
-        "sequence"
+        "sequence",
+        "class"
       ],
-      "description": "Diagram kind. A system diagram's model is components and edges; a sequence diagram's model is lifelines and rows."
+      "description": "Diagram kind. system: components and edges; sequence: lifelines and rows; class: classes and relations."
     },
     "meta": {
       "type": "object",
@@ -643,6 +644,168 @@
           "description": "The system diagram this sequence draws on: its id once saved, else the browser tab it's open in"
         }
       }
+    },
+    "classModel": {
+      "type": "object",
+      "required": [
+        "classes",
+        "relations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "kind",
+              "fields",
+              "methods"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_$][\\w$]*$"
+              },
+              "kind": {
+                "enum": [
+                  "class",
+                  "abstract",
+                  "interface",
+                  "enum",
+                  "record"
+                ]
+              },
+              "stereo": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "vis",
+                    "name",
+                    "type"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "vis": {
+                      "enum": [
+                        "+",
+                        "-",
+                        "#",
+                        "~",
+                        ""
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "type": "string",
+                      "description": "Present on methods: the parameter list as written"
+                    },
+                    "static": {
+                      "type": "boolean"
+                    },
+                    "abstract": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "methods": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "vis",
+                    "name",
+                    "type"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "vis": {
+                      "enum": [
+                        "+",
+                        "-",
+                        "#",
+                        "~",
+                        ""
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "type": "string",
+                      "description": "Present on methods: the parameter list as written"
+                    },
+                    "static": {
+                      "type": "boolean"
+                    },
+                    "abstract": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "from",
+              "to",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "inherit",
+                  "implement",
+                  "composition",
+                  "aggregation",
+                  "assoc",
+                  "depend"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "fromMult": {
+                "type": "string"
+              },
+              "toMult": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [
@@ -663,8 +826,56 @@
             "type": "object"
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "class"
+          }
+        }
       },
-      "else": {
+      "then": {
+        "properties": {
+          "model": {
+            "$ref": "#/$defs/classModel"
+          },
+          "layout": {
+            "type": "object",
+            "properties": {
+              "positions": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "system"
+          }
+        }
+      },
+      "then": {
         "properties": {
           "model": {
             "$ref": "#/$defs/systemModel"

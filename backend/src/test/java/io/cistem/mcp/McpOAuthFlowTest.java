@@ -231,8 +231,32 @@ class McpOAuthFlowTest {
         String wrongKind = unwrap(mcp(access, session, """
                 {"jsonrpc":"2.0","id":34,"method":"tools/call","params":{"name":"evaluate","arguments":{"diagramId":"%s"}}}""".formatted(seqId)), false);
         assertTrue(wrongKind.contains("sequence diagram"), wrongKind);
-        mvc.perform(get("/api/diagrams").with(oauth2Login().oauth2User(principal)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[?(@.title=='Checkout flow')].kind").value("sequence"));
+        String listed = mvc.perform(get("/api/diagrams").with(oauth2Login().oauth2User(principal))).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertTrue(((java.util.List<?>) JsonPath.read(listed, "$[?(@.title=='Checkout flow')].kind")).contains("sequence"), listed);
+        // class diagrams: JSON in, validated, relation ids kept across a replace
+        String cd = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":40,"method":"tools/call","params":{"name":"create_class_diagram","arguments":{"title":"Domain","classes":[{"name":"Order","fields":[{"name":"id","type":"UUID"}],"methods":[{"name":"total","type":"Money"}]},{"name":"Money","kind":"record","fields":[{"vis":"","name":"amountMinor","type":"long"}]},{"name":"Status","kind":"enum","fields":["NEW","PAID"]}],"relations":[{"from":"Order","to":"Money","type":"assoc","label":"total"}]}}}"""));
+        String cdId = JsonPath.read(cd, "$.diagramId");
+        String cdDoc = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":41,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(cdId)));
+        assertEquals("class", JsonPath.read(cdDoc, "$.kind"));
+        assertEquals("-", JsonPath.read(cdDoc, "$.model.classes[0].fields[0].vis"), "fields default to private");
+        assertEquals("+", JsonPath.read(cdDoc, "$.model.classes[0].methods[0].vis"), "methods default to public");
+        assertEquals("NEW", JsonPath.read(cdDoc, "$.model.classes[2].fields[0].name"));
+        String relId = JsonPath.read(cdDoc, "$.model.relations[0].id");
+        String set2 = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":42,"method":"tools/call","params":{"name":"set_class_diagram","arguments":{"diagramId":"%s","classes":[{"name":"Order"},{"name":"Money","kind":"record"}],"relations":[{"from":"Order","to":"Money","type":"assoc"},{"from":"Order","to":"Money","type":"composition"}]}}}""".formatted(cdId)));
+        assertEquals(Integer.valueOf(2), JsonPath.read(set2, "$.relations"));
+        String cdDoc2 = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(cdId)));
+        assertEquals(relId, JsonPath.read(cdDoc2, "$.model.relations[0].id"), "relation id kept");
+        String badCd = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":44,"method":"tools/call","params":{"name":"set_class_diagram","arguments":{"diagramId":"%s","classes":[{"name":"Order"}],"relations":[{"from":"Order","to":"Nope","type":"assoc"}]}}}""".formatted(cdId)), false);
+        assertTrue(badCd.contains("both ends"), badCd);
+        String wrong2 = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"add_component","arguments":{"diagramId":"%s","kind":"service","name":"x"}}}""".formatted(cdId)), false);
+        assertTrue(wrong2.contains("class diagram"), wrong2);
+
 
         // the diagram is owned by murtu and visible through the REST API as that user
         mvc.perform(get("/api/diagrams/" + diagramId).with(oauth2Login().oauth2User(principal)))

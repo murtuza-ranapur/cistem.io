@@ -418,6 +418,14 @@ public class DiagramTools {
 
     /** Bring a stored document up to the current version in memory (the browser does the same on load). */
     private static void normalise(ObjectNode file) {
+        if ("class".equals(file.path("kind").asText())) {
+            ObjectNode model = file.has("model") && file.get("model").isObject() ? (ObjectNode) file.get("model") : file.putObject("model");
+            if (!model.has("classes")) model.putArray("classes");
+            if (!model.has("relations")) model.putArray("relations");
+            ObjectNode layout = file.has("layout") && file.get("layout").isObject() ? (ObjectNode) file.get("layout") : file.putObject("layout");
+            if (!layout.has("positions")) layout.putObject("positions");
+            return;
+        }
         if (isSequence(file)) {
             ObjectNode model = file.has("model") && file.get("model").isObject() ? (ObjectNode) file.get("model") : file.putObject("model");
             if (!model.has("participants")) model.putArray("participants");
@@ -433,7 +441,8 @@ public class DiagramTools {
         String kind = file.path("kind").asText("system");
         if (!kind.equals("system"))
             throw new IllegalArgumentException("This is a " + kind + " diagram; component, container and capacity tools only apply to system diagrams."
-                    + (kind.equals("sequence") ? " Use get_sequence / set_sequence to read and change it." : ""));
+                    + (kind.equals("sequence") ? " Use get_sequence / set_sequence to read and change it."
+                    : kind.equals("class") ? " Use get_diagram to read it and set_class_diagram to change it." : ""));
     }
 
     // ---------- sequence diagrams ----------
@@ -503,6 +512,109 @@ public class DiagramTools {
                 .orElseThrow(() -> new IllegalStateException("The diagram changed while editing; read it again and retry"));
         ObjectNode out = om.createObjectNode();
         out.put("diagramId", saved.id().toString()).put("version", saved.version()).put("text", Seq.print(p.model()));
+        return out;
+    }
+
+    // ---------- class diagrams ----------
+
+    private static final String CLASS_FORMAT = """
+            classes: [{name, kind: class|abstract|interface|enum|record, stereo?, fields: [member], methods: [member]}]
+              member: {vis: "+"|"-"|"#"|"~"|"", name, type, params? (methods only, e.g. "id: UUID, reason: String"), static?, abstract?}
+              enum constants are fields with just a name (vis "", type "").
+            relations: [{from, to, type, label?, fromMult?, toMult?}] between class names, type one of:
+              composition (from owns to), aggregation (from has to), assoc (from uses to), inherit (from extends to),
+              implement (from implements to), depend (from depends on to).
+            Class names are unique identifiers (letters, digits, _ $). Positions are worked out by the editor.""";
+
+    @McpTool(name = "create_class_diagram", description = "Create a class diagram. Returns its id.\n" + CLASS_FORMAT)
+    public ObjectNode createClassDiagram(@McpToolParam(description = "Title") String title,
+                                         @McpToolParam(description = "Classes (see format)") List<Map<String, Object>> classes,
+                                         @McpToolParam(description = "Relations (see format)", required = false) List<Map<String, Object>> relations) {
+        ObjectNode model = classModel(classes, relations, null);
+        ObjectNode file = om.createObjectNode();
+        file.put("version", Migrate.VERSION).put("kind", "class");
+        String now = Instant.now().toString();
+        file.putObject("meta").put("title", title).put("created", now).put("updated", now);
+        file.set("model", model);
+        file.putObject("layout").putObject("positions");
+        Diagram d = repo.insert(user.id(), title, "class", file);
+        ObjectNode out = om.createObjectNode();
+        out.put("diagramId", d.id().toString()).put("version", d.version()).put("classes", model.path("classes").size()).put("relations", model.path("relations").size());
+        return out;
+    }
+
+    @McpTool(name = "set_class_diagram", description = "Replace a class diagram's classes and relations. Boxes keep their place when the class name stays the same.\n" + CLASS_FORMAT)
+    public ObjectNode setClassDiagram(@McpToolParam(description = "Diagram id") String diagramId,
+                                      @McpToolParam(description = "All classes (see format)") List<Map<String, Object>> classes,
+                                      @McpToolParam(description = "All relations (see format)", required = false) List<Map<String, Object>> relations) {
+        Diagram d = load(diagramId);
+        ObjectNode file = (ObjectNode) d.document().deepCopy(); normalise(file);
+        if (!"class".equals(file.path("kind").asText())) throw new IllegalArgumentException("Not a class diagram (it's a " + file.path("kind").asText("system") + " diagram)");
+        ObjectNode model = classModel(classes, relations, file.path("model").path("relations"));
+        file.set("model", model);
+        Set<String> names = new HashSet<>(); model.path("classes").forEach(c -> names.add(c.path("name").asText()));
+        ObjectNode positions = (ObjectNode) file.path("layout").path("positions");
+        new ArrayList<>(positions.propertyNames()).forEach(n -> { if (!names.contains(n)) positions.remove(n); });
+        ((ObjectNode) file.path("meta")).put("updated", Instant.now().toString());
+        Diagram saved = repo.update(user.id(), d.id(), d.version(), d.title(), file)
+                .orElseThrow(() -> new IllegalStateException("The diagram changed while editing; read it again and retry"));
+        ObjectNode out = om.createObjectNode();
+        out.put("diagramId", saved.id().toString()).put("version", saved.version()).put("classes", model.path("classes").size()).put("relations", model.path("relations").size());
+        return out;
+    }
+
+    private static final Set<String> CLASS_KINDS = Set.of("class", "abstract", "interface", "enum", "record");
+    private static final Set<String> REL_TYPES = Set.of("composition", "aggregation", "assoc", "inherit", "implement", "depend");
+    private static final Set<String> VIS = Set.of("+", "-", "#", "~", "");
+
+    /** Validate and normalise classes + relations; relation ids are kept where from/to/type match an existing one. */
+    private ObjectNode classModel(List<Map<String, Object>> classes, List<Map<String, Object>> relations, JsonNode previous) {
+        ObjectNode model = om.createObjectNode();
+        ArrayNode cs = model.putArray("classes"), rs = model.putArray("relations");
+        Set<String> names = new HashSet<>();
+        for (Map<String, Object> c : classes == null ? List.<Map<String, Object>>of() : classes) {
+            String name = String.valueOf(c.getOrDefault("name", "")).trim();
+            if (!name.matches("[A-Za-z_$][\\w$]*")) throw new IllegalArgumentException("Class name \"" + name + "\" must be letters, digits, _ or $");
+            if (!names.add(name)) throw new IllegalArgumentException("Class \"" + name + "\" appears twice");
+            String kind = String.valueOf(c.getOrDefault("kind", "class"));
+            if (!CLASS_KINDS.contains(kind)) throw new IllegalArgumentException(name + ": kind must be one of " + CLASS_KINDS);
+            ObjectNode o = cs.addObject(); o.put("name", name).put("kind", kind);
+            if (c.get("stereo") != null && !String.valueOf(c.get("stereo")).isBlank()) o.put("stereo", String.valueOf(c.get("stereo")));
+            o.set("fields", members(name, c.get("fields"), false, kind.equals("enum")));
+            o.set("methods", members(name, c.get("methods"), true, false));
+        }
+        Map<String, String> oldIds = new HashMap<>();
+        if (previous != null) previous.forEach(r -> oldIds.putIfAbsent(r.path("from").asText() + "|" + r.path("to").asText() + "|" + r.path("type").asText(), r.path("id").asText()));
+        int n = 0;
+        Set<String> used = new HashSet<>();
+        for (Map<String, Object> r : relations == null ? List.<Map<String, Object>>of() : relations) {
+            String from = String.valueOf(r.get("from")), to = String.valueOf(r.get("to")), type = String.valueOf(r.getOrDefault("type", "assoc"));
+            if (!names.contains(from) || !names.contains(to)) throw new IllegalArgumentException("Relation " + from + " → " + to + ": both ends must be classes in the diagram");
+            if (!REL_TYPES.contains(type)) throw new IllegalArgumentException("Relation type must be one of " + REL_TYPES);
+            String id = oldIds.get(from + "|" + to + "|" + type);
+            if (id == null || used.contains(id)) { do id = "m" + (++n); while (used.contains(id) || oldIds.containsValue(id)); }
+            used.add(id);
+            ObjectNode o = rs.addObject(); o.put("id", id).put("from", from).put("to", to).put("type", type);
+            for (String k : List.of("label", "fromMult", "toMult")) if (r.get(k) != null && !String.valueOf(r.get(k)).isBlank()) o.put(k, String.valueOf(r.get(k)));
+        }
+        return model;
+    }
+    private ArrayNode members(String owner, Object raw, boolean methods, boolean enumConsts) {
+        ArrayNode out = om.createArrayNode();
+        if (!(raw instanceof List<?> list)) return out;
+        for (Object x : list) {
+            ObjectNode m = out.addObject();
+            if (x instanceof String s) { m.put("vis", "").put("name", s).put("type", ""); if (methods) m.put("params", ""); continue; }
+            if (!(x instanceof Map<?, ?> mm)) throw new IllegalArgumentException(owner + ": members are objects {vis, name, type, params?}");
+            String name = String.valueOf(mm.get("name") == null ? "" : mm.get("name")).trim();
+            if (!name.matches("[A-Za-z_$][\\w$]*")) throw new IllegalArgumentException(owner + ": member name \"" + name + "\" isn't an identifier");
+            String vis = enumConsts ? "" : String.valueOf(mm.get("vis") == null ? (methods ? "+" : "-") : mm.get("vis"));
+            if (!VIS.contains(vis)) throw new IllegalArgumentException(owner + "." + name + ": vis must be one of + - # ~ or empty");
+            m.put("vis", vis).put("name", name).put("type", enumConsts ? "" : String.valueOf(mm.get("type") == null ? "" : mm.get("type")));
+            if (methods) m.put("params", String.valueOf(mm.get("params") == null ? "" : mm.get("params")));
+            if (Boolean.TRUE.equals(mm.get("static"))) m.put("static", true);
+            if (Boolean.TRUE.equals(mm.get("abstract"))) m.put("abstract", true);
+        }
         return out;
     }
 

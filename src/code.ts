@@ -13,6 +13,7 @@ import { tags as t } from '@lezer/highlight';
 import { contextAt, avroSuggestions, avroProblems, problemRange, type Suggestion } from './avro';
 import { StreamLanguage } from '@codemirror/language';
 import { parseSeq, printSeq } from './seq';
+import { parseCls, parseClsAny, printCls, mergeCls } from './cls';
 import { parseDbml, parseSql, toDbml, PG_TYPE_LIST, FLAG_LIST, type RefResolver } from './dbml';
 import type { Table } from './model';
 
@@ -410,6 +411,90 @@ export function mountSeq(parent: HTMLElement, o: SeqOptions): EditorView {
     keymap.of([...completionKeymap, ...lintKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap]),
     EditorView.updateListener.of(u => { if (u.docChanged) o.onChange(u.state.doc.toString()); }),
     cmPlaceholder('client -> api: POST /orders\napi --> client: 201 Created\n\n— or paste Mermaid / PlantUML'),
+  ];
+  parent.textContent = '';
+  return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });
+}
+// ---------- class diagrams as text ----------
+
+const clsLang = StreamLanguage.define<{ inBody: boolean; afterColon: boolean }>({
+  startState: () => ({ inBody: false, afterColon: false }),
+  token(stream, st) {
+    if (stream.sol()) st.afterColon = false;
+    if (stream.eatSpace()) return null;
+    if (stream.match('%%') || stream.match('//')) { stream.skipToEnd(); return 'comment'; }
+    if (stream.eat('{')) { st.inBody = true; return 'brace'; }
+    if (stream.eat('}')) { st.inBody = false; return 'brace'; }
+    if (stream.match(/^<<[^>]*>>/)) return 'meta';
+    if (stream.match(/^"[^"]*"?/)) return 'number';
+    if (!st.inBody && stream.match(/^(abstract\s+class|class|interface|enum|record)\b/)) return 'keyword';
+    if (stream.match(/^(<\|--|<\|\.\.|--\|>|\.\.\|>|\*--|--\*|o--|--o|-->|<--|\.\.>|<\.\.|--|\.\.)/)) return 'operator';
+    if (st.inBody && stream.match(/^[+\-#~](?=\s*[A-Za-z_{])/)) return 'operator';
+    if (stream.match(/^\{(static|abstract)\}/)) return 'meta';
+    if (stream.eat(':')) { st.afterColon = true; return 'punctuation'; }
+    if (stream.match(/^[A-Za-z_$][\w$]*/)) return st.afterColon ? 'typeName' : st.inBody ? 'propertyName' : 'variableName';
+    stream.next(); return null;
+  },
+});
+const clsHighlight = HighlightStyle.define([
+  { tag: t.keyword, color: 'var(--syn-kw)', fontWeight: '600' },
+  { tag: t.variableName, color: 'var(--syn-key)', fontWeight: '600' },
+  { tag: t.propertyName, color: 'var(--fg)' },
+  { tag: t.typeName, color: 'var(--syn-num)' },
+  { tag: t.operator, color: 'var(--fk)', fontWeight: '700' },
+  { tag: t.meta, color: 'var(--muted)', fontStyle: 'italic' },
+  { tag: t.number, color: 'var(--syn-str)' },
+  { tag: t.comment, color: 'var(--muted)', fontStyle: 'italic' },
+  { tag: [t.brace, t.punctuation], color: 'var(--muted)' },
+]);
+export interface ClsOptions { doc: string; onChange: (text: string) => void; classes: () => string[] }
+function clsSource(o: ClsOptions) {
+  return (ctx: CompletionContext): CompletionResult | null => {
+    const line = ctx.state.doc.lineAt(ctx.pos), before = line.text.slice(0, ctx.pos - line.from);
+    const w = /[\w$]*$/.exec(before)![0];
+    if (!w && !ctx.explicit) return null;
+    const names = o.classes().map(n => ({ label: n, type: 'class' }));
+    const types = ['String', 'UUID', 'int', 'long', 'boolean', 'double', 'BigDecimal', 'Instant', 'LocalDate', 'List<', 'Set<', 'Map<String, ', 'Optional<', 'void'].map(n => ({ label: n, type: 'type' }));
+    if (/:\s*[\w$<>, ]*$/.test(before)) return { from: ctx.pos - w.length, options: [...names, ...types], validFor: /^[\w$]*$/ };
+    if (/^\s*[\w$]*$/.test(before)) return { from: ctx.pos - w.length, options: [
+      { label: 'class', apply: snippet('class ${Name} {\n  - ${id}: ${UUID}\n}'), type: 'keyword' }, { label: 'interface', apply: snippet('interface ${Name} {\n  + ${method}(): ${void}\n}'), type: 'keyword' },
+      { label: 'enum', apply: snippet('enum ${Name} { ${A}, ${B} }'), type: 'keyword' }, { label: 'record', apply: snippet('record ${Name} { ${field}: ${Type} }'), type: 'keyword' },
+      { label: 'abstract class', apply: snippet('abstract class ${Name}'), type: 'keyword' }, ...names], validFor: /^[\w$ ]*$/ };
+    if (/^\s*[\w$]+\s*(?:"[^"]*"\s*)?(?:<\|--|<\|\.\.|--\|>|\.\.\|>|\*--|--\*|o--|--o|-->|<--|\.\.>|<\.\.)\s*(?:"[^"]*"\s*)?[\w$]*$/.test(before)) return { from: ctx.pos - w.length, options: names, validFor: /^[\w$]*$/ };
+    return null;
+  };
+}
+function clsLinter(view: EditorView): Diagnostic[] {
+  const text = view.state.doc.toString();
+  if (!text.trim()) return [];
+  return parseCls(text).errors.map(e => {
+    const l = view.state.doc.line(Math.min(e.line + 1, view.state.doc.lines));
+    const lead = l.text.length - l.text.trimStart().length;
+    return { from: l.from + lead, to: Math.max(l.from + lead + 1, l.to), severity: 'error' as const, message: e.message };
+  });
+}
+/** Paste Java, Kotlin or Mermaid and it's merged into the text in this format. */
+const clsPaste = EditorView.domEventHandlers({
+  paste(ev, view) {
+    const text = ev.clipboardData?.getData('text/plain') ?? '';
+    const p = parseClsAny(text);
+    if (p.from === 'cistem' || !p.doc.classes.length) return false;
+    ev.preventDefault();
+    const cur = parseCls(view.state.doc.toString());
+    const base = cur.errors.length ? null : cur.doc;
+    if (base) { mergeCls(base, p.doc); view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: printCls(base) } }); }
+    else { const sel = view.state.selection.main; view.dispatch({ changes: { from: sel.from, to: sel.to, insert: printCls(p.doc) } }); }
+    return true;
+  },
+});
+export function mountCls(parent: HTMLElement, o: ClsOptions): EditorView {
+  const exts: Extension[] = [
+    history(), drawSelection(), bracketMatching(), closeBrackets(), indentOnInput(), clsLang, syntaxHighlighting(clsHighlight), theme, EditorState.tabSize.of(2),
+    autocompletion({ override: [clsSource(o)], icons: false, activateOnTyping: true, maxRenderedOptions: 40 }),
+    linter(clsLinter, { delay: 300 }), clsPaste, lineNumbers(), highlightActiveLine(),
+    keymap.of([...closeBracketsKeymap, ...completionKeymap, ...lintKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap]),
+    EditorView.updateListener.of(u => { if (u.docChanged) o.onChange(u.state.doc.toString()); }),
+    cmPlaceholder('class Order {\n  - id: UUID\n}\nOrder *-- LineItem\n\n— or paste Java, Kotlin or Mermaid'),
   ];
   parent.textContent = '';
   return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });

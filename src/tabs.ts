@@ -6,6 +6,7 @@
  */
 import { state, renderAll, setDocKey, persist, readLocal, loadFile, adoptLoaded, emptySystem, type Selection } from './state';
 import { blankSeq, type SeqDoc, type SeqUses } from './seq';
+import { blankCls, type ClassDoc } from './cls';
 import { adopt, makeNode, type Doc } from './model';
 import { fromFile, type DiagramFile, type DiagramKind } from './document';
 import * as history from './history';
@@ -14,7 +15,7 @@ import { fit } from './canvas';
 import { cloud, takeCloud, putCloud, saveNow, saveAsNew, signedIn, adoptStored, onCloudChange, setStatus, signature, refreshList, type CloudSlot } from './cloud';
 
 export interface Tab { key: string; kind: DiagramKind; title: string; cloudId?: string; version?: number; share?: string }
-interface Session { kind: DiagramKind; doc: Doc; seq: SeqDoc; meta: DiagramFile['meta']; cloud: CloudSlot; hist: history.Stacks; view: typeof state.view; sel: Selection }
+interface Session { kind: DiagramKind; doc: Doc; seq: SeqDoc; cls: ClassDoc; meta: DiagramFile['meta']; cloud: CloudSlot; hist: history.Stacks; view: typeof state.view; sel: Selection }
 
 const LIST_KEY = 'cistem.tabs';
 const LEGACY_KEYS = ['cistem.doc', 'loadmap.doc'];
@@ -49,9 +50,9 @@ function blankDoc(): Doc {
 /** Open a blank diagram of `kind` in the live state. */
 function blank(kind: DiagramKind, title?: string) {
   state.kind = kind; state.sel = null; state.multi.clear();
-  if (kind === 'sequence') { state.seq = blankSeq(); state.doc = emptySystem(); }
-  else { state.doc = blankDoc(); state.seq = blankSeq(); }
-  state.meta = freshMeta(title ?? (kind === 'sequence' ? 'Untitled sequence' : 'Untitled system'));
+  state.seq = blankSeq(); state.cls = blankCls();
+  state.doc = kind === 'system' ? blankDoc() : emptySystem();
+  state.meta = freshMeta(title ?? (kind === 'sequence' ? 'Untitled sequence' : kind === 'class' ? 'Untitled classes' : 'Untitled system'));
 }
 const freshMeta = (title = 'Untitled system'): DiagramFile['meta'] => { const now = new Date().toISOString(); return { title, created: now, updated: now }; };
 const opened = () => document.dispatchEvent(new CustomEvent('cistem:opened'));
@@ -63,7 +64,7 @@ async function flush() { if (signedIn() && cloud.id && !cloud.readonly && (cloud
 function stash() {
   const t = activeTab(); if (!t) return;
   persist();
-  sessions.set(t.key, { kind: state.kind, doc: state.doc, seq: state.seq, meta: state.meta, cloud: takeCloud(), hist: history.takeStacks(), view: { ...state.view }, sel: state.sel });
+  sessions.set(t.key, { kind: state.kind, doc: state.doc, seq: state.seq, cls: state.cls, meta: state.meta, cloud: takeCloud(), hist: history.takeStacks(), view: { ...state.view }, sel: state.sel });
 }
 function show(key: string) {
   tabs.active = key; setDocKey(slot(key));
@@ -78,7 +79,7 @@ export async function activate(key: string) {
   const s = sessions.get(key);
   if (s) {
     sessions.delete(key);
-    state.kind = s.kind; state.doc = s.doc; state.seq = s.seq; state.meta = s.meta; state.view = s.view; state.sel = s.sel;
+    state.kind = s.kind; state.doc = s.doc; state.seq = s.seq; state.cls = s.cls; state.meta = s.meta; state.view = s.view; state.sel = s.sel;
     history.putStacks(s.hist); putCloud(s.cloud);
     changed(); renderAll(); opened();
     return;
@@ -208,11 +209,11 @@ function readLegacy(s: string): string | null {
 }
 
 /** A tab's document without opening it: the live one, a parked one, or its local copy. */
-export function peek(key: string): { kind: DiagramKind; doc?: Doc; seq?: SeqDoc; title: string } | null {
-  if (key === tabs.active) return { kind: state.kind, doc: state.doc, seq: state.seq, title: state.meta.title };
-  const s = sessions.get(key); if (s) return { kind: s.kind, doc: s.doc, seq: s.seq, title: s.meta.title };
+export function peek(key: string): { kind: DiagramKind; doc?: Doc; seq?: SeqDoc; cls?: ClassDoc; title: string } | null {
+  if (key === tabs.active) return { kind: state.kind, doc: state.doc, seq: state.seq, cls: state.cls, title: state.meta.title };
+  const s = sessions.get(key); if (s) return { kind: s.kind, doc: s.doc, seq: s.seq, cls: s.cls, title: s.meta.title };
   const l = readLocal(slot(key)); if (!l) return null;
-  return l.kind === 'sequence' ? { kind: 'sequence', seq: l.seq, title: l.meta.title } : { kind: 'system', doc: l.doc, title: l.meta.title };
+  return l.kind === 'sequence' ? { kind: 'sequence', seq: l.seq, title: l.meta.title } : l.kind === 'class' ? { kind: 'class', cls: l.cls, title: l.meta.title } : { kind: 'system', doc: l.doc, title: l.meta.title };
 }
 /** How a sequence refers to a system diagram tab: by cloud id once saved (stable across devices), else by tab. */
 export function usesFor(key: string): SeqUses | null {

@@ -11,6 +11,9 @@ import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer
 import { onAfterRender } from './state';
 import { bootTabs, syncActiveTitle, newTab, usesFor, tabs } from './tabs';
 import { seqKey } from './seqview';
+import { clsKey, organiseCls } from './clsview';
+import { fromTables, fromAvro, layoutCls } from './cls';
+import { clsToFile } from './document';
 import { sequenceFromPath } from './seq';
 import { seqToFile } from './document';
 import { TYPES } from './model';
@@ -115,7 +118,7 @@ function organise() {
   for (const id in res.frames) if (!state.doc.nodes.some(n => n.container === id) && !state.doc.containers.some(c => c.parent === id)) state.doc.frames[id] = res.frames[id];
   moveTo(next, () => fit());
 }
-$('layoutBtn').onclick = organise;
+$('layoutBtn').onclick = () => (state.kind === 'class' ? organiseCls() : organise());
 
 // ---------- view ----------
 const stageEl = $('stage');
@@ -148,13 +151,13 @@ document.addEventListener('keydown', ev => {
   }
   if (mod && ev.key.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); refreshHistory(); return; }
   if (mod && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); refreshHistory(); return; }
-  if (state.kind === 'sequence') {
+  if (state.kind !== 'system') {
     if (mod && ev.key === '0') { ev.preventDefault(); fit(); return; }
     if (mod && (ev.key === '=' || ev.key === '+')) { ev.preventDefault(); $('zin').click(); return; }
     if (mod && ev.key === '-') { ev.preventDefault(); $('zout').click(); return; }
     if (ev.key.toLowerCase() === 'i' && !mod) { togglePanel(); return; }
     if (ev.key === 'Escape') { select(null); renderAll(); return; }
-    if (seqKey(ev)) ev.preventDefault();
+    if ((state.kind === 'sequence' ? seqKey : clsKey)(ev)) ev.preventDefault();
     return;
   }
   if (mod && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelection(); return; }
@@ -191,7 +194,18 @@ function pathStart() {
 }
 menuActions({
   openExisting: openDrawer, importJson: () => openIo(true), example: openExample,
-  fromInfo: () => { const s = pathStart(); return s ? { title: state.meta.title, start: s.name } : null; },
+  fromInfo: () => {
+    if (state.kind !== 'system') return null;
+    const s = pathStart();
+    const extra = state.doc.nodes.flatMap(n => {
+      const out: { label: string; run: () => void }[] = [];
+      const open = (doc: ReturnType<typeof fromTables>, title: string) => { doc.pos = layoutCls(doc); newTab('class', clsToFile(doc, { title })); };
+      if (n.tables?.length) out.push({ label: `Class diagram from ${n.name} tables`, run: () => open(fromTables(n.tables!, n.name), `${n.name} model`) });
+      if (typeof n.schema === 'string' && n.schema.trim().startsWith('{')) out.push({ label: `Class diagram from the ${n.name} schema`, run: () => open(fromAvro(n.schema as string), `${n.name} schema`) });
+      return out;
+    });
+    return s || extra.length ? { title: state.meta.title, start: s?.name ?? null, extra } : null;
+  },
   fromPath: () => {
     const s = pathStart(); if (!s) return;
     const asyncKinds = new Set(Object.keys(TYPES).filter(k => TYPES[k].behaviour === 'async'));

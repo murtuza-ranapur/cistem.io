@@ -80,10 +80,11 @@
     <div class="nm-head">New diagram</div>
     <button class="nm-item" role="menuitem" data-new="system"><span class="nm-ic k-system"><svg><use href="#ic-k-system"/></svg></span><span><strong>System</strong><span class="nm-sub">Components with capacity, environments, load</span></span><kbd>1</kbd></button>
     <button class="nm-item" role="menuitem" data-new="sequence"><span class="nm-ic k-sequence"><svg><use href="#ic-k-sequence"/></svg></span><span><strong>Sequence</strong><span class="nm-sub">Who calls whom, in order — drag between lifelines</span></span><kbd>2</kbd></button>
-    <button class="nm-item" role="menuitem" data-new="class" disabled><span class="nm-ic k-class"><svg><use href="#ic-k-class"/></svg></span><span><strong>Class <em class="soon">later</em></strong><span class="nm-sub">Types, fields, methods and how they relate</span></span><kbd>3</kbd></button>
+    <button class="nm-item" role="menuitem" data-new="class"><span class="nm-ic k-class"><svg><use href="#ic-k-class"/></svg></span><span><strong>Class</strong><span class="nm-sub">Types, fields, methods and how they relate</span></span><kbd>3</kbd></button>
     <div class="nm-from" id="nmFrom" hidden>
       <div class="nm-head" id="nmFromHead">Made from this diagram</div>
       <button class="nm-line" role="menuitem" data-nm="seq-path"><span class="k-sequence-ink"><svg><use href="#ic-k-sequence"/></svg></span><span id="nmPathLabel">Sequence from a request path</span><span class="nm-sub" id="nmPathSub">starts at the selected component</span></button>
+      <div id="nmFromExtra"></div>
     </div>
     <div class="nm-foot">
       <button class="chip" data-nm="open">Open existing…</button>
@@ -110,6 +111,13 @@
       <button class="comp sq-tool" data-seqtool="loop" title="Loop — wraps the selected messages (L)"><span class="sq-kw">loop</span><span>Loop</span></button>
       <button class="comp sq-tool" data-seqtool="par" title="Parallel — wraps the selected messages"><span class="sq-kw">par</span><span>Par</span></button>
     </div>
+    <div id="railCls" class="rail-seq">
+      <button class="comp sq-tool" data-clstool="class" title="Class (1)"><span class="cl-kw" style="--kc:#2f8a55">C</span><span>Class</span></button>
+      <button class="comp sq-tool" data-clstool="interface" title="Interface (2)"><span class="cl-kw" style="--kc:#7c3aed">I</span><span>Interface</span></button>
+      <button class="comp sq-tool" data-clstool="enum" title="Enum (3)"><span class="cl-kw" style="--kc:#a16207">E</span><span>Enum</span></button>
+      <button class="comp sq-tool" data-clstool="record" title="Record (4)"><span class="cl-kw" style="--kc:#2f6fa8">R</span><span>Record</span></button>
+      <button class="comp sq-tool" data-clstool="abstract" title="Abstract class (5)"><span class="cl-kw" style="--kc:#2f8a55;font-style:italic">A</span><span>Abstract</span></button>
+    </div>
   </aside>
 
   <main id="stage">
@@ -135,6 +143,23 @@
       <rect x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid)"/>
       <g id="seqWorld"></g>
     </svg>
+    <svg id="clsSvg" xmlns="http://www.w3.org/2000/svg" hidden tabindex="-1" aria-label="Class diagram">
+      <defs>
+        <marker id="cl-tri" viewBox="0 0 12 12" refX="11.5" refY="6" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M1 1L11.5 6L1 11z" fill="var(--panel)" stroke="var(--seq-line)" stroke-width="1.2"/></marker>
+        <marker id="cl-tri-on" viewBox="0 0 12 12" refX="11.5" refY="6" markerWidth="13" markerHeight="13" orient="auto-start-reverse"><path d="M1 1L11.5 6L1 11z" fill="var(--panel)" stroke="var(--sel)" stroke-width="1.4"/></marker>
+        <marker id="cl-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1 1L9.5 5L1 9" fill="none" stroke="var(--seq-line)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        <marker id="cl-open-on" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1 1L9.5 5L1 9" fill="none" stroke="var(--sel)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        <marker id="cl-dfill" viewBox="0 0 16 10" refX="0.5" refY="5" markerWidth="16" markerHeight="10" orient="auto-start-reverse"><path d="M0.5 5L8 1L15.5 5L8 9z" fill="var(--seq-line)"/></marker>
+        <marker id="cl-dfill-on" viewBox="0 0 16 10" refX="0.5" refY="5" markerWidth="16" markerHeight="10" orient="auto-start-reverse"><path d="M0.5 5L8 1L15.5 5L8 9z" fill="var(--sel)"/></marker>
+        <marker id="cl-dhollow" viewBox="0 0 16 10" refX="0.5" refY="5" markerWidth="16" markerHeight="10" orient="auto-start-reverse"><path d="M0.5 5L8 1L15.5 5L8 9z" fill="var(--panel)" stroke="var(--seq-line)" stroke-width="1.1"/></marker>
+        <marker id="cl-dhollow-on" viewBox="0 0 16 10" refX="0.5" refY="5" markerWidth="16" markerHeight="10" orient="auto-start-reverse"><path d="M0.5 5L8 1L15.5 5L8 9z" fill="var(--panel)" stroke="var(--sel)" stroke-width="1.3"/></marker>
+      </defs>
+      <rect x="-100000" y="-100000" width="200000" height="200000" fill="url(#grid)"/>
+      <g id="clsWorld"></g>
+    </svg>
+    <div id="clsEmpty" hidden><strong>Empty class diagram</strong><span>Add classes from the left, or paste Java, Kotlin or a Mermaid classDiagram anywhere here.<br>Drag the dot on a box's edge onto another class to relate them.</span><button class="small primary" id="clsStart">Add a class</button></div>
+    <input id="clsEdit" type="text" hidden aria-label="Edit text" autocomplete="off" spellcheck="false">
+    <div id="clsRelPick" class="cl-pick" hidden role="menu" aria-label="Relation"></div>
     <div id="seqEmpty" hidden><strong>Empty sequence</strong><span>Add participants from the left (P), then drag from one lifeline to another to draw a message.<br>Or open the Code tab in the panel and paste Mermaid or PlantUML.</span><button class="small primary" id="seqStart">Add a participant</button></div>
     <input id="seqEdit" type="text" hidden aria-label="Edit text" autocomplete="off">
     <datalist id="seqLabels"></datalist>

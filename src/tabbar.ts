@@ -70,14 +70,22 @@ list.addEventListener('auxclick', ev => { if (ev.button === 1) ev.preventDefault
 
 // ---------- + menu ----------
 let onOpenExisting = () => {}, onImport = () => {}, onExample = () => {}, onFromPath = () => {};
-let fromInfo: () => { title: string; start: string } | null = () => null;
+type FromExtra = { label: string; run: () => void };
+let fromInfo: () => { title: string; start: string | null; extra: FromExtra[] } | null = () => null;
+let extras: FromExtra[] = [];
 export function menuActions(a: { openExisting: () => void; importJson: () => void; example: () => void; fromPath: () => void; fromInfo: typeof fromInfo }) {
   onOpenExisting = a.openExisting; onImport = a.importJson; onExample = a.example; onFromPath = a.fromPath; fromInfo = a.fromInfo;
 }
 export function openMenu() {
   const info = fromInfo();
   ($('nmFrom') as HTMLElement).hidden = !info;
-  if (info) { $('nmFromHead').textContent = `Made from “${info.title}”`; $('nmPathSub').textContent = `starting at ${info.start}`; }
+  if (info) {
+    $('nmFromHead').textContent = `Made from “${info.title}”`;
+    const path = menu.querySelector<HTMLElement>('[data-nm="seq-path"]')!;
+    path.hidden = !info.start; if (info.start) $('nmPathSub').textContent = `starting at ${info.start}`;
+    extras = info.extra;
+    $('nmFromExtra').innerHTML = extras.map((x, i) => `<button class="nm-line" role="menuitem" data-nmx="${i}"><span class="k-class-ink"><svg><use href="#ic-k-class"/></svg></span><span>${esc(x.label)}</span><span></span></button>`).join('');
+  }
   const r = plus.getBoundingClientRect();
   menu.style.left = Math.max(12, Math.min(r.left, window.innerWidth - 412)) + 'px';
   menu.style.top = r.bottom + 6 + 'px';
@@ -89,6 +97,8 @@ plus.onclick = () => (menu.hidden ? openMenu() : closeMenu());
 menu.addEventListener('click', ev => {
   const it = (ev.target as Element).closest('[data-new]') as HTMLButtonElement | null;
   if (it && !it.disabled) { closeMenu(); newTab(it.dataset.new as 'system'); return; }
+  const x = (ev.target as Element).closest('[data-nmx]') as HTMLElement | null;
+  if (x) { closeMenu(); extras[+x.dataset.nmx!]?.run(); return; }
   const a = (ev.target as Element).closest('[data-nm]') as HTMLElement | null;
   if (!a) return;
   closeMenu();
