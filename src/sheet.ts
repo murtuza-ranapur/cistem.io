@@ -5,6 +5,8 @@ import { parseJsonFields, jsonFieldsToText, parseAvro, avroToText, listAt, J_TYP
 
 const inspector = document.getElementById('inspector') as HTMLElement;
 let tab: 'capacity' | 'schema' = 'capacity';
+const colOpen = new Set<string>(); // expanded column rows (references / default)
+let focusAfterDraw = '';
 const body = document.getElementById('sheetBody') as HTMLElement;
 
 const icon = (kind: string) => `<svg style="stroke:var(--c-${kind});fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><use href="#ic-${kind}"/></svg>`;
@@ -139,22 +141,38 @@ function schemaTab(n: Node): string {
     const ts = (n as DbNode).tables || [];
     h += `<section class="list"><h3>Tables <span class="spacer"></span>${addBtn('add-table', 'table')}</h3>`;
     ts.forEach((t, i) => {
-      h += `<div class="item"><div class="row one">${inp(`tables.${i}.name`, 'table', t.name)}${xBtn(`rm-table:${i}`)}</div>`;
-      h += `<div class="sub">Columns <span class="spacer"></span>${addBtn(`add-column:${i}`, 'column')}</div>`;
-      (t.columns || []).forEach((c, j) => {
-        const types = PG_TYPES.includes(c.type) ? PG_TYPES : [c.type, ...PG_TYPES];
-        // FK targets: every other table.column in this db (ids first), plus other dbs' tables
-        const targets: string[] = [];
-        for (const ot of (n as DbNode).tables || []) if (ot !== t) for (const oc of ot.columns || []) targets.push(`${ot.name}.${oc.name}`);
-        for (const on of state.doc.nodes) if (on.kind === 'db' && on.id !== n.id) for (const ot of on.tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
-        const refOpts = ['', ...(c.references && !targets.includes(c.references) ? [c.references] : []), ...targets];
-        h += `<div class="row cols">${inp(`tables.${i}.columns.${j}.name`, 'column', c.name)}${selIn(`tables.${i}.columns.${j}.type`, 'type', c.type, types)}${chk(`tables.${i}.columns.${j}.pk`, 'PK', c.pk)}${chk(`tables.${i}.columns.${j}.nullable`, 'null', c.nullable)}${xBtn(`rm-column:${i}:${j}`)}</div>`;
-        h += `<div class="row colx"><label>references<select data-path="tables.${i}.columns.${j}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${o ? esc(o.includes(':') ? (state.doc.nodes.find(x => x.id === o.split(':')[0])?.name ?? '') + ' › ' + o.split(':')[1] : o) : '—'}</option>`).join('')}</select></label>${chk(`tables.${i}.columns.${j}.unique`, 'unique', !!c.unique)}${chk(`tables.${i}.columns.${j}.index`, 'index', !!c.index)}${inp(`tables.${i}.columns.${j}.default`, 'default', c.default ?? '')}</div>`;
+      h += `<div class="item tbl"><div class="row one">${inp(`tables.${i}.name`, 'table', t.name, 'text', 'placeholder="table_name"')}${xBtn(`rm-table:${i}`)}</div>`;
+      const cols = t.columns || [];
+      h += `<div class="cgrid"><div class="crow chead"><span>column</span><span>type</span><span class="flags"><span title="Primary key">PK</span><span title="Nullable">NULL</span><span title="Unique">UQ</span><span title="Indexed">IX</span><span title="References (foreign key) &amp; default">FK</span></span><span></span></div>`;
+      cols.forEach((c, j) => {
+        const base = `tables.${i}.columns.${j}`;
+        const key = `${n.id}:${i}:${j}`;
+        const open = colOpen.has(key);
+        const flag = (prop: string, label: string, on: boolean, title: string, cls: string) =>
+          `<button class="flag ${cls} ${on ? 'on' : ''}" data-flip="${base}.${prop}" title="${title}" aria-pressed="${on}">${label}</button>`;
+        h += `<div class="crow" data-col="${i}:${j}">`;
+        h += `<input class="cname" data-path="${base}.name" value="${esc(c.name)}" placeholder="column" spellcheck="false">`;
+        h += `<input class="ctype" data-path="${base}.type" value="${esc(c.type)}" list="pgTypes" placeholder="type" spellcheck="false">`;
+        h += `<span class="flags">${flag('pk', 'PK', c.pk, 'Primary key', 'pk')}${flag('nullable', 'NULL', c.nullable, 'Nullable', 'nl')}${flag('unique', 'UQ', !!c.unique, 'Unique', 'uq')}${flag('index', 'IX', !!c.index, 'Indexed', 'ix')}`;
+        h += `<button class="flag fk ${c.references ? 'on' : ''} ${open ? 'open' : ''}" data-colmore="${key}" title="${c.references ? 'References ' + esc(c.references) : 'Foreign key & default'}" aria-expanded="${open}">${c.references ? '→' : c.default ? '=' : '⋯'}</button></span>`;
+        h += `${xBtn(`rm-column:${i}:${j}`)}</div>`;
+        if (open) {
+          // FK targets: every other table.column in this db, plus other dbs' primary keys
+          const targets: string[] = [];
+          for (const ot of (n as DbNode).tables || []) if (ot !== t) for (const oc of ot.columns || []) targets.push(`${ot.name}.${oc.name}`);
+          for (const on of state.doc.nodes) if (on.kind === 'db' && on.id !== n.id) for (const ot of on.tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
+          const refOpts = ['', ...(c.references && !targets.includes(c.references) ? [c.references] : []), ...targets];
+          const label = (o: string) => o ? esc(o.includes(':') ? (state.doc.nodes.find(x => x.id === o.split(':')[0])?.name ?? '') + ' › ' + o.split(':')[1] : o) : 'no foreign key';
+          h += `<div class="crow cmore"><label>references<select data-path="${base}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${label(o)}</option>`).join('')}</select></label>`;
+          h += `<label>default<input data-path="${base}.default" value="${esc(c.default ?? '')}" placeholder="now(), 0, gen_random_uuid()" spellcheck="false"></label></div>`;
+        }
       });
+      h += `</div><button class="small addcol" data-action="add-column:${i}">+ column</button>`;
+      if (!cols.length) h += '<p class="empty">No columns yet.</p>';
       h += '</div>';
     });
     if (!ts.length) h += '<p class="empty">No tables yet.</p>';
-    h += '</section>';
+    h += `<datalist id="pgTypes">${PG_TYPES.concat(['smallint', 'real', 'double precision', 'char(3)', 'bytea', 'timestamp', 'time', 'interval', 'inet', 'text[]', 'serial', 'bigserial']).map(v => `<option value="${v}">`).join('')}</datalist></section>`;
   }
   if (n.kind === 'queue') {
     const ts = (n as QueueNode).topics || [];
@@ -284,6 +302,7 @@ export function drawSheet() {
   body.innerHTML = state.sel!.type === 'node' ? nodeSheet(t as Node) : state.sel!.type === 'edge' ? edgeSheet(t as Edge) : containerSheet(t as Container);
   body.querySelectorAll<HTMLTextAreaElement>('textarea[data-validate]').forEach(validateJson);
   body.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab as typeof tab; drawSheet(); });
+  if (focusAfterDraw) { body.querySelector<HTMLInputElement>(focusAfterDraw)?.focus(); focusAfterDraw = ''; }
 }
 
 // Snapshot once per focus session so typing a value is one undo step.
@@ -324,6 +343,12 @@ body.addEventListener('input', ev => {
   if (f.tagName === 'TEXTAREA') validateJson(f as unknown as HTMLTextAreaElement);
   renderCanvas();
   if (f.dataset.path === 'name') { const s = body.querySelector('.head strong'); if (s) s.textContent = (t as Node).name; }
+  const colm = f.dataset.path.match(/^tables\.(\d+)\.columns\.(\d+)\.(references|default)$/);
+  if (colm) { // keep the row's FK/default marker in step without redrawing (and losing focus)
+    const c = (t as DbNode).tables[+colm[1]].columns[+colm[2]];
+    const m = body.querySelector<HTMLElement>(`[data-col="${colm[1]}:${colm[2]}"] [data-colmore]`);
+    if (m) { m.textContent = c.references ? '→' : c.default ? '=' : '⋯'; m.classList.toggle('on', !!c.references); }
+  }
 });
 
 body.addEventListener('click', ev => {
@@ -344,6 +369,19 @@ body.addEventListener('click', ev => {
     drawSheet(); renderCanvas();
     if (newPath) body.querySelector<HTMLInputElement>(`[data-fe="${fe.dataset.fe}"] [data-fpath="${newPath}"] input.fname`)?.focus();
     return;
+  }
+  const flip = (ev.target as Element).closest<HTMLElement>('[data-flip],[data-colmore]');
+  if (flip) {
+    if (flip.dataset.colmore) { const k = flip.dataset.colmore; colOpen.has(k) ? colOpen.delete(k) : colOpen.add(k); drawSheet(); return; }
+    const t = current(); if (!t) return;
+    const path = flip.dataset.flip!;
+    history.snapshot(state.doc);
+    const v = !getPath(t, path);
+    setPath(t, path, v);
+    const col = path.replace(/\.[a-z]+$/, '');
+    if (path.endsWith('.pk') && v) setPath(t, col + '.nullable', false);          // a primary key is never null
+    if (path.endsWith('.nullable') && v && getPath(t, col + '.pk')) setPath(t, col + '.pk', false);
+    drawSheet(); renderCanvas(); return;
   }
   const b = (ev.target as Element).closest('[data-action],[data-platform]') as HTMLElement | null;
   if (!b) return;
@@ -386,8 +424,8 @@ body.addEventListener('click', ev => {
     case 'rm-header': n.endpoints[i].headers.splice(j, 1); break;
     case 'add-table': (n.tables = n.tables || []).push({ name: 'new_table', columns: [{ name: 'id', type: 'uuid', pk: true, nullable: false }] }); break;
     case 'rm-table': n.tables.splice(i, 1); break;
-    case 'add-column': (n.tables[i].columns = n.tables[i].columns || []).push({ name: '', type: 'text', pk: false, nullable: true }); break;
-    case 'rm-column': n.tables[i].columns.splice(j, 1); break;
+    case 'add-column': (n.tables[i].columns = n.tables[i].columns || []).push({ name: '', type: 'text', pk: false, nullable: true }); focusAfterDraw = `[data-col="${i}:${n.tables[i].columns.length - 1}"] .cname`; break;
+    case 'rm-column': n.tables[i].columns.splice(j, 1); [...colOpen].filter(k => k.startsWith(`${n.id}:${i}:`)).forEach(k => colOpen.delete(k)); break;
     case 'add-topic': (n.topics = n.topics || []).push({ name: '', partitions: 6, schema: '{\n  "type": "record",\n  "name": "",\n  "fields": []\n}' }); break;
     case 'rm-topic': n.topics.splice(i, 1); break;
     default: return;

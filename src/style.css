@@ -1,5 +1,5 @@
 /* cistem.io — desktop-first three-pane shell; stacks on narrow screens. */
-:root{
+:root{--insp-w:384px;
   --bg:#f5f6f7; --panel:#ffffff; --panel-2:#fafbfb; --fg:#1b1f24; --muted:#687079; --line:#e1e4e8; --line-2:#eef0f2; --grid:#cfd4d9;
   --accent:#b86a12; --node:#ffffff; --node-line:#c9ced4; --edge:#9aa3ad; --sel:#2b6cb0; --sel-soft:rgba(43,108,176,.14);
   --ok:#2f8f5b; --warn:#d08a0e; --crit:#c73a3a; --ok-soft:#dff1e6; --warn-soft:#fbeccc; --crit-soft:#f9dede;
@@ -170,9 +170,9 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .k-container svg{stroke:var(--muted)}
 
 /* ---- inspector ---- */
-#inspector{grid-area:inspector;width:340px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;overflow-x:hidden;transition:width var(--t) var(--ease),opacity var(--t) var(--ease);z-index:4}
+#inspector{grid-area:inspector;width:var(--insp-w);background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;overflow-x:hidden;transition:width var(--t) var(--ease),opacity var(--t) var(--ease);z-index:4}
 #inspector.closed{width:0;border-left-color:transparent;opacity:0}
-#sheetBody{width:340px;padding:14px 16px 24px}
+#sheetBody{width:var(--insp-w);box-sizing:border-box;padding:14px 16px 24px}
 .head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .head strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .head .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;display:inline-flex;align-items:center;gap:5px;font-weight:500;white-space:nowrap}
@@ -227,7 +227,7 @@ section.list h3 .spacer{flex:1}
 .danger:hover{background:var(--crit-soft);border-color:transparent}
 
 /* ---- details panel bar ---- */
-#inspBar{width:340px;box-sizing:border-box;position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:2px;padding:8px 10px 8px 18px;background:var(--panel);border-bottom:1px solid var(--line);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap}
+#inspBar{width:var(--insp-w);box-sizing:border-box;position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:2px;padding:8px 10px 8px 18px;background:var(--panel);border-bottom:1px solid var(--line);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);white-space:nowrap}
 #inspBar .spacer{flex:1}
 #inspBar .icon{width:28px;height:28px}
 #inspBar .icon svg{width:15px;height:15px}
@@ -236,6 +236,37 @@ section.list h3 .spacer{flex:1}
 #panelBtn.on{color:var(--sel)}
 .placeholder{display:flex;flex-direction:column;gap:6px;padding:28px 6px;color:var(--muted);font-size:12.5px;line-height:1.5}
 .placeholder strong{color:var(--fg);font-size:13px}
+
+/* ---- table columns ---- */
+.cgrid{display:flex;flex-direction:column;gap:3px;margin:8px 0 6px}
+.crow{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) auto 16px;gap:4px;align-items:center}
+.crow.chead{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:0 0 1px 2px}
+.crow.chead .flags span{width:22px;text-align:center}
+.crow.chead .flags span:nth-child(2){width:30px}
+.crow.chead .flags span:nth-child(5){width:24px}
+.crow input{padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-family:var(--mono);font-size:12px;min-width:0;width:100%;box-sizing:border-box}
+.crow .ctype{color:var(--muted);font-size:11px}
+.crow .ctype:focus{color:var(--fg)}
+.crow .flags{display:flex;gap:0}
+.flag{position:relative;width:22px;height:26px;padding:0;border:none;border-radius:5px;background:transparent;color:transparent;font-size:0;cursor:pointer}
+.flag.nl{width:30px}
+.flag::after{content:"";position:absolute;inset:0;margin:auto;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--line);box-sizing:border-box;transition:transform 90ms,background 90ms,border-color 90ms}
+.flag:hover{background:var(--sel-soft)}
+.flag:hover::after{border-color:var(--muted)}
+.flag.on::after{width:11px;height:11px;border:none}
+.flag.pk.on::after{background:var(--pk)}
+.flag.nl.on::after{background:var(--muted)}
+.flag.uq.on::after{background:var(--uq)}
+.flag.ix.on::after{background:var(--ix)}
+.flag.fk{width:24px;font-size:13px;color:var(--muted);line-height:26px}
+.flag.fk::after{display:none}
+.flag.fk.on{color:var(--fk)}
+.flag.fk.open{background:var(--sel-soft);color:var(--sel)}
+.crow .x{margin:0!important;padding:0;align-self:center;justify-self:center;height:26px}
+.crow.cmore{grid-template-columns:1.3fr 1fr;padding:3px 0 8px 10px;margin:0 0 3px 4px;border-left:2px solid var(--line-2)}
+.crow.cmore label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--muted);min-width:0}
+.crow.cmore select{padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-family:var(--mono);font-size:12px;min-width:0;width:100%}
+.item.tbl .addcol{border-style:dashed;color:var(--muted)}
 
 /* ---- tooltips ---- */
 .tip{position:fixed;z-index:100;pointer-events:none;max-width:260px;padding:5px 8px;border-radius:6px;background:var(--fg);color:var(--bg);font-size:11.5px;line-height:1.35;box-shadow:0 4px 14px rgb(0 0 0 / .18);opacity:0;transform:translateY(-2px);transition:opacity 90ms ease,transform 90ms ease}
