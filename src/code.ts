@@ -11,6 +11,10 @@ import { linter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { tags as t } from '@lezer/highlight';
 import { contextAt, avroSuggestions, avroProblems, problemRange, type Suggestion } from './avro';
+import { StreamLanguage } from '@codemirror/language';
+import { parseDbml, parseSql, toDbml, PG_TYPE_LIST, FLAG_LIST, type RefResolver } from './dbml';
+import type { Table } from './model';
+
 
 export interface BodyVocab {
   /** field names worth suggesting, with where they come from */
@@ -185,3 +189,135 @@ export function mountCode(parent: HTMLElement, o: CodeOptions): EditorView {
   parent.textContent = '';
   return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });
 }
+
+// ---------- tables as text (DBML-style) ----------
+
+const dbmlLang = StreamLanguage.define<{ inBracket: boolean; word: number }>({
+  startState: () => ({ inBracket: false, word: 0 }),
+  token(stream, st) {
+    if (stream.sol()) { st.word = 0; st.inBracket = false; }
+    if (stream.eatSpace()) return null;
+    if (stream.match('//')) { stream.skipToEnd(); return 'comment'; }
+    if (st.inBracket) {
+      if (stream.eat(']')) { st.inBracket = false; return 'bracket'; }
+      if (stream.match(/^`[^`]*`?/) || stream.match(/^'[^']*'?/) || stream.match(/^"[^"]*"?/)) return 'string';
+      if (stream.match(/^(pk|primary key|unique|index|not null|null|increment|default|ref|note)\b/i)) return 'keyword';
+      if (stream.match(/^-?\d+(\.\d+)?/)) return 'number';
+      if (stream.match(/^[<>:,-]/)) return 'punctuation';
+      stream.match(/^[\w.$()-]+/) || stream.next(); return 'variableName';
+    }
+    if (stream.eat('[')) { st.inBracket = true; return 'bracket'; }
+    if (stream.match(/^[{}]/)) return 'brace';
+    if (stream.match(/^table\b/i) && st.word === 0) { st.word = -1; return 'keyword'; }
+    if (st.word === -1) { stream.match(/^[\w."$]+/) || stream.next(); return 'typeName'; }
+    if (stream.eat('?')) return 'operator';
+    if (stream.match(/^[\w"$]+/)) { st.word++; return st.word === 1 ? 'propertyName' : 'typeName'; }
+    if (stream.match(/^\w+\s*\([\d, ]*\)/)) { st.word++; return 'typeName'; }
+    stream.next(); return null;
+  },
+});
+const dbmlHighlight = HighlightStyle.define([
+  { tag: t.keyword, color: 'var(--syn-kw)', fontWeight: '500' },
+  { tag: t.propertyName, color: 'var(--fg)' },
+  { tag: t.typeName, color: 'var(--syn-key)' },
+  { tag: t.string, color: 'var(--syn-str)' },
+  { tag: t.number, color: 'var(--syn-num)' },
+  { tag: t.comment, color: 'var(--muted)', fontStyle: 'italic' },
+  { tag: t.operator, color: 'var(--pk)', fontWeight: '600' },
+  { tag: [t.brace, t.squareBracket, t.punctuation], color: 'var(--muted)' },
+  { tag: t.variableName, color: 'var(--fk)' },
+]);
+
+export interface DbmlOptions {
+  doc: string;
+  onChange: (text: string) => void;
+  onFocus?: () => void;
+  resolver: RefResolver;
+  /** `db-name.table.column` targets in other databases (their primary keys) */
+  externalTargets: () => string[];
+  big?: boolean;
+}
+
+function dbmlSource(o: DbmlOptions) {
+  return (ctx: CompletionContext): CompletionResult | null => {
+    const doc = ctx.state.doc, line = doc.lineAt(ctx.pos), before = line.text.slice(0, ctx.pos - line.from);
+    // are we inside a table body?
+    let inTable = false;
+    for (let n = line.number - 1; n >= 1; n--) { const l = doc.line(n).text.trim(); if (/^}/.test(l)) break; if (/^table\b/i.test(l)) { inTable = true; break; } }
+    const word = /[\w.$>-]*$/.exec(before)![0], from = ctx.pos - word.length;
+    const open = before.lastIndexOf('['), close = before.lastIndexOf(']');
+    if (inTable && open > close) {
+      const seg = before.slice(open + 1).split(',').pop()!;
+      if (/^\s*ref\s*:\s*>?\s*[\w.$-]*$/i.test(seg)) {
+        const parsed = parseDbml(doc.toString(), o.resolver);
+        const local = parsed.tables.flatMap(tb => tb.columns.map(c => ({ label: `${tb.name}.${c.name}`, detail: c.type + (c.pk ? ' · pk' : ''), boost: c.pk ? 1 : 0 })));
+        const ext = o.externalTargets().map(x => ({ label: x, detail: 'other database' }));
+        const tf = /[\w.$-]*$/.exec(before)![0];
+        return { from: ctx.pos - tf.length, options: [...local, ...ext].map(x => ({ ...x, type: 'variable' })), validFor: /^[\w.$-]*$/ };
+      }
+      if (/^\s*[\w ]*$/.test(seg)) {
+        const fw = /[\w ]*$/.exec(seg)![0].trimStart();
+        return { from: ctx.pos - fw.length, options: FLAG_LIST.map(f => ({ label: f.label, apply: f.apply, info: f.info, type: 'keyword' })), validFor: /^[\w ]*$/ };
+      }
+      return null;
+    }
+    if (inTable && /^\s+[\w"$]+\s+[\w(),]*$/.test(before)) {
+      return { from, options: PG_TYPE_LIST.map((x, i) => ({ label: x, type: 'type', boost: -i * 0.01 })), validFor: /^[\w(),]*$/ };
+    }
+    if (inTable && /^\s+[\w"$]+\s+\S+\s+$/.test(before) && ctx.explicit) {
+      return { from: ctx.pos, options: [{ label: '[ ]', apply: snippet('[${}]'), type: 'text', detail: 'flags' }, { label: '?', apply: '?', type: 'text', detail: 'nullable' }] };
+    }
+    if (!inTable && /^\s*\w*$/.test(before)) {
+      return { from: line.from, options: [{ label: 'Table', apply: snippet('Table ${name} {\n  id uuid [pk]\n  ${}\n}'), detail: 'new table', type: 'keyword' }] };
+    }
+    return null;
+  };
+}
+
+function dbmlLinter(o: DbmlOptions) {
+  return (view: EditorView): Diagnostic[] => {
+    const text = view.state.doc.toString();
+    if (!text.trim()) return [];
+    return parseDbml(text, o.resolver).errors.map(e => {
+      const l = view.state.doc.line(Math.min(e.line + 1, view.state.doc.lines));
+      const lead = l.text.length - l.text.trimStart().length;
+      return { from: l.from + lead, to: Math.max(l.from + lead + 1, l.to), severity: 'error' as const, message: e.message };
+    });
+  };
+}
+
+/** Paste CREATE TABLE … and get the text format instead. */
+const sqlPaste = (o: DbmlOptions) => EditorView.domEventHandlers({
+  paste(ev, view) {
+    const text = ev.clipboardData?.getData('text/plain') ?? '';
+    if (!/create\s+table/i.test(text)) return false;
+    const p = parseSql(text);
+    if (!p.tables.length) return false;
+    ev.preventDefault();
+    const sel = view.state.selection.main;
+    const cur = view.state.doc.toString();
+    const lead = sel.from > 0 && !cur.slice(0, sel.from).endsWith('\n\n') ? (cur.slice(0, sel.from).endsWith('\n') ? '\n' : '\n\n') : '';
+    view.dispatch({ changes: { from: sel.from, to: sel.to, insert: lead + toDbml(p.tables, o.resolver) } });
+    return true;
+  },
+});
+
+export function mountDbml(parent: HTMLElement, o: DbmlOptions): EditorView {
+  const exts: Extension[] = [
+    history(), drawSelection(), bracketMatching(), closeBrackets(), indentOnInput(),
+    dbmlLang, syntaxHighlighting(dbmlHighlight), theme, EditorState.tabSize.of(2),
+    autocompletion({ override: [dbmlSource(o)], icons: false, activateOnTyping: true, maxRenderedOptions: 60 }),
+    EditorView.inputHandler.of((view, _f, _t, text) => { if (text === ' ' || text === '[' || text === ',' || text === '>') setTimeout(() => { if (view.hasFocus) startCompletion(view); }, 0); return false; }),
+    linter(dbmlLinter(o), { delay: 300 }),
+    sqlPaste(o),
+    keymap.of([...closeBracketsKeymap, ...completionKeymap, ...lintKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap]),
+    EditorView.updateListener.of(u => { if (u.docChanged) o.onChange(u.state.doc.toString()); }),
+    EditorView.domEventHandlers({ focus: () => { o.onFocus?.(); return false; } }),
+    cmPlaceholder('Table payments {\n  id uuid [pk]\n}\n\n— or paste CREATE TABLE … SQL'),
+  ];
+  if (o.big) exts.push(lineNumbers(), highlightActiveLine());
+  parent.textContent = '';
+  return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });
+}
+export { parseDbml, toDbml };
+export type { Table };
