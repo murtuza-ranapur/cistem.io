@@ -122,6 +122,12 @@ $('resetBtn').onclick = async () => { await openAsNew(toFile(exampleDoc(), { tit
 document.addEventListener('keydown', ev => {
   const t = (ev.target as Element).tagName;
   const mod = ev.metaKey || ev.ctrlKey;
+  if (ev.defaultPrevented) return;
+  if ((ev.target as HTMLElement).isContentEditable || (ev.target as Element).closest?.('.cm-editor, .cm-overlay')) {
+    // the code editor owns its keys; Escape (when no suggestion list is open) just leaves it
+    if (ev.key === 'Escape' && !document.querySelector('.cm-tooltip-autocomplete')) (ev.target as HTMLElement).blur();
+    return;
+  }
   if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') {
     if (ev.key === 'Escape') (ev.target as HTMLElement).blur(); // leave the field; a second Escape clears the selection
     return;

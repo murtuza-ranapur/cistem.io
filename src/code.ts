@@ -1,0 +1,187 @@
+/**
+ * The code editor for JSON bodies and Avro schemas (CodeMirror 6). Loaded on demand, so the main bundle
+ * stays small. Avro smarts live in ./avro (pure, unit-tested); body suggestions come from the diagram.
+ */
+import { EditorView, keymap, drawSelection, placeholder as cmPlaceholder, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import { EditorState, type Extension } from '@codemirror/state';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { syntaxHighlighting, HighlightStyle, bracketMatching, indentOnInput, foldGutter, foldKeymap } from '@codemirror/language';
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, snippet, startCompletion, type CompletionContext, type CompletionResult, type Completion } from '@codemirror/autocomplete';
+import { linter, lintKeymap, type Diagnostic } from '@codemirror/lint';
+import { json, jsonParseLinter } from '@codemirror/lang-json';
+import { tags as t } from '@lezer/highlight';
+import { contextAt, avroSuggestions, avroProblems, problemRange, type Suggestion } from './avro';
+
+export interface BodyVocab {
+  /** field names worth suggesting, with where they come from */
+  keys: { name: string; from: string; example?: unknown }[];
+}
+export interface CodeOptions {
+  kind: 'json' | 'avro';
+  doc: string;
+  onChange: (text: string) => void;
+  onFocus?: () => void;
+  vocab?: () => BodyVocab;
+  big?: boolean;
+  placeholder?: string;
+}
+
+const highlight = HighlightStyle.define([
+  { tag: t.propertyName, color: 'var(--syn-key)' },
+  { tag: t.string, color: 'var(--syn-str)' },
+  { tag: t.number, color: 'var(--syn-num)' },
+  { tag: [t.bool, t.null], color: 'var(--syn-kw)', fontWeight: '500' },
+  { tag: [t.brace, t.squareBracket, t.separator, t.punctuation], color: 'var(--muted)' },
+]);
+
+const theme = EditorView.theme({
+  '&': { fontSize: '12px', border: '1px solid var(--line)', borderRadius: '7px', background: 'var(--bg)', color: 'var(--fg)' },
+  '&.cm-focused': { outline: 'none', borderColor: 'var(--sel)', boxShadow: '0 0 0 3px var(--sel-soft)' },
+  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.55' },
+  '.cm-content': { padding: '6px 0', caretColor: 'var(--fg)' },
+  '.cm-line': { padding: '0 8px' },
+  '.cm-gutters': { background: 'transparent', border: 'none', color: 'var(--muted)', opacity: '.7' },
+  '.cm-activeLine': { background: 'var(--sel-soft)' },
+  '.cm-activeLineGutter': { background: 'transparent' },
+  '&.cm-focused .cm-matchingBracket': { background: 'var(--sel-soft)', outline: '1px solid var(--sel)' },
+  '.cm-placeholder': { color: 'var(--muted)', fontStyle: 'normal' },
+  '.cm-tooltip': { border: '1px solid var(--line)', borderRadius: '7px', background: 'var(--panel)', boxShadow: 'var(--shadow)', overflow: 'hidden' },
+  '.cm-tooltip-autocomplete > ul': { fontFamily: 'var(--mono)', fontSize: '12px', maxHeight: '240px' },
+  '.cm-tooltip-autocomplete > ul > li': { padding: '3px 10px 3px 8px !important', lineHeight: '1.5' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': { background: 'var(--sel-soft)', color: 'var(--fg)' },
+  '.cm-completionDetail': { color: 'var(--muted)', fontStyle: 'normal', marginLeft: '10px', fontSize: '11px' },
+  '.cm-completionMatchedText': { textDecoration: 'none', fontWeight: '600', color: 'var(--sel)' },
+  '.cm-completionInfo': { fontFamily: 'var(--font)', fontSize: '11.5px', padding: '6px 9px', maxWidth: '240px', color: 'var(--fg)' },
+  '.cm-diagnostic': { fontFamily: 'var(--font)', fontSize: '11.5px', padding: '5px 9px' },
+  '.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy var(--crit)', textUnderlineOffset: '3px' },
+  '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy var(--warn)', textUnderlineOffset: '3px' },
+  '.cm-foldGutter span': { padding: '0 2px' },
+});
+
+/** Format = re-indent valid JSON with two spaces (keeps the text as-is when it doesn't parse). */
+export function formatJson(view: EditorView): boolean {
+  const text = view.state.doc.toString();
+  try {
+    const out = JSON.stringify(JSON.parse(text), null, 2);
+    if (out !== text) view.dispatch({ changes: { from: 0, to: text.length, insert: out } });
+  } catch { /* leave invalid JSON alone; the linter already says why */ }
+  return true;
+}
+
+const KIND_TYPE: Record<Suggestion['kind'], string> = { property: 'property', type: 'type', keyword: 'keyword', snippet: 'text', value: 'enum' };
+function toCompletion(s: Suggestion): Completion {
+  const c: Completion = { label: s.label, detail: s.detail, info: s.info, type: KIND_TYPE[s.kind], boost: s.boost };
+  c.apply = s.apply.includes('${') ? snippet(s.apply) : s.apply;
+  return c;
+}
+/** We do our own matching: CodeMirror's filter would compare against the quote too. */
+function rank(options: Suggestion[], partial: string): Suggestion[] {
+  if (!partial) return options;
+  const p = partial.toLowerCase();
+  const starts = options.filter(o => o.label.toLowerCase().startsWith(p));
+  const contains = options.filter(o => !o.label.toLowerCase().startsWith(p) && o.label.toLowerCase().includes(p));
+  return [...starts, ...contains];
+}
+
+function avroSource(ctx: CompletionContext): CompletionResult | null {
+  const text = ctx.state.doc.toString();
+  const c = contextAt(text, ctx.pos);
+  if (c.where === 'none') return null;
+  const opts = rank(avroSuggestions(text, c), c.partial);
+  if (!opts.length) return null;
+  return { from: c.from, to: c.to, options: opts.map(toCompletion), filter: false };
+}
+
+/** A sensible example value for a field, from its name (snippet syntax: ${} marks the editable part). */
+export const exampleFor = (name: string): string => {
+  if (/^id$|_id$|[a-z]Id$/.test(name)) return '"${<uuid>}"';
+  if (/_at$|[a-z]At$|date|time/i.test(name)) return '"${2026-01-01T00:00:00Z}"';
+  if (/currency/i.test(name)) return '"${GBP}"';
+  if (/amount|price|total|count|qty|quantity|minor/i.test(name)) return '${1000}';
+  if (/^(is|has)[_A-Z]/.test(name)) return '${true}';
+  if (/status|state/i.test(name)) return '"${PENDING}"';
+  if (/email/i.test(name)) return '"${name@example.com}"';
+  if (/[^s]s$/.test(name)) return '[${}]';
+  return '"${}"';
+};
+
+function bodySource(vocab?: () => BodyVocab) {
+  return (ctx: CompletionContext): CompletionResult | null => {
+    const text = ctx.state.doc.toString();
+    const c = contextAt(text, ctx.pos);
+    if (c.where === 'key') {
+      const seen = new Set(c.present);
+      const pool = (vocab?.().keys ?? []).filter(k => !seen.has(k.name));
+      const uniq = new Map<string, { name: string; from: string; example?: unknown }>();
+      pool.forEach(k => { if (!uniq.has(k.name)) uniq.set(k.name, k); });
+      const opts = rank([...uniq.values()].map((k, i) => ({
+        label: k.name, detail: k.from, kind: 'property' as const, boost: -i * 0.001,
+        apply: c.hasColon ? `"${k.name}"` : `"${k.name}": ${k.example !== undefined ? JSON.stringify(k.example).replace(/\$/g, '\\$') : exampleFor(k.name)}`,
+      })), c.partial);
+      if (!opts.length) return null;
+      return { from: c.from, to: c.to, options: opts.map(toCompletion), filter: false };
+    }
+    if (c.where === 'value' && !c.inString && !c.partial) {
+      const opts: Suggestion[] = [
+        { label: '{ }', apply: '{\n  "${}": ""\n}', detail: 'object', kind: 'snippet' },
+        { label: '[ ]', apply: '[${}]', detail: 'array', kind: 'snippet' },
+        { label: 'true', apply: 'true', kind: 'value' }, { label: 'false', apply: 'false', kind: 'value' }, { label: 'null', apply: 'null', kind: 'value' },
+      ];
+      if (c.key) opts.unshift({ label: 'example', apply: exampleFor(c.key), detail: 'for ' + c.key, kind: 'snippet', boost: 5 });
+      return { from: c.from, to: c.to, options: opts.map(toCompletion), filter: false };
+    }
+    return null;
+  };
+}
+
+/** JSON syntax errors come back as a point; stretch them over the offending token so they're visible. */
+function syntaxErrors(view: EditorView): Diagnostic[] {
+  const text = view.state.doc.toString();
+  return jsonParseLinter()(view).map(d => {
+    if (d.to > d.from) return d;
+    let from = d.from, to = d.from;
+    while (to < text.length && /[^\s,:{}[\]]/.test(text[to])) to++;
+    if (to === from) { // at a delimiter or the end: underline the previous token instead
+      while (from > 0 && /\s/.test(text[from - 1])) from--;
+      to = from; while (from > 0 && /[^\s,:{}[\]]/.test(text[from - 1])) from--;
+      if (from === to) { from = Math.max(0, d.from - 1); to = Math.min(text.length, from + 1); }
+    }
+    return { ...d, from, to };
+  });
+}
+
+function avroLinter(view: EditorView): Diagnostic[] {
+  const base = syntaxErrors(view);
+  if (base.length) return base;
+  const text = view.state.doc.toString();
+  if (!text.trim()) return [];
+  return avroProblems(text).map(p => { const [from, to] = problemRange(text, p); return { from, to, severity: p.severity, message: p.message }; });
+}
+function jsonLinter(view: EditorView): Diagnostic[] {
+  return view.state.doc.length && view.state.doc.toString().trim() ? syntaxErrors(view) : [];
+}
+
+/** Open completions as soon as a quote, colon, comma or bracket opens a slot (not just on letters). */
+const autoOpen = EditorView.inputHandler.of((view, _from, _to, text) => {
+  if (/^["{,:[ ]$/.test(text)) setTimeout(() => { if (view.hasFocus) startCompletion(view); }, 0);
+  return false;
+});
+
+export function mountCode(parent: HTMLElement, o: CodeOptions): EditorView {
+  const exts: Extension[] = [
+    history(), drawSelection(), indentOnInput(), bracketMatching(), closeBrackets(),
+    json(), syntaxHighlighting(highlight), theme,
+    EditorState.tabSize.of(2),
+    autocompletion({ override: [o.kind === 'avro' ? avroSource : bodySource(o.vocab)], icons: false, activateOnTyping: true, closeOnBlur: true, maxRenderedOptions: 40 }),
+    autoOpen,
+    linter(o.kind === 'avro' ? avroLinter : jsonLinter, { delay: 350 }),
+    keymap.of([...closeBracketsKeymap, ...completionKeymap, ...lintKeymap, ...foldKeymap, { key: 'Shift-Alt-f', run: formatJson }, { key: 'Mod-s', run: v => { formatJson(v); return false; } }, ...historyKeymap, indentWithTab, ...defaultKeymap]),
+    EditorView.updateListener.of(u => { if (u.docChanged) o.onChange(u.state.doc.toString()); }),
+    EditorView.domEventHandlers({ focus: () => { o.onFocus?.(); return false; } }),
+    EditorView.lineWrapping,
+    cmPlaceholder(o.placeholder ?? (o.kind === 'avro' ? 'Type { and pick from the suggestions…' : '{ "field": "value" } — suggestions as you type')),
+  ];
+  if (o.big) exts.push(lineNumbers(), foldGutter(), highlightActiveLine());
+  parent.textContent = '';
+  return new EditorView({ parent, state: EditorState.create({ doc: o.doc, extensions: exts }) });
+}
