@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "tsx test/document.test.ts && tsx test/fields.test.ts && tsx test/avro.test.ts",
+    "test": "tsx test/document.test.ts && tsx test/fields.test.ts && tsx test/avro.test.ts && tsx test/dbml.test.ts",
     "test:e2e": "node test/e2e.js"
   },
   "repository": {

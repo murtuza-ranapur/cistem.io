@@ -338,49 +338,104 @@ class T {
     assert((await t.page.textContent('.tip.on')).includes('Fit'), 'moving to the neighbour shows its tip at once');
   });
 
-  // ---- table editor ----
+  const completions = t => t.page.$$eval('.cm-tooltip-autocomplete li .cm-completionLabel', els => els.map(e => e.textContent));
+  const setCodeDb = async (t, text) => { await t.page.click('.cm-host[data-cmdb] .cm-content'); await t.page.keyboard.press('Control+a'); await t.page.keyboard.press('Delete'); if (text) await t.page.keyboard.insertText(text); await t.page.waitForTimeout(150); };
+  // ---- table editor (rows + code) ----
   const dbId = async t => (await t.doc()).model.nodes.find(n => n.kind === 'db').id;
   const openTables = async t => { const id = await dbId(t); await t.clickNode(id); await t.page.click('[data-tab="schema"]'); await t.page.waitForTimeout(200); return id; };
 
-  await test('table editor: add a column, name and type it, toggle flags', async t => {
+  await test('tables: rows read like the canvas node; click a row to edit it', async t => {
+    const id = await openTables(t);
+    const rows = await t.page.$$eval('.tcard[data-t="0"] .trow .tnm', els => els.map(e => e.textContent));
+    assert(rows[0] === 'id' && rows.includes('merchant_id'), 'rows listed: ' + rows);
+    assert(await t.page.$('.tcard[data-t="0"] .trow .tkey svg'), 'key icon on the pk');
+    await t.page.click(`[data-opencol="${id}:0:1"]`); await t.page.waitForTimeout(150);
+    assert(await t.page.$('.tedit .cname'), 'editor opened'); eq(await t.page.evaluate(() => document.activeElement.className), 'cname', 'name focused');
+    await t.page.click('.tedit [data-flip$=".unique"]'); await t.page.waitForTimeout(100);
+    await t.page.selectOption('.tedit select[data-path$=".references"]', 'refunds.id'); await t.page.waitForTimeout(100);
+    await t.page.fill('.tedit input[data-path$=".default"]', 'gen_random_uuid()');
+    await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    assert(!(await t.page.$('.tedit')), 'Enter closes the row');
+    const c = (await t.node(id)).tables[0].columns[1];
+    eq(c.unique, true); eq(c.references, 'refunds.id'); eq(c.default, 'gen_random_uuid()');
+    const tags = await t.page.textContent(`[data-opencol="${id}:0:1"] .ttags`);
+    assert(tags.includes('→ refunds.id') && tags.includes('UQ') && tags.includes('= gen_random_uuid()'), 'tags on the row: ' + tags);
+  });
+
+  await test('tables: PK implies NOT NULL; allowing NULL drops PK', async t => {
+    const id = await openTables(t);
+    await t.page.click(`[data-opencol="${id}:0:2"]`); await t.page.waitForTimeout(150);
+    let c = (await t.node(id)).tables[0].columns[2];
+    if (!c.nullable) { await t.page.click('.tedit [data-flip$=".nullable"]'); await t.page.waitForTimeout(100); }
+    await t.page.click('.tedit [data-flip$=".pk"]'); await t.page.waitForTimeout(100);
+    c = (await t.node(id)).tables[0].columns[2]; eq(c.pk, true); eq(c.nullable, false, 'PK → not null');
+    await t.page.click('.tedit [data-flip$=".nullable"]'); await t.page.waitForTimeout(100);
+    c = (await t.node(id)).tables[0].columns[2]; eq(c.nullable, true); eq(c.pk, false, 'nullable → not a PK');
+  });
+
+  await test('tables: add columns by typing one line each', async t => {
     const id = await openTables(t);
     const before = (await t.node(id)).tables[0].columns.length;
-    await t.page.click('[data-action="add-column:0"]'); await t.page.waitForTimeout(150);
-    await t.page.keyboard.type('captured_at'); // focus lands on the new name
-    const row = `[data-col="0:${before}"]`;
-    await t.page.fill(`${row} .ctype`, 'timestamptz'); await t.page.waitForTimeout(100);
-    await t.page.click(`${row} [data-flip$=".index"]`); await t.page.waitForTimeout(100);
-    await t.page.click(`${row} [data-flip$=".nullable"]`); await t.page.waitForTimeout(100); // new columns start nullable → off
-    const c = (await t.node(id)).tables[0].columns[before];
-    eq(c.name, 'captured_at'); eq(c.type, 'timestamptz'); eq(c.index, true, 'indexed'); eq(c.nullable, false, 'not null');
-    assert(await t.page.$eval(`${row} [data-flip$=".index"]`, e => e.classList.contains('on')), 'flag shows on');
+    await t.page.click('[data-addcol="0"]');
+    await t.page.keyboard.type('refunded_at timestamptz?'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    eq(await t.page.evaluate(() => document.activeElement.dataset.addcol), '0', 'focus stays for the next one');
+    await t.page.keyboard.type('code char(3) [unique]'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    await t.page.keyboard.type('justaname'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    assert((await t.page.textContent('[data-adderr="0"]')).includes('needs a type'), 'explains a bad line');
+    const cols = (await t.node(id)).tables[0].columns;
+    eq(cols.length, before + 2);
+    eq(cols[before].name, 'refunded_at'); eq(cols[before].nullable, true);
+    eq(cols[before + 1].unique, true);
   });
 
-  await test('table editor: PK forces NOT NULL; NULL clears PK', async t => {
+  await test('tables: Code view edits the schema as text, with suggestions', async t => {
     const id = await openTables(t);
-    await t.page.click('[data-col="0:1"] [data-flip$=".nullable"]'); await t.page.waitForTimeout(100); // make it nullable (if not)
-    let c = (await t.node(id)).tables[0].columns[1];
-    if (!c.nullable) { await t.page.click('[data-col="0:1"] [data-flip$=".nullable"]'); await t.page.waitForTimeout(100); c = (await t.node(id)).tables[0].columns[1]; }
-    eq(c.nullable, true);
-    await t.page.click('[data-col="0:1"] [data-flip$=".pk"]'); await t.page.waitForTimeout(100);
-    c = (await t.node(id)).tables[0].columns[1]; eq(c.pk, true); eq(c.nullable, false, 'PK made it NOT NULL');
-    await t.page.click('[data-col="0:1"] [data-flip$=".nullable"]'); await t.page.waitForTimeout(100);
-    c = (await t.node(id)).tables[0].columns[1]; eq(c.nullable, true); eq(c.pk, false, 'nullable is no longer a PK');
+    await t.page.click('[data-tblmode="code"]'); await t.page.waitForSelector('.cm-host[data-cmdb] .cm-content');
+    const text = await t.page.textContent('.cm-host[data-cmdb] .cm-content');
+    assert(text.includes('Table payments {') && text.includes('[ref: > payments.id]'), 'shows the tables as text');
+    // add a column at the end of the first table
+    await t.page.click('.cm-host[data-cmdb] .cm-content');
+    await t.page.keyboard.press('Control+Home');
+    for (let i = 0; i < 7; i++) await t.page.keyboard.press('ArrowDown'); // on created_at (last column of payments)
+    await t.page.keyboard.press('End'); await t.page.keyboard.press('Enter');
+    await t.page.keyboard.type('refunded_at times'); await t.page.waitForSelector('.cm-tooltip-autocomplete'); await t.page.waitForTimeout(200);
+    eq((await completions(t))[0], 'timestamptz', 'type suggestions');
+    await t.page.keyboard.press('Enter'); await t.page.keyboard.type('? ['); await t.page.waitForSelector('.cm-tooltip-autocomplete'); await t.page.waitForTimeout(200);
+    assert((await completions(t)).includes('ref: >'), 'flag suggestions');
+    await t.page.keyboard.type('ref: > ref'); await t.page.waitForTimeout(200);
+    assert((await completions(t)).includes('refunds.id'), 'FK targets: ' + await completions(t));
+    await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(500); // pick the first target (the pk)
+    const col = (await t.node(id)).tables[0].columns.at(-1);
+    eq(col.name, 'refunded_at'); eq(col.type, 'timestamptz'); eq(col.nullable, true);
+    assert(col.references?.startsWith('refunds.'), 'ref saved: ' + col.references);
   });
 
-  await test('table editor: foreign key and default live behind the ⋯ toggle', async t => {
+  await test('tables: invalid text keeps the last valid version and says so', async t => {
     const id = await openTables(t);
-    assert(!(await t.page.$('.crow.cmore')), 'collapsed by default');
-    await t.page.click('[data-col="0:1"] [data-colmore]'); await t.page.waitForTimeout(150);
-    const opts = await t.page.$$eval('.crow.cmore select option', os => os.map(o => o.value));
-    assert(opts.includes('refunds.id'), 'other tables offered: ' + opts);
-    await t.page.selectOption('.crow.cmore select', 'refunds.id'); await t.page.waitForTimeout(100);
-    await t.page.fill('.crow.cmore input[data-path$=".default"]', 'gen_random_uuid()'); await t.page.waitForTimeout(100);
-    const c = (await t.node(id)).tables[0].columns[1];
-    eq(c.references, 'refunds.id'); eq(c.default, 'gen_random_uuid()');
-    eq(await t.page.textContent('[data-col="0:1"] [data-colmore]'), '→', 'FK marker on the row');
-    await t.page.click('[data-col="0:1"] [data-colmore]'); await t.page.waitForTimeout(150);
-    assert(!(await t.page.$('.crow.cmore')), 'collapses again');
+    await t.page.click('[data-tblmode="code"]'); await t.page.waitForSelector('.cm-host[data-cmdb] .cm-content');
+    const good = JSON.stringify((await t.node(id)).tables);
+    await t.page.click('.cm-host[data-cmdb] .cm-content'); await t.page.keyboard.press('Control+Home');
+    await t.page.keyboard.press('ArrowDown'); await t.page.keyboard.press('End'); await t.page.keyboard.press('Enter');
+    await t.page.keyboard.type('broken'); await t.page.waitForTimeout(500);
+    eq(JSON.stringify((await t.node(id)).tables), good, 'model untouched while text is invalid');
+    assert((await t.page.textContent('[data-tblstatus]')).includes('1 problem'), 'status says so');
+    assert(await t.page.$('.cm-host[data-cmdb] .cm-lintRange-error'), 'line underlined');
+  });
+
+  await test('tables: pasting CREATE TABLE converts it', async t => {
+    const id = await openTables(t);
+    await t.page.click('[data-tblmode="code"]'); await t.page.waitForSelector('.cm-host[data-cmdb] .cm-content');
+    await setCodeDb(t, '');
+    await t.page.evaluate(() => {
+      const el = document.querySelector('.cm-host[data-cmdb] .cm-content');
+      const dt = new DataTransfer(); dt.setData('text/plain', 'CREATE TABLE ledger (id bigserial PRIMARY KEY, account text NOT NULL, amount numeric(18,2) NOT NULL, note text);');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await t.page.waitForTimeout(300);
+    const ts = (await t.node(id)).tables;
+    eq(ts.length, 1); eq(ts[0].name, 'ledger');
+    assert((await t.page.textContent('.cm-host[data-cmdb] .cm-content')).includes('Table ledger {'), 'shown as text');
+    eq(ts[0].columns.find(c => c.name === 'note').nullable, true);
   });
 
   // ---- structured editors ----
@@ -390,7 +445,7 @@ class T {
   const cm = (path) => fe(path) + ' .cm-content';
   /** replace the code editor's text (insertText bypasses auto-closing brackets) */
   const setCode = async (t, path, text) => { await t.page.waitForSelector(cm(path)); await t.page.click(cm(path)); await t.page.keyboard.press('Control+a'); await t.page.keyboard.press('Delete'); if (text) await t.page.keyboard.insertText(text); await t.page.waitForTimeout(120); };
-  const completions = t => t.page.$$eval('.cm-tooltip-autocomplete li .cm-completionLabel', els => els.map(e => e.textContent));
+
 
   await test('body editor shows existing JSON as fields and edits write JSON back', async t => {
     await openSchema(t, 'n3'); await fieldsMode(t, 'endpoints.0.req');

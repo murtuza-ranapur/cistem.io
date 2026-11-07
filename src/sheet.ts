@@ -1,12 +1,26 @@
 import { KINDS, METHODS, PG_TYPES, EVICTIONS, CONTAINER_KINDS, LINK_TYPES, CROSSING_DEFAULT_MS, ancestry, nextId, type Node, type Edge, type ServiceNode, type DbNode, type QueueNode, type EntryNode, type Container, type ContainerKind } from './model';
 import { state, fmt, esc, current, on, renderCanvas, renderAll, mutate, select } from './state';
 import * as history from './history';
+import { toDbml, parseDbml, quickColumn, PG_TYPE_LIST } from './dbml';
 import { parseJsonFields, jsonFieldsToText, parseAvro, avroToText, listAt, J_TYPES, A_TYPES, COMMON_HEADERS, HEADER_VALUES, type JField, type AField, type JType, type ARecord } from './fields';
 
 const inspector = document.getElementById('inspector') as HTMLElement;
 let tab: 'capacity' | 'schema' = 'capacity';
-const colOpen = new Set<string>(); // expanded column rows (references / default)
+let openCol = '';                   // the one column row being edited ("node:table:col")
+const tblMode = new Map<string, 'rows' | 'code'>();
+const dbDrafts = new Map<string, string>(); // text that doesn't parse yet (kept so a redraw doesn't lose it)
 let focusAfterDraw = '';
+const refResolver = () => ({
+  nameToId: (name: string) => state.doc.nodes.find(x => x.kind === 'db' && x.name === name)?.id ?? null,
+  idToName: (id: string) => state.doc.nodes.find(x => x.id === id)?.name ?? null,
+});
+const refLabel = (r: string) => { const m = /^([^:]+):(.+)$/.exec(r); return m ? `${state.doc.nodes.find(x => x.id === m[1])?.name ?? m[1]}.${m[2]}` : r; };
+function tblStatus(n: DbNode) {
+  const d = dbDrafts.get(n.id);
+  if (d !== undefined) { const e = parseDbml(d, refResolver()).errors.length; return `<span class="bad">●</span> ${e} problem${e === 1 ? '' : 's'} — the diagram keeps the last valid version`; }
+  const ts = n.tables || [];
+  return `<span class="good">●</span> ${ts.length} table${ts.length === 1 ? '' : 's'} · ${ts.reduce((a, t) => a + (t.columns || []).length, 0)} columns`;
+}
 const body = document.getElementById('sheetBody') as HTMLElement;
 
 const icon = (kind: string) => `<svg style="stroke:var(--c-${kind});fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><use href="#ic-${kind}"/></svg>`;
@@ -75,7 +89,45 @@ function bodyVocab(nodeId: string) {
   return { keys };
 }
 
+function dbEditorOptions(nodeId: string, big = false) {
+  const n = () => state.doc.nodes.find(x => x.id === nodeId) as DbNode | undefined;
+  return {
+    big,
+    doc: dbDrafts.get(nodeId) ?? toDbml(n()?.tables || [], refResolver()),
+    resolver: refResolver(),
+    externalTargets: () => state.doc.nodes.filter(x => x.kind === 'db' && x.id !== nodeId).flatMap(x => ((x as DbNode).tables || []).flatMap(t => (t.columns || []).filter(c => c.pk).map(c => `${x.name}.${t.name}.${c.name}`))),
+    onFocus: () => history.snapshot(state.doc),
+    onChange: (text: string) => {
+      const node = n(); if (!node) return;
+      const p = parseDbml(text, refResolver());
+      if (p.errors.length) dbDrafts.set(nodeId, text);
+      else { dbDrafts.delete(nodeId); node.tables = p.tables; renderCanvas(); }
+      const st = body.querySelector<HTMLElement>('[data-tblstatus]'); if (st) st.innerHTML = tblStatus(node);
+    },
+  };
+}
+function openBigTables() {
+  const t = current() as DbNode; if (!t) return;
+  const ov = document.createElement('div');
+  ov.className = 'cm-overlay';
+  ov.innerHTML = `<div class="cm-dialog" role="dialog" aria-label="Tables"><div class="cm-dhead"><strong>${esc(t.name)}</strong><span>tables</span><span class="spacer"></span><button class="icon" data-close aria-label="Close" title="Close (Esc)"><svg><use href="#ic-close"/></svg></button></div><div class="cm-dbody"></div><div class="cm-dfoot">Ctrl-Space suggestions · paste CREATE TABLE SQL to convert · Esc close</div></div>`;
+  document.body.appendChild(ov);
+  let view: import('@codemirror/view').EditorView | undefined;
+  const close = () => { view?.destroy(); ov.remove(); drawSheet(); };
+  loadCode().then(m => { view = m.mountDbml(ov.querySelector('.cm-dbody')!, dbEditorOptions(t.id, true)); view.focus(); });
+  ov.addEventListener('mousedown', ev => { if (ev.target === ov) close(); });
+  ov.querySelector<HTMLElement>('[data-close]')!.onclick = close;
+  ov.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !ov.querySelector('.cm-tooltip-autocomplete')) { ev.stopPropagation(); close(); } });
+}
+
 function mountEditors() {
+  const dbHost = body.querySelector<HTMLElement>('.cm-host[data-cmdb]');
+  if (dbHost) loadCode().then(m => {
+    if (!dbHost.isConnected) return;
+    const view = m.mountDbml(dbHost, dbEditorOptions(dbHost.dataset.cmdb!));
+    views.push({ path: 'tables', view });
+    if (refocus && refocus.path === 'tables') { view.focus(); view.dispatch({ selection: { anchor: Math.min(refocus.at, view.state.doc.length) } }); refocus = null; }
+  });
   const hosts = body.querySelectorAll<HTMLElement>('.cm-host[data-cm]');
   if (!hosts.length) return;
   const sel = state.sel?.id;
@@ -222,40 +274,46 @@ function schemaTab(n: Node): string {
   }
   if (n.kind === 'db') {
     const ts = (n as DbNode).tables || [];
-    h += `<section class="list"><h3>Tables <span class="spacer"></span>${addBtn('add-table', 'table')}</h3>`;
-    ts.forEach((t, i) => {
-      h += `<div class="item tbl"><div class="row one">${inp(`tables.${i}.name`, 'table', t.name, 'text', 'placeholder="table_name"')}${xBtn(`rm-table:${i}`)}</div>`;
-      const cols = t.columns || [];
-      h += `<div class="cgrid"><div class="crow chead"><span>column</span><span>type</span><span class="flags"><span title="Primary key">PK</span><span title="Nullable">NULL</span><span title="Unique">UQ</span><span title="Indexed">IX</span><span title="References (foreign key) &amp; default">FK</span></span><span></span></div>`;
-      cols.forEach((c, j) => {
-        const base = `tables.${i}.columns.${j}`;
-        const key = `${n.id}:${i}:${j}`;
-        const open = colOpen.has(key);
-        const flag = (prop: string, label: string, on: boolean, title: string, cls: string) =>
-          `<button class="flag ${cls} ${on ? 'on' : ''}" data-flip="${base}.${prop}" title="${title}" aria-pressed="${on}">${label}</button>`;
-        h += `<div class="crow" data-col="${i}:${j}">`;
-        h += `<input class="cname" data-path="${base}.name" value="${esc(c.name)}" placeholder="column" spellcheck="false">`;
-        h += `<input class="ctype" data-path="${base}.type" value="${esc(c.type)}" list="pgTypes" placeholder="type" spellcheck="false">`;
-        h += `<span class="flags">${flag('pk', 'PK', c.pk, 'Primary key', 'pk')}${flag('nullable', 'NULL', c.nullable, 'Nullable', 'nl')}${flag('unique', 'UQ', !!c.unique, 'Unique', 'uq')}${flag('index', 'IX', !!c.index, 'Indexed', 'ix')}`;
-        h += `<button class="flag fk ${c.references ? 'on' : ''} ${open ? 'open' : ''}" data-colmore="${key}" title="${c.references ? 'References ' + esc(c.references) : 'Foreign key & default'}" aria-expanded="${open}">${c.references ? '→' : c.default ? '=' : '⋯'}</button></span>`;
-        h += `${xBtn(`rm-column:${i}:${j}`)}</div>`;
-        if (open) {
-          // FK targets: every other table.column in this db, plus other dbs' primary keys
+    const mode = tblMode.get(n.id) ?? 'rows';
+    h += `<section class="list"><h3>Tables <span class="spacer"></span><span class="seg"><button data-tblmode="rows" class="${mode === 'rows' ? 'on' : ''}">Rows</button><button data-tblmode="code" class="${mode === 'code' ? 'on' : ''}">Code</button></span>`;
+    h += mode === 'code' ? `<button class="fe-tool" data-tblexpand title="Open larger" aria-label="Open larger"><svg><use href="#ic-expand"/></svg></button>` : addBtn('add-table', 'table');
+    h += '</h3>';
+    if (mode === 'code') {
+      h += `<div class="cm-host" data-cmdb="${n.id}"><pre class="cm-pre">${esc(dbDrafts.get(n.id) ?? toDbml(ts, refResolver())) || '&nbsp;'}</pre></div>`;
+      h += `<p class="tbl-status" data-tblstatus>${tblStatus(n as DbNode)}</p>`;
+      h += `<p class="tbl-hint">Type <code>name type</code> per column; flags in <code>[pk, unique, index, default: …, ref: &gt; table.col]</code>; <code>?</code> after a type = nullable. Paste <code>CREATE TABLE</code> SQL to convert it.</p>`;
+    } else {
+      ts.forEach((t, i) => {
+        const cols = t.columns || [];
+        h += `<div class="tcard" data-t="${i}"><div class="thead"><input class="tname" data-path="tables.${i}.name" value="${esc(t.name)}" placeholder="table_name" spellcheck="false" aria-label="Table name"><span class="tcount">${cols.length} column${cols.length === 1 ? '' : 's'}</span><button class="icon danger tdel" data-action="rm-table:${i}" title="Delete table" aria-label="Delete table"><svg><use href="#ic-trash"/></svg></button></div>`;
+        cols.forEach((c, j) => {
+          const key = `${n.id}:${i}:${j}`;
+          if (openCol !== key) {
+            const tags: string[] = [];
+            if (c.references) tags.push(`<span class="tag fk">→ ${esc(refLabel(c.references))}</span>`);
+            if (c.unique) tags.push('<span class="tag uq">UQ</span>');
+            if (c.index) tags.push('<span class="tag ix">IX</span>');
+            if (c.default) tags.push(`<span class="tdef">= ${esc(c.default)}</span>`);
+            h += `<button class="trow" data-opencol="${key}" title="Edit column"><span class="tkey">${c.pk ? '<svg><use href="#ic-key"/></svg>' : ''}</span><span class="tn"><span class="tnm">${esc(c.name) || '<em>unnamed</em>'}</span><span class="tty">${esc(c.type)}${c.nullable && !c.pk ? '?' : ''}</span></span><span class="ttags">${tags.join('')}</span></button>`;
+            return;
+          }
+          const base = `tables.${i}.columns.${j}`;
           const targets: string[] = [];
-          for (const ot of (n as DbNode).tables || []) if (ot !== t) for (const oc of ot.columns || []) targets.push(`${ot.name}.${oc.name}`);
-          for (const on of state.doc.nodes) if (on.kind === 'db' && on.id !== n.id) for (const ot of on.tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
+          for (const ot of ts) if (ot !== t) for (const oc of ot.columns || []) targets.push(`${ot.name}.${oc.name}`);
+          for (const on of state.doc.nodes) if (on.kind === 'db' && on.id !== n.id) for (const ot of (on as DbNode).tables || []) for (const oc of ot.columns || []) if (oc.pk) targets.push(`${on.id}:${ot.name}.${oc.name}`);
           const refOpts = ['', ...(c.references && !targets.includes(c.references) ? [c.references] : []), ...targets];
-          const label = (o: string) => o ? esc(o.includes(':') ? (state.doc.nodes.find(x => x.id === o.split(':')[0])?.name ?? '') + ' › ' + o.split(':')[1] : o) : 'no foreign key';
-          h += `<div class="crow cmore"><label>references<select data-path="${base}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${label(o)}</option>`).join('')}</select></label>`;
-          h += `<label>default<input data-path="${base}.default" value="${esc(c.default ?? '')}" placeholder="now(), 0, gen_random_uuid()" spellcheck="false"></label></div>`;
-        }
+          const pill = (prop: string, label: string, on: boolean, cls: string) => `<button class="pill ${cls} ${on ? 'on' : ''}" data-flip="${base}.${prop}" aria-pressed="${on}">${label}</button>`;
+          h += `<div class="tedit" data-col="${i}:${j}">`;
+          h += `<div class="te2"><label>name<input class="cname" data-path="${base}.name" value="${esc(c.name)}" spellcheck="false"></label><label>type<input class="ctype" data-path="${base}.type" value="${esc(c.type)}" list="pgTypes" spellcheck="false"></label></div>`;
+          h += `<div class="pills">${pill('pk', 'Primary key', c.pk, 'pk')}${`<button class="pill nn ${!c.nullable ? 'on' : ''}" data-flip="${base}.nullable" aria-pressed="${!c.nullable}">Not null</button>`}${pill('unique', 'Unique', !!c.unique, 'uq')}${pill('index', 'Index', !!c.index, 'ix')}</div>`;
+          h += `<div class="te2 wide"><label>references<select data-path="${base}.references" data-nullable="1">${refOpts.map(o => `<option value="${esc(o)}" ${o === (c.references ?? '') ? 'selected' : ''}>${o ? esc(refLabel(o)) : 'none'}</option>`).join('')}</select></label><label>default<input data-path="${base}.default" value="${esc(c.default ?? '')}" placeholder="now()" spellcheck="false"></label></div>`;
+          h += `<div class="tefoot"><button class="linkish danger" data-action="rm-column:${i}:${j}">Delete column</button><button class="small primary" data-closecol>Done ↵</button></div></div>`;
+        });
+        h += `<div class="tadd"><span aria-hidden="true">+</span><input data-addcol="${i}" placeholder="add column — e.g. refunded_at timestamptz?" spellcheck="false" aria-label="Add column"></div><p class="tadd-err" data-adderr="${i}" hidden></p></div>`;
       });
-      h += `</div><button class="small addcol" data-action="add-column:${i}">+ column</button>`;
-      if (!cols.length) h += '<p class="empty">No columns yet.</p>';
-      h += '</div>';
-    });
-    if (!ts.length) h += '<p class="empty">No tables yet.</p>';
-    h += `<datalist id="pgTypes">${PG_TYPES.concat(['smallint', 'real', 'double precision', 'char(3)', 'bytea', 'timestamp', 'time', 'interval', 'inet', 'text[]', 'serial', 'bigserial']).map(v => `<option value="${v}">`).join('')}</datalist></section>`;
+      if (!ts.length) h += '<p class="empty">No tables yet.</p>';
+    }
+    h += `<datalist id="pgTypes">${PG_TYPE_LIST.map(v => `<option value="${v}">`).join('')}</datalist></section>`;
   }
   if (n.kind === 'queue') {
     const ts = (n as QueueNode).topics || [];
@@ -395,7 +453,26 @@ let editing: HTMLElement | null = null;
 body.addEventListener('focusin', ev => { const f = ev.target as HTMLElement; if (((f as any).dataset?.path || (f as any).dataset?.fk) && f !== editing) { editing = f; history.snapshot(state.doc); } });
 body.addEventListener('focusout', () => { editing = null; });
 
+body.addEventListener('keydown', ev => {
+  const el = ev.target as HTMLInputElement;
+  if (el.dataset.addcol !== undefined && ev.key === 'Enter') {
+    ev.preventDefault();
+    const i = +el.dataset.addcol, n = current() as DbNode; if (!n || !el.value.trim()) return;
+    const err = body.querySelector<HTMLElement>(`[data-adderr="${i}"]`)!;
+    const r = quickColumn(el.value, refResolver());
+    if (!r.col) { err.textContent = r.error ?? 'Not a column'; err.hidden = false; el.classList.add('bad'); return; }
+    if (n.tables[i].columns.some(c => c.name === r.col!.name)) { err.textContent = `There's already a column "${r.col.name}"`; err.hidden = false; el.classList.add('bad'); return; }
+    history.snapshot(state.doc);
+    n.tables[i].columns.push(r.col);
+    focusAfterDraw = `[data-addcol="${i}"]`;
+    drawSheet(); renderCanvas();
+    return;
+  }
+  if (el.closest('.tedit') && (ev.key === 'Enter' && el.tagName !== 'SELECT' || ev.key === 'Escape')) { ev.preventDefault(); ev.stopPropagation(); openCol = ''; drawSheet(); }
+});
+
 body.addEventListener('input', ev => {
+  { const a = ev.target as HTMLInputElement; if (a.dataset.addcol !== undefined) { a.classList.remove('bad'); const e = body.querySelector<HTMLElement>(`[data-adderr="${a.dataset.addcol}"]`); if (e) e.hidden = true; return; } }
   const f = ev.target as HTMLInputElement;
   if (f.dataset.fk) {
     const fe = f.closest<HTMLElement>('.fe')!, row = f.closest<HTMLElement>('[data-fpath]');
@@ -428,12 +505,6 @@ body.addEventListener('input', ev => {
   if (f.tagName === 'TEXTAREA') validateJson(f as unknown as HTMLTextAreaElement);
   renderCanvas();
   if (f.dataset.path === 'name') { const s = body.querySelector('.head strong'); if (s) s.textContent = (t as Node).name; }
-  const colm = f.dataset.path.match(/^tables\.(\d+)\.columns\.(\d+)\.(references|default)$/);
-  if (colm) { // keep the row's FK/default marker in step without redrawing (and losing focus)
-    const c = (t as DbNode).tables[+colm[1]].columns[+colm[2]];
-    const m = body.querySelector<HTMLElement>(`[data-col="${colm[1]}:${colm[2]}"] [data-colmore]`);
-    if (m) { m.textContent = c.references ? '→' : c.default ? '=' : '⋯'; m.classList.toggle('on', !!c.references); }
-  }
 });
 
 body.addEventListener('click', ev => {
@@ -457,9 +528,15 @@ body.addEventListener('click', ev => {
     if (newPath) body.querySelector<HTMLInputElement>(`[data-fe="${fe.dataset.fe}"] [data-fpath="${newPath}"] input.fname`)?.focus();
     return;
   }
-  const flip = (ev.target as Element).closest<HTMLElement>('[data-flip],[data-colmore]');
+  const tb = (ev.target as Element).closest<HTMLElement>('[data-opencol],[data-closecol],[data-tblmode],[data-tblexpand]');
+  if (tb) {
+    if (tb.dataset.opencol) { openCol = tb.dataset.opencol; focusAfterDraw = '.tedit .cname'; drawSheet(); return; }
+    if (tb.dataset.closecol !== undefined) { openCol = ''; drawSheet(); return; }
+    if (tb.dataset.tblmode) { const id = (current() as Node).id; tblMode.set(id, tb.dataset.tblmode as 'rows' | 'code'); if (tb.dataset.tblmode === 'rows') dbDrafts.delete(id); openCol = ''; drawSheet(); return; }
+    if (tb.dataset.tblexpand !== undefined) { openBigTables(); return; }
+  }
+  const flip = (ev.target as Element).closest<HTMLElement>('[data-flip]');
   if (flip) {
-    if (flip.dataset.colmore) { const k = flip.dataset.colmore; colOpen.has(k) ? colOpen.delete(k) : colOpen.add(k); drawSheet(); return; }
     const t = current(); if (!t) return;
     const path = flip.dataset.flip!;
     history.snapshot(state.doc);
@@ -509,10 +586,9 @@ body.addEventListener('click', ev => {
       break;
     case 'add-header': (n.endpoints[i].headers = n.endpoints[i].headers || []).push({ k: '', v: '' }); break;
     case 'rm-header': n.endpoints[i].headers.splice(j, 1); break;
-    case 'add-table': (n.tables = n.tables || []).push({ name: 'new_table', columns: [{ name: 'id', type: 'uuid', pk: true, nullable: false }] }); break;
-    case 'rm-table': n.tables.splice(i, 1); break;
-    case 'add-column': (n.tables[i].columns = n.tables[i].columns || []).push({ name: '', type: 'text', pk: false, nullable: true }); focusAfterDraw = `[data-col="${i}:${n.tables[i].columns.length - 1}"] .cname`; break;
-    case 'rm-column': n.tables[i].columns.splice(j, 1); [...colOpen].filter(k => k.startsWith(`${n.id}:${i}:`)).forEach(k => colOpen.delete(k)); break;
+    case 'add-table': (n.tables = n.tables || []).push({ name: 'new_table', columns: [{ name: 'id', type: 'uuid', pk: true, nullable: false }] }); focusAfterDraw = `[data-t="${n.tables.length - 1}"] .tname`; break;
+    case 'rm-table': n.tables.splice(i, 1); openCol = ''; break;
+    case 'rm-column': n.tables[i].columns.splice(j, 1); openCol = ''; break;
     case 'add-topic': (n.topics = n.topics || []).push({ name: '', partitions: 6, schema: '{\n  "type": "record",\n  "name": "",\n  "fields": []\n}' }); break;
     case 'rm-topic': n.topics.splice(i, 1); break;
     default: return;
