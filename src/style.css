@@ -71,6 +71,7 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .verdict .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);transition:background var(--t) var(--ease),box-shadow var(--t) var(--ease)}
 .verdict.ok{background:var(--ok-soft)}.verdict.warn{background:var(--warn-soft)}.verdict.crit{background:var(--crit-soft)}
 .verdict.ok .dot{background:var(--ok)}.verdict.warn .dot{background:var(--warn)}.verdict.crit .dot{background:var(--crit);box-shadow:0 0 0 3px var(--crit-soft)}
+.verdict.none .dot{background:var(--muted)}
 .verdict .lat{font-family:var(--mono);font-weight:400;color:var(--muted)}
 #top .actions{margin-left:auto;display:flex;align-items:center;gap:2px}
 
