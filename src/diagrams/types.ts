@@ -7,7 +7,7 @@ import type { DiagramKind, DiagramFile, SequenceFile, ClassFile } from '../domai
 import type { DocOf, Meta, Selection } from '../store/editor';
 import type { Box, Point } from '../store/viewport';
 
-export interface Verdict { status: 'ok' | 'warn' | 'crit' | 'none'; text: string; detail?: string }
+export interface Verdict { status: 'ok' | 'warn' | 'crit' | 'none'; text: string; detail?: string; /** extra classes for the badge */ className?: string }
 
 export interface DiagramModule<K extends DiagramKind = DiagramKind> {
   kind: K;
@@ -34,6 +34,8 @@ export interface DiagramModule<K extends DiagramKind = DiagramKind> {
 
   /** Everything drawn, for fit-to-view. */
   bounds(doc: DocOf<K>): Box | null;
+  /** Its own fit-to-view, when centring `bounds` isn't right (e.g. a sequence reads from the top). */
+  fit?(animated: boolean): void;
   /** The selected item's box, so the view can keep it clear of the panel. */
   selectionBox?(doc: DocOf<K>, sel: Selection): Box | null;
   /** What a right-click on `target` should select (null: empty canvas). */

@@ -90,7 +90,7 @@ function VerdictBadge() {
   const open = useEditor(s => s.open);
   const v = diagram(open.kind).verdict(open.doc as never);
   return (
-    <div className={'verdict ' + v.status} id="verdictWrap">
+    <div className={'verdict ' + v.status + (v.className ? ' ' + v.className : '')} id="verdictWrap">
       <span className="dot" /><span id="verdict">{v.text}</span><span id="lat" className="lat">{v.detail ?? ''}</span>
     </div>
   );
