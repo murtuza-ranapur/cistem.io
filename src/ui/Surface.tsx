@@ -13,6 +13,8 @@ interface Props {
   label?: string;
   /** id of the world group (the drawing, transformed by the view). */
   worldId?: string;
+  /** id of the dot-grid pattern (default `grid-<id>`). */
+  gridId?: string;
   /** <defs> (markers) for this canvas. */
   defs?: ReactNode;
   children: ReactNode;
@@ -81,10 +83,10 @@ export const Surface = forwardRef<SVGSVGElement, Props>(function Surface(p, ref)
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
       onPointerLeave={() => setHover(null)} onDoubleClick={p.onDoubleClick} onContextMenu={openContextMenu}>
       <defs>
-        <Grid id={`grid-${p.id}`} />
+        <Grid id={p.gridId ?? `grid-${p.id}`} />
         {p.defs}
       </defs>
-      <rect x="-100000" y="-100000" width="200000" height="200000" fill={`url(#grid-${p.id})`} />
+      <rect x="-100000" y="-100000" width="200000" height="200000" fill={`url(#${p.gridId ?? `grid-${p.id}`})`} />
       <World id={p.worldId}>{p.children}</World>
     </svg>
   );

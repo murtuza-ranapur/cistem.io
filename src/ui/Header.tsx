@@ -1,5 +1,5 @@
 /** The top bar: title, save status, verdict and the toolbar. */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditor, changeMeta, undo, redo } from '../store/editor';
 import { useHistory } from '../store/history';
 import * as history from '../store/history';
@@ -51,6 +51,7 @@ function TitleInput() {
   const readonly = useCloud(s => s.status === 'readonly');
   const [draft, setDraft] = useState<{ value: string; before: string } | null>(null);
   const untitled = diagram(kind).untitled;
+  useEffect(() => { document.title = `${title} · cistem.io`; }, [title]);
   const set = (t: string) => changeMeta(m => { m.title = t.trim() || untitled; });
   return (
     <input id="title" className="title" type="text" aria-label="Diagram title" placeholder={untitled} readOnly={readonly}

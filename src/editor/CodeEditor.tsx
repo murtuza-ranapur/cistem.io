@@ -18,10 +18,12 @@ interface Props<L> {
   latest: L;
   mount: (code: CodeModule, host: HTMLElement, value: string, latest: { current: L }) => EditorView;
   className?: string;
+  /** Extra attributes for the host element (e.g. data-* hooks). */
+  attrs?: Record<string, string>;
   onReady?: (view: EditorView) => void;
 }
 
-export function CodeEditor<L>({ value, latest, mount, className = 'cm-host', onReady }: Props<L>) {
+export function CodeEditor<L>({ value, latest, mount, className = 'cm-host', attrs, onReady }: Props<L>) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const live = useRef(latest);
@@ -46,5 +48,5 @@ export function CodeEditor<L>({ value, latest, mount, className = 'cm-host', onR
     if (cur !== value) v.dispatch({ changes: { from: 0, to: cur.length, insert: value } });
   }, [value]);
 
-  return <div className={className} ref={host} />;
+  return <div className={className} ref={host} {...attrs} />;
 }
