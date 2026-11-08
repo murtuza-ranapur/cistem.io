@@ -2,3 +2,4 @@ node_modules
 dist
 backend/build
 backend/.gradle
+.claude/worktrees/
