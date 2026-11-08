@@ -39,6 +39,21 @@ public class SecurityConfig {
     public static final String USER_ID_ATTR = "cistem_user_id";
     public static final int SESSION_SECONDS = 60 * 60 * 24 * 30;
 
+    /**
+     * The app's scripts come only from this origin, so injected markup can't run code. Styles allow inline
+     * (the code editor injects its theme), fonts come from Google Fonts, avatars from GitHub.
+     */
+    static final String CONTENT_SECURITY_POLICY = String.join("; ",
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "img-src 'self' data: https://avatars.githubusercontent.com",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "frame-ancestors 'none'");
+
     /** Persistent cookie (survives closing the browser) matching the session lifetime. */
     @Bean
     org.springframework.session.web.http.CookieSerializer cookieSerializer(@org.springframework.beans.factory.annotation.Value("${COOKIE_SECURE:true}") boolean secure) {
@@ -79,6 +94,7 @@ public class SecurityConfig {
                 .defaultAuthenticationEntryPointFor(
                     (req, res, ex) -> { res.setStatus(HttpServletResponse.SC_UNAUTHORIZED); res.setContentType("application/json"); res.getWriter().write("{\"error\":\"sign in required\"}"); },
                     req -> req.getRequestURI().startsWith("/api/")))
+            .headers(h -> h.contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY)))
             .addFilterBefore(apiKeyFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

@@ -79,6 +79,13 @@ class DiagramApiTest {
     }
 
     @Test
+    void responsesCarryAContentSecurityPolicyThatOnlyAllowsOurScripts() throws Exception {
+        mvc.perform(get("/api/me"))
+                .andExpect(header().string("Content-Security-Policy", org.hamcrest.Matchers.containsString("script-src 'self'")))
+                .andExpect(header().string("Content-Security-Policy", org.hamcrest.Matchers.containsString("frame-ancestors 'none'")));
+    }
+
+    @Test
     void meReturnsProfile() throws Exception {
         mvc.perform(get("/api/me").with(as(alice)))
                 .andExpect(status().isOk())
