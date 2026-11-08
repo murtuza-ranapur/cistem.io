@@ -2,12 +2,12 @@
  * Generates the fixtures the Java tests compare against (backend/src/test/resources/parity*.json), so the
  * TypeScript engine/layout/migration and their Java mirrors can't drift apart. Run: npx tsx test/parity-fixtures.ts
  */
-import { parseCistem, printSeq } from '../src/seq';
+import { parseCistem, printSeq } from '../src/domain/seq';
 import { writeFileSync } from 'node:fs';
-import { exampleDoc, makeNode } from '../src/model';
-import { compute } from '../src/engine';
-import { layeredLayout } from '../src/layout';
-import { toFile, v3to4 } from '../src/document';
+import { exampleDoc, makeNode } from '../src/domain/model';
+import { compute } from '../src/domain/engine';
+import { layeredLayout } from '../src/domain/layout';
+import { toFile, v3to4 } from '../src/domain/document';
 
 const res = '/home/claude/cistem.io/backend/src/test/resources/'.replace('/home/claude/cistem.io/', new URL('..', import.meta.url).pathname);
 const expected = (doc: any) => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { parseSeq, printSeq, layoutSeq, activations, timing, sequenceFromPath, balanced, keepIds, slugId, type SeqDoc } from '../src/seq';
-import { exampleDoc } from '../src/model';
-import { compute } from '../src/engine';
+import { parseSeq, printSeq, layoutSeq, activations, timing, sequenceFromPath, balanced, keepIds, slugId, type SeqDoc } from '../src/domain/seq';
+import { exampleDoc } from '../src/domain/model';
+import { compute } from '../src/domain/engine';
 
 const strip = (d: SeqDoc) => JSON.parse(JSON.stringify(d, (k, v) => (k === 'id' && typeof v === 'string' && /^r/.test(v) ? undefined : v)));
 
@@ -126,7 +126,7 @@ console.log('seq tests passed');
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import { seqToFile, readAny } from '../src/document';
+import { seqToFile, readAny } from '../src/domain/document';
 {
   const schema = JSON.parse(readFileSync(new URL('../schema/cistem.schema.json', import.meta.url), 'utf8'));
   const ajv = new Ajv({ allErrors: true, strict: false }); addFormats(ajv);
@@ -140,7 +140,7 @@ import { seqToFile, readAny } from '../src/document';
 }
 
 // ---- hostile sequence files are made safe; labels keep # and // ----
-import { sanitizeSeq } from '../src/seq';
+import { sanitizeSeq } from '../src/domain/seq';
 {
   const s = sanitizeSeq({ participants: [{ id: 'a' }, { id: '"><img>', name: 'x' }, null, { id: 'a' }], rows: [{ t: 'msg', id: '"><b>', from: 'a', to: '"><img>', style: '"><img onerror=1>', label: 7 }, { t: 'open', kind: '<svg>' }, { t: 'else' }, { t: 'msg', from: 'a', to: 'ghost' }, { t: 'note', over: ['ghost'] }] });
   assert.ok(s.participants.every(p => /^[A-Za-z_$][\w.$-]*$/.test(p.id)));

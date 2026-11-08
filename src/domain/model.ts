@@ -1,4 +1,4 @@
-import TYPES_FILE from '../shared/component-types.json';
+import TYPES_FILE from '../../shared/component-types.json';
 
 /** A component type's key in shared/component-types.json ("service", "db", "sqs"…). */
 export type Kind = string;

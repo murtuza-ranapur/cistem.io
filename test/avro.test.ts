@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { contextAt, avroSuggestions, avroProblems, roleOf, namedTypes, problemRange } from '../src/avro';
+import { contextAt, avroSuggestions, avroProblems, roleOf, namedTypes, problemRange } from '../src/domain/avro';
 
 const at = (src: string) => { const pos = src.indexOf('|'); const text = src.replace('|', ''); return { text, pos, ctx: contextAt(text, pos) }; };
 const labels = (src: string) => { const { text, ctx } = at(src); return avroSuggestions(text, ctx).map(s => s.label); };

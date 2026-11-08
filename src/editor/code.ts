@@ -10,12 +10,12 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, s
 import { linter, lintKeymap, type Diagnostic } from '@codemirror/lint';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { tags as t } from '@lezer/highlight';
-import { contextAt, avroSuggestions, avroProblems, problemRange, type Suggestion } from './avro';
+import { contextAt, avroSuggestions, avroProblems, problemRange, type Suggestion } from '../domain/avro';
 import { StreamLanguage } from '@codemirror/language';
-import { parseSeq, printSeq } from './seq';
-import { parseCls, parseClsAny, printCls, mergeCls } from './cls';
-import { parseDbml, parseSql, toDbml, PG_TYPE_LIST, FLAG_LIST, type RefResolver } from './dbml';
-import type { Table } from './model';
+import { parseSeq, printSeq } from '../domain/seq';
+import { parseCls, parseClsAny, printCls, mergeCls } from '../domain/cls';
+import { parseDbml, parseSql, toDbml, PG_TYPE_LIST, FLAG_LIST, type RefResolver } from '../domain/dbml';
+import type { Table } from '../domain/model';
 
 
 export interface BodyVocab {

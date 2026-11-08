@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { parseJsonFields, jsonFieldsToText, parseAvro, avroToText, listAt } from '../src/fields';
-import { exampleDoc, topicFields } from '../src/model';
+import { parseJsonFields, jsonFieldsToText, parseAvro, avroToText, listAt } from '../src/domain/fields';
+import { exampleDoc, topicFields } from '../src/domain/model';
 
 // JSON bodies: example text → fields → text is stable and preserves shape
 const body = '{\n  "id": "pay_01H...",\n  "amount": { "minor": 1200, "currency": "GBP" },\n  "items": [{ "sku": "A1", "qty": 2 }],\n  "tags": ["a"],\n  "captured": true,\n  "ref": null\n}';

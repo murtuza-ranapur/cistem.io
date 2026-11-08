@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { parseCls, parseClsAny, printCls, parseJavaKotlin, parseMermaidCls, fromTables, fromAvro, layoutCls, boxSize, mergeCls, renameClass, parseMember, typeRefs, blankCls, type ClassDoc } from '../src/cls';
-import { exampleDoc } from '../src/model';
+import { parseCls, parseClsAny, printCls, parseJavaKotlin, parseMermaidCls, fromTables, fromAvro, layoutCls, boxSize, mergeCls, renameClass, parseMember, typeRefs, blankCls, type ClassDoc } from '../src/domain/cls';
+import { exampleDoc } from '../src/domain/model';
 
 const noIds = (d: ClassDoc) => ({ classes: d.classes, relations: d.relations.map(({ id: _i, ...r }) => r) });
 
@@ -170,7 +170,7 @@ console.log('cls tests passed');
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import { clsToFile, readAny } from '../src/document';
+import { clsToFile, readAny } from '../src/domain/document';
 {
   const schema = JSON.parse(readFileSync(new URL('../schema/cistem.schema.json', import.meta.url), 'utf8'));
   const ajv = new Ajv({ allErrors: true, strict: false }); addFormats(ajv);
@@ -184,7 +184,7 @@ import { clsToFile, readAny } from '../src/document';
 }
 
 // ---- regressions from persona testing: real-world Kotlin/Java, hostile files ----
-import { sanitizeCls } from '../src/cls';
+import { sanitizeCls } from '../src/domain/cls';
 {
   const kt = parseJavaKotlin('object Singleton {\n  val x = 1\n}\nclass Repo {\n  private suspend fun <T: Any> load(block: suspend () -> T): T? = null\n}\nenum class Color(val rgb: Int) { RED(1), GREEN(2) }\npublic class Outer {\n  private enum Status { A, B }\n  public <T> Visitor<? extends R> visit(List<? super T> xs) { return null; }\n}');
   assert.deepEqual(byName(kt, 'Singleton').fields.map(f => f.name), ['x'], 'untyped val');

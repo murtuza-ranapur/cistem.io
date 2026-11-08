@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { toDbml, parseDbml, parseSql, quickColumn } from '../src/dbml';
-import { exampleDoc, type DbNode } from '../src/model';
+import { toDbml, parseDbml, parseSql, quickColumn } from '../src/domain/dbml';
+import { exampleDoc, type DbNode } from '../src/domain/model';
 
 const r = { nameToId: (n: string) => n === 'ledger-db' ? 'n9' : null, idToName: (id: string) => id === 'n9' ? 'ledger-db' : null };
 

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import { exampleDoc, crossingLatency, TYPES, makeNode } from '../src/model';
-import { compute } from '../src/engine';
-import { toFile, fromFile, migrate, FORMAT_VERSION } from '../src/document';
+import { exampleDoc, crossingLatency, TYPES, makeNode } from '../src/domain/model';
+import { compute } from '../src/domain/engine';
+import { toFile, fromFile, migrate, FORMAT_VERSION } from '../src/domain/document';
 
 const schema = JSON.parse(readFileSync(new URL('../schema/cistem.schema.json', import.meta.url), 'utf8'));
 const ajv = new Ajv({ allErrors: true, strict: false }); addFormats(ajv);
