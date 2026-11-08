@@ -1,0 +1,214 @@
+package io.cistem.mcp;
+
+import io.cistem.diagram.Diagram;
+import io.cistem.diagram.DiagramFiles;
+import io.cistem.engine.Engine;
+import io.cistem.engine.Layout;
+import io.cistem.engine.Types;
+import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
+
+import java.util.*;
+import java.util.function.Consumer;
+
+import static io.cistem.mcp.Json.*;
+
+/** System diagrams: components, connections, load and the capacity model. */
+@Component
+public class SystemTools {
+
+    private final Diagrams diagrams;
+    private final ObjectMapper om;
+
+    public SystemTools(Diagrams diagrams, ObjectMapper om) {
+        this.diagrams = diagrams;
+        this.om = om;
+    }
+
+    @McpTool(name = "evaluate", description = """
+            Run the capacity model: inject each Clients node's peak rps, propagate it through the system and report, per
+            component, load vs capacity, utilisation %, status (ok / warn ≥70% / crit ≥100%) and effective latency, plus the
+            bottleneck, total rps and p50 path latency. Optionally test a different total load (clients scaled
+            proportionally) as a what-if, without saving.""")
+    public ObjectNode evaluate(@McpToolParam(description = "Diagram id") String diagramId,
+                               @McpToolParam(description = "What-if total requests/sec across all clients; omit to use the clients' own", required = false) Double targetRps) {
+        ObjectNode file = diagrams.read(diagramId, "system");
+        if (targetRps != null) scaleClients(file, targetRps);
+        return Engine.report(file, Engine.compute(file.path("model")), om);
+    }
+
+    /** Set the clients' peak rps so they add up to `total`, keeping their proportions (equal split if all are 0). */
+    private static void scaleClients(JsonNode file, double total) {
+        List<ObjectNode> clients = new java.util.ArrayList<>();
+        for (JsonNode n : file.path("model").path("nodes")) if (Types.isSource(n)) clients.add((ObjectNode) n);
+        if (clients.isEmpty()) throw new IllegalArgumentException("This diagram has no Clients component to carry the load");
+        double sum = clients.stream().mapToDouble(c -> c.path("rps").asDouble(0)).sum();
+        for (ObjectNode c : clients) c.put("rps", sum > 0 ? c.path("rps").asDouble(0) * total / sum : total / clients.size());
+    }
+
+    @McpTool(name = "create_diagram", description = "Create a new, empty system diagram with one Clients node. Returns its id.")
+    public Diagram.Summary createDiagram(@McpToolParam(description = "Title") String title,
+                                         @McpToolParam(description = "Peak requests/sec of the Clients node (default 1000)", required = false) Double targetRps) {
+        ObjectNode file = DiagramFiles.create(om, "system", title);
+        ObjectNode model = object(file, "model");
+        ArrayNode nodes = model.putArray("nodes");
+        model.putArray("edges"); model.putArray("containers"); model.putArray("links");
+        ObjectNode entry = nodes.addObject();
+        entry.put("id", "n1").put("kind", "entry").put("name", "Clients").put("rps", targetRps == null ? 1000 : targetRps).putNull("container");
+        entry.putArray("platforms").add("web").add("app");
+        ObjectNode layout = object(file, "layout");
+        layout.putObject("positions").putObject("n1").put("x", 40).put("y", 40);
+        layout.putObject("frames");
+        return diagrams.insert(file).summary();
+    }
+
+    @McpTool(name = "list_component_types", description = """
+            The component types a system diagram can use: key, label, behaviour (how the capacity model treats it:
+            source | balancer | limit | scaled | cache | store | async), what it expands to show, and its default fields.""")
+    public ArrayNode listComponentTypes() {
+        ArrayNode out = om.createArrayNode();
+        Types.all().values().forEach(t -> {
+            ObjectNode o = out.addObject();
+            o.put("kind", t.key()).put("label", t.label()).put("behaviour", t.behaviour());
+            if (t.detail() != null) o.put("detail", t.detail()); else o.putNull("detail");
+            o.set("defaults", t.defaults());
+        });
+        return out;
+    }
+
+    @McpTool(name = "set_client_rps", description = "Set one Clients component's peak requests/sec (the load it sends into the system).")
+    public ObjectNode setClientRps(@McpToolParam(description = "Diagram id") String diagramId,
+                                   @McpToolParam(description = "Clients component id") String componentId,
+                                   @McpToolParam(description = "Peak requests per second") double rps) {
+        return edit(diagramId, f -> {
+            ObjectNode n = node(f, componentId);
+            if (!Types.isSource(n)) throw new IllegalArgumentException(componentId + " is not a Clients component");
+            n.put("rps", rps);
+        });
+    }
+
+    @McpTool(name = "set_target_rps", description = """
+            Set the total peak load: with one Clients component it gets this rps; with several they're scaled to add up to it,
+            keeping their proportions. (Use set_client_rps to set one client.)""")
+    public ObjectNode setTargetRps(@McpToolParam(description = "Diagram id") String diagramId,
+                                   @McpToolParam(description = "Total requests per second") double rps) {
+        return edit(diagramId, f -> scaleClients(f, rps));
+    }
+
+    @McpTool(name = "add_component", description = """
+            Add a component. kind is a component type key — list_component_types gives them all with their behaviour and
+            fields; common ones: entry (Clients) | lb | apigw | cdn | service | cache (Redis) | db (Postgres) | mongodb | queue (one Kafka topic) | sqs.
+            properties (optional JSON object) override defaults, e.g. entry: {"rps":2000}; service: {"instances":6,"rpsPerInstance":600,"latency":25};
+            cache: {"maxOps":100000,"hitRatio":0.85}; db: {"maxQps":4000,"replicas":2,"readShare":0.85};
+            queue: {"partitions":12,"key":"paymentId","cluster":"msk-payments","schema":"<Avro JSON>","maxThroughput":20000} — name it with the topic name;
+            lb: {"maxRps":50000}. Services may carry "endpoints", dbs "tables" (see the cistem://schema resource).
+            Returns the new component id. Position is chosen automatically.""")
+    public ObjectNode addComponent(@McpToolParam(description = "Diagram id") String diagramId,
+                                   @McpToolParam(description = "Component kind") String kind,
+                                   @McpToolParam(description = "Display name") String name,
+                                   @McpToolParam(description = "Property overrides as a JSON object", required = false) Map<String, Object> properties,
+                                   @McpToolParam(description = "Container (environment) id to place it in", required = false) String containerId) {
+        if (!Types.known(kind)) throw new IllegalArgumentException("kind must be one of " + Types.all().keySet() + " (see list_component_types)");
+        String[] newId = new String[1];
+        ObjectNode result = edit(diagramId, f -> {
+            ArrayNode nodes = (ArrayNode) f.path("model").path("nodes");
+            String id = freshId(nodes, "n");
+            newId[0] = id;
+            ObjectNode n = nodes.addObject();
+            n.put("id", id).put("kind", kind).put("name", name);
+            if (containerId != null && !containerId.isBlank()) { container(f, containerId); n.put("container", containerId); } else n.putNull("container");
+            Map<String, Object> props = new LinkedHashMap<>();
+            Types.of(kind).defaults().properties().forEach(e -> { if (!e.getKey().equals("name")) props.put(e.getKey(), om.treeToValue(e.getValue(), Object.class)); });
+            if (properties != null) props.putAll(properties);
+            props.forEach((k, v) -> n.set(k, om.valueToTree(v)));
+            // place to the right of the current right-most node
+            int maxX = 40, y = 40;
+            for (var it = f.path("layout").path("positions").properties().iterator(); it.hasNext(); ) {
+                var p = it.next().getValue(); if (p.path("x").asInt() >= maxX) { maxX = p.path("x").asInt(); y = p.path("y").asInt(); }
+            }
+            ((ObjectNode) f.path("layout").path("positions")).putObject(id).put("x", maxX + 320).put("y", y);
+        });
+        result.put("componentId", newId[0]);
+        return result;
+    }
+
+    @McpTool(name = "set_properties", description = "Update properties on a component (merge). E.g. {\"instances\": 10} or {\"hitRatio\": 0.95}. Use \"name\" to rename.")
+    public ObjectNode setProperties(@McpToolParam(description = "Diagram id") String diagramId,
+                                    @McpToolParam(description = "Component id") String componentId,
+                                    @McpToolParam(description = "Properties to set, as a JSON object") Map<String, Object> properties) {
+        return edit(diagramId, f -> {
+            ObjectNode n = node(f, componentId);
+            properties.forEach((k, v) -> { if (k.equals("id") || k.equals("kind")) throw new IllegalArgumentException("id and kind can't be changed"); n.set(k, om.valueToTree(v)); });
+        });
+    }
+
+    @McpTool(name = "remove_component", description = "Remove a component and every edge touching it.")
+    public ObjectNode removeComponent(@McpToolParam(description = "Diagram id") String diagramId,
+                                      @McpToolParam(description = "Component id") String componentId) {
+        return edit(diagramId, f -> {
+            node(f, componentId); // existence check
+            removeWhere((ArrayNode) f.path("model").path("nodes"), n -> componentId.equals(n.path("id").asText()));
+            removeWhere((ArrayNode) f.path("model").path("edges"), e -> componentId.equals(e.path("from").asText()) || componentId.equals(e.path("to").asText()));
+            ((ObjectNode) f.path("layout").path("positions")).remove(componentId);
+        });
+    }
+
+    @McpTool(name = "connect", description = """
+            Connect two components with a call edge. calls = downstream calls made per request arriving at `from`
+            (e.g. an API that does 2 cache lookups per request: calls=2). Returns the edge id.""")
+    public ObjectNode connect(@McpToolParam(description = "Diagram id") String diagramId,
+                              @McpToolParam(description = "Source component id") String from,
+                              @McpToolParam(description = "Target component id") String to,
+                              @McpToolParam(description = "Calls per incoming request (default 1)", required = false) Double calls) {
+        String[] newId = new String[1];
+        ObjectNode result = edit(diagramId, f -> {
+            node(f, from); node(f, to);
+            ArrayNode edges = (ArrayNode) f.path("model").path("edges");
+            for (JsonNode e : edges) if (from.equals(e.path("from").asText()) && to.equals(e.path("to").asText())) throw new IllegalArgumentException("Already connected (edge " + e.path("id").asText() + "); use set_edge to change calls");
+            String id = freshId(edges, "e"); newId[0] = id;
+            edges.addObject().put("id", id).put("from", from).put("to", to).put("calls", calls == null ? 1 : calls).putNull("endpoint");
+        });
+        result.put("edgeId", newId[0]);
+        return result;
+    }
+
+    @McpTool(name = "set_edge", description = "Change the calls-per-request on an edge.")
+    public ObjectNode setEdge(@McpToolParam(description = "Diagram id") String diagramId,
+                              @McpToolParam(description = "Edge id") String edgeId,
+                              @McpToolParam(description = "Calls per incoming request") double calls) {
+        return edit(diagramId, f -> {
+            for (JsonNode e : f.path("model").path("edges")) if (edgeId.equals(e.path("id").asText())) { ((ObjectNode) e).put("calls", calls); return; }
+            throw new IllegalArgumentException("No such edge");
+        });
+    }
+
+    @McpTool(name = "disconnect", description = "Remove an edge.")
+    public ObjectNode disconnect(@McpToolParam(description = "Diagram id") String diagramId, @McpToolParam(description = "Edge id") String edgeId) {
+        return edit(diagramId, f -> {
+            ArrayNode edges = (ArrayNode) f.path("model").path("edges");
+            int before = edges.size();
+            removeWhere(edges, e -> edgeId.equals(e.path("id").asText()));
+            if (edges.size() == before) throw new IllegalArgumentException("No such edge");
+        });
+    }
+
+    @McpTool(name = "auto_organise", description = "Lay the diagram out left-to-right from the entry node (same algorithm as the editor's Auto-organise).")
+    public ObjectNode autoOrganise(@McpToolParam(description = "Diagram id") String diagramId) {
+        return edit(diagramId, f -> {
+            Layout.Result r = Layout.layered(f.path("model"), f.path("layout").path("detail"));
+            ObjectNode positions = ((ObjectNode) f.path("layout")).putObject("positions");
+            r.positions().forEach((id, p) -> positions.putObject(id).put("x", p.x()).put("y", p.y()));
+            ObjectNode frames = ((ObjectNode) f.path("layout")).putObject("frames");
+            r.frames().forEach((id, fr) -> frames.putObject(id).put("x", fr.x()).put("y", fr.y()).put("w", fr.w()).put("h", fr.h()));
+        });
+    }
+
+    private ObjectNode edit(String diagramId, Consumer<ObjectNode> change) {
+        return diagrams.editSystem(diagramId, change);
+    }
+}

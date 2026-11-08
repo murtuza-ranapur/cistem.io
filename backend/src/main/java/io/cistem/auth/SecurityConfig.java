@@ -1,5 +1,6 @@
-package io.cistem.api;
+package io.cistem.auth;
 
+import io.cistem.web.CistemProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

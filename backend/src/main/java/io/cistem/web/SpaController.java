@@ -1,4 +1,4 @@
-package io.cistem.api;
+package io.cistem.web;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;

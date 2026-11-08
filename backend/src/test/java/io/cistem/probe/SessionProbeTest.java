@@ -1,7 +1,7 @@
 package io.cistem.probe;
 
-import io.cistem.api.SecurityConfig;
-import io.cistem.api.UserRepository;
+import io.cistem.auth.SecurityConfig;
+import io.cistem.auth.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;

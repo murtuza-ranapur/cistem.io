@@ -1,4 +1,4 @@
-package io.cistem.api;
+package io.cistem.auth;
 
 import java.time.Instant;
 import java.util.UUID;

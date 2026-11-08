@@ -1,4 +1,4 @@
-package io.cistem.api;
+package io.cistem.diagram;
 
 import tools.jackson.databind.JsonNode;
 
@@ -21,5 +21,9 @@ public record Diagram(
 
     public Summary summary() {
         return new Summary(id, title, kind, version, shareToken != null, createdAt, updatedAt);
+    }
+
+    public Diagram withoutShareToken() {
+        return new Diagram(id, title, kind, document, version, null, createdAt, updatedAt);
     }
 }

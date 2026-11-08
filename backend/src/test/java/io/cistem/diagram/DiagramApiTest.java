@@ -1,4 +1,8 @@
-package io.cistem.api;
+package io.cistem.diagram;
+
+import io.cistem.auth.SecurityConfig;
+import io.cistem.auth.User;
+import io.cistem.auth.UserRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

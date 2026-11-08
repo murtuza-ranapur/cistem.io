@@ -1,9 +1,9 @@
 package io.cistem.mcp;
 
 import com.jayway.jsonpath.JsonPath;
-import io.cistem.api.SecurityConfig;
-import io.cistem.api.User;
-import io.cistem.api.UserRepository;
+import io.cistem.auth.SecurityConfig;
+import io.cistem.auth.User;
+import io.cistem.auth.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
