@@ -4,7 +4,7 @@ Diagrams whose components have behaviour, not just shape.
 
 The first diagram kind is **system**: draw clients → load balancer → services → Redis / Postgres / Kafka, give each component its capacity, set a target RPS, and cistem propagates load through the graph and tells you which component breaks first and roughly what the end-to-end latency looks like. Services carry their endpoints, databases their tables, Kafka its topics and Avro schemas, so the diagram is also the design doc.
 
-Other kinds (flow, sequence, state, ER) will share the same shell and file envelope.
+There are also **sequence** and **class** diagrams; a sequence can draw on a system diagram for its timings.
 
 ## Running it
 
@@ -22,6 +22,26 @@ bun run build && bun run preview &     # the built app on :4173
 bun run test:e2e                       # browser tests against :4173
 (cd backend && ./gradlew test)         # API tests against Postgres
 ```
+
+## Code layout
+
+```
+src/
+  domain/     the model, capacity engine, parsers and file format: plain TypeScript, no UI
+  store/      app state (Zustand + Immer): the open document, undo as patches, tabs, cloud sync, clipboard
+  ui/         the shell (React): header, tabs, details panel, menus, dialogs, the canvas surface
+  diagrams/   one folder per kind (system, sequence, class) implementing DiagramModule (diagrams/types.ts)
+  editor/     CodeMirror languages and the <CodeEditor> wrapper (loaded on first use)
+  lib/        formatting, browser helpers, API client, tooltips
+backend/src/main/java/io/cistem/
+  auth/       GitHub sign-in, sessions, API key, the current user
+  diagram/    the diagrams API, DiagramService (rules shared with MCP), repository, file rules
+  mcp/        MCP tools by kind, and the OAuth setup for MCP clients
+  engine/     capacity model, layout, sequence text format (parity-tested against the TypeScript)
+  web/        serving the frontend, CORS, settings
+```
+
+A new kind of diagram is a new folder in `src/diagrams/` that implements `DiagramModule`, plus an entry in `src/diagrams/index.ts`.
 
 Pushes to `main` run CI and redeploy the Railway service, which builds `backend/Dockerfile` from the repo root (frontend, then the jar).
 

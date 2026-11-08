@@ -14,7 +14,8 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx",
-    "types": []
+    "types": [],
+    "noUnusedLocals": true
   },
   "include": [
     "src",
