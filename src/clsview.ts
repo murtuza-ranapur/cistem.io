@@ -408,6 +408,7 @@ export function clsKey(ev: KeyboardEvent): boolean {
   }
   return false;
 }
+export function duplicateSelection() { if (state.sel?.type === 'class') duplicate(state.sel.id); }
 function duplicate(name: string) {
   const c = cls().classes.find(x => x.name === name); if (!c) return;
   let n = name + 'Copy', i = 2; while (has(n)) n = name + 'Copy' + i++;

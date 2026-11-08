@@ -37,7 +37,7 @@ class T {
   async nodeByName(name) { const d = await this.doc(); const n = d.model.nodes.find(n => n.name === name); return n && { ...n, ...d.layout.positions[n.id] }; }
   async box(sel) { const el = await this.page.$(sel); if (!el) throw new Error('no element ' + sel); return el.boundingBox(); }
   async center(sel) { const b = await this.box(sel); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
-  async clickNode(id, mods = []) { const b = await this.box(`[data-node="${id}"] rect.body`); await this.page.mouse.click(b.x + 20, b.y + 50, { modifiers: mods }); await this.page.waitForTimeout(500); /* inspector slide + reveal pan */ }
+  async clickNode(id, mods = []) { const b = await this.box(`[data-node="${id}"] rect.body`); for (const m of mods) await this.page.keyboard.down(m); await this.page.mouse.click(b.x + 20, b.y + 50); for (const m of mods) await this.page.keyboard.up(m); await this.page.waitForTimeout(500); /* inspector slide + reveal pan */ }
   async dragNodeTo(id, x, y) {
     const b = await this.box(`[data-node="${id}"] rect.body`);
     const sx = b.x + 20, sy = b.y + 50;
@@ -1101,6 +1101,124 @@ abstract class Entity { protected long version; }`;
     assert(!JSON.parse((await t.node('n3')).endpoints[0].req).amount, 'amount removed');
     await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(200);
     eq((await t.node('n3')).endpoints[0].req, before, 'restored');
+  });
+
+
+  // ---- copy / cut / paste ----
+  const clip = async t => { await t.page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE }); };
+  const press = async (t, k) => { await t.page.keyboard.press(k); await t.page.waitForTimeout(200); };
+  const clipText = t => t.page.evaluate(() => navigator.clipboard.readText());
+
+  await test('copy: ⌘C/⌘V copies components with the connections between them; one undo removes the paste', async t => {
+    await clip(t);
+    const before = await t.doc();
+    const e = before.model.edges[0];
+    await t.clickNode(e.from); await t.clickNode(e.to, ['Shift']);
+    await press(t, 'Control+c');
+    const text = await clipText(t);
+    assert(text.includes('"cistem-clipboard"') && text.includes(e.from), 'readable JSON on the system clipboard: ' + e.from + ' ' + JSON.stringify(text.slice(0, 400)));
+    await t.page.mouse.move(5, 5);   // off the canvas: lands stepped from the originals
+    await press(t, 'Control+v');
+    let d = await t.doc();
+    eq(d.model.nodes.length, before.model.nodes.length + 2, 'two components pasted');
+    eq(d.model.edges.length, before.model.edges.length + 1, 'with the connection between them');
+    const src = await t.node(e.from), copy = d.model.nodes.find(n => !before.model.nodes.some(o => o.id === n.id) && n.name === src.name);
+    assert(copy, 'same name'); eq(d.layout.positions[copy.id].x, src.x + 32, 'offset right'); eq(d.layout.positions[copy.id].y, src.y + 32, 'offset down');
+    eq(copy.container ?? null, src.container ?? null, 'kept in the same environment');
+    await press(t, 'Control+v');
+    d = await t.doc(); eq(d.model.nodes.length, before.model.nodes.length + 4, 'pasting again pastes again');
+    assert(d.model.nodes.some(n => d.layout.positions[n.id].x === src.x + 64), 'stepped further');
+    await press(t, 'Control+z');
+    eq((await t.doc()).model.nodes.length, before.model.nodes.length + 2, 'one undo per paste');
+  });
+
+  await test('copy: paste lands at the pointer; ⌘X cuts', async t => {
+    await clip(t);
+    const n0 = (await t.doc()).model.nodes.length;
+    await t.clickNode('n4');
+    await press(t, 'Control+x');
+    assert(!(await t.doc()).model.nodes.some(n => n.id === 'n4'), 'cut removes it');
+    const p = await t.emptyCanvasPoint();
+    await t.page.mouse.move(p.x, p.y); await press(t, 'Control+v');
+    const d = await t.doc(); eq(d.model.nodes.length, n0, 'back');
+    const pasted = d.model.nodes[d.model.nodes.length - 1];
+    const box = await t.box(`[data-node="${pasted.id}"] rect.body`);
+    assert(Math.abs(box.x - p.x) < 20 && Math.abs(box.y - p.y) < 20, `at the pointer (${box.x},${box.y} vs ${p.x},${p.y})`);
+    eq((await t.sel()) !== null, true, 'the pasted component is selected');
+  });
+
+  await test('copy: components paste into another tab; typing in a field is left alone', async t => {
+    await clip(t);
+    await t.clickNode('n4'); await press(t, 'Control+c');
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(350);
+    const n0 = (await t.doc()).model.nodes.length;
+    await t.page.mouse.move(5, 5); await press(t, 'Control+v');
+    eq((await t.doc()).model.nodes.length, n0 + 1, 'pasted into the new tab');
+    await t.page.click('#title'); await press(t, 'Control+v');
+    eq((await t.doc()).model.nodes.length, n0 + 1, 'pasting into the title field pastes text, not components');
+  });
+
+  await test('copy: sequence messages and lifelines copy, paste below the selection, and paste as text from elsewhere', async t => {
+    await clip(t);
+    await newSeq(t); await addParts(t, ['A', 'B']);
+    const h = await heads(t);
+    await dragLife(t, h.a, h.b, h.a.y + 50); await t.page.keyboard.type('one'); await t.page.keyboard.press('Enter');
+    await dragLife(t, h.b, h.a, h.a.y + 150); await t.page.keyboard.type('two'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(150);
+    await t.page.click('.sq-msg:has-text("one") .sq-label'); await t.page.waitForTimeout(150);
+    await press(t, 'Control+c');
+    assert((await clipText(t)).includes('a -> b: one'), 'text format on the clipboard');
+    await press(t, 'Control+v');
+    eq((await msgs(t)).join(' | '), 'a>b:one | a>b:one | b>a:two', 'pasted right below');
+    await t.page.click('[data-head="b"]'); await t.page.waitForTimeout(150);
+    await press(t, 'Control+c'); await press(t, 'Control+v');
+    eq((await t.doc()).model.participants.map(p => p.id).join(','), 'a,b,b2', 'a lifeline pastes as a new lifeline');
+    await pasteOnCanvas(t, 'web -> a: GET /x\na --> web: 200'); await t.page.waitForTimeout(200);
+    const d = await t.doc();
+    assert(d.model.participants.some(p => p.id === 'web'), 'missing lifelines added');
+    eq((await msgs(t)).slice(-2).join(' | '), 'web>a:GET /x | a>web:200');
+  });
+
+  await test('copy: classes copy with their relations; taken names get "Copy"', async t => {
+    await clip(t);
+    await newCls(t);
+    await pasteOnCanvas(t, JAVA); await t.page.waitForTimeout(400);
+    await t.page.click('.cl-box[data-class="Order"] .cl-body', { position: { x: 20, y: 10 } }); await t.page.waitForTimeout(150);
+    await t.page.click('.cl-box[data-class="Entity"] .cl-body', { position: { x: 20, y: 10 }, modifiers: ['Shift'] }); await t.page.waitForTimeout(150);
+    await press(t, 'Control+c');
+    await press(t, 'Control+v');
+    const d = await t.doc();
+    assert(d.model.classes.some(c => c.name === 'OrderCopy') && d.model.classes.some(c => c.name === 'EntityCopy'), d.model.classes.map(c => c.name).join());
+    assert(d.model.relations.some(r => r.from === 'OrderCopy' && r.to === 'EntityCopy' && r.type === 'inherit'), 'relation between the copies');
+    eq(d.model.classes.find(c => c.name === 'OrderCopy').fields.length, d.model.classes.find(c => c.name === 'Order').fields.length, 'members copied');
+    await press(t, 'Control+v');
+    assert((await t.doc()).model.classes.some(c => c.name === 'OrderCopy2'), 'again → OrderCopy2');
+  });
+
+  await test('copy: right-click menu copies, pastes where you clicked, duplicates and deletes', async t => {
+    const n0 = (await t.doc()).model.nodes.length;
+    const b = await t.box('[data-node="n4"] rect.body');
+    await t.page.mouse.click(b.x + 20, b.y + 40, { button: 'right' }); await t.page.waitForTimeout(150);
+    assert(await t.page.isVisible('#ctxMenu'), 'menu opens');
+    await t.page.click('[data-ctx="copy"]'); await t.page.waitForTimeout(150);
+    assert(!(await t.page.isVisible('#ctxMenu')), 'closes after choosing');
+    const p = await t.emptyCanvasPoint(); p.y -= 150;   // room below so the pasted box needn't be panned into view
+    await t.page.mouse.click(p.x, p.y, { button: 'right' }); await t.page.waitForTimeout(150);
+    assert(await t.page.isDisabled('[data-ctx="copy"]'), 'nothing selected on empty canvas: Copy is off');
+    await t.page.click('[data-ctx="paste"]'); await t.page.waitForTimeout(200);
+    let d = await t.doc(); eq(d.model.nodes.length, n0 + 1, 'pasted');
+    const pasted = d.model.nodes[d.model.nodes.length - 1];
+    const pb = await t.box(`[data-node="${pasted.id}"] rect.body`);
+    assert(Math.abs(pb.x - p.x) < 20 && Math.abs(pb.y - p.y) < 20, 'where you clicked');
+    await t.page.mouse.click(pb.x + 20, pb.y + 40, { button: 'right' }); await t.page.waitForTimeout(150);
+    await t.page.click('[data-ctx="dup"]'); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.nodes.length, n0 + 2, 'duplicated');
+    const b4 = await t.box('[data-node="n4"] rect.body');
+    await t.page.mouse.click(b4.x + 20, b4.y + 40, { button: 'right' }); await t.page.waitForTimeout(150);
+    await t.page.click('[data-ctx="del"]'); await t.page.waitForTimeout(200);
+    assert(!(await t.doc()).model.nodes.some(n => n.id === 'n4'), 'deleted');
+    await t.page.mouse.click(p.x, p.y, { button: 'right' }); await t.page.waitForTimeout(150);
+    await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(100);
+    assert(!(await t.page.isVisible('#ctxMenu')), 'Escape closes it');
   });
 
   const failed = results.filter(r => !r.ok);

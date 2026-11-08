@@ -652,3 +652,11 @@ button.cl-tag.ref{border:none;background:color-mix(in srgb,var(--fk) 16%,transpa
 }
 .dsignin{padding:16px;font-size:13px;line-height:1.5;color:var(--muted)}
 .dsignin p{margin:0 0 10px}
+
+/* right-click menu */
+.ctx{position:fixed;z-index:50;min-width:190px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:5px;animation:fadeIn 100ms var(--ease) both}
+.ctx button{display:flex;width:100%;justify-content:space-between;align-items:center;gap:16px;padding:6px 10px;border:0;background:none;border-radius:6px;font:13px var(--font);color:var(--fg);text-align:left;cursor:pointer}
+.ctx button:hover:not(:disabled),.ctx button:focus-visible{background:var(--sel-soft);outline:none}
+.ctx button:disabled{opacity:.4;cursor:default}
+.ctx kbd{font:11.5px var(--mono);color:var(--muted);background:none;border:0}
+.ctx hr{border:0;border-top:1px solid var(--line);margin:4px 2px}

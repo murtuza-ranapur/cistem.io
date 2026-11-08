@@ -54,6 +54,17 @@ Personas used for exploratory testing are at the end.
   - Undo never crosses tabs.
 - **Limits:** 100+ steps; undo during a drag; undo while a text editor has focus (the editor's own undo wins).
 
+### 1.5 Copy, cut, paste
+- **Inputs:** ⌘/Ctrl+C, X, V, D; the right-click menu (Cut, Copy, Paste, Duplicate, Delete) on all three canvases; text pasted from other apps.
+- **Outputs:** the system clipboard gets readable text (system: JSON marked `"cistem-clipboard": 1`; sequence: the text format; class: the text format headed `%% cistem copy {positions}`). A copy is also kept in `cistem.clip`, so the menu's Paste works without clipboard permission.
+- **Invariants**
+  - System: selected components, the connections between them, and selected environments with everything inside are copied. Pasted items get new ids and become the selection. `[e2e]`
+  - Paste lands at the pointer when it's over the canvas, otherwise 32px further down-right with each repeat paste. Beside the original it stays in the same environment. `[e2e]`
+  - Sequence: messages, notes and whole blocks paste below the selection (after a block's end) or at the end. Missing lifelines are added. A lifeline copied alone pastes as a new lifeline. Text, Mermaid and PlantUML from other apps paste too. `[e2e]`
+  - Class: classes and the relations between them are copied. Taken names become `NameCopy`, `NameCopy2`. Java, Kotlin and Mermaid paste merge as before. `[e2e]`
+  - Each paste or cut is one undo step. Works across tabs of the same kind. Typing in a field or code editor keeps the normal text clipboard. `[e2e]`
+- **Limits:** pasting a hand-edited or hostile clipboard (it goes through the same file sanitiser); pasting system JSON into a sequence tab (ignored).
+
 ---
 
 ## 2. System diagrams

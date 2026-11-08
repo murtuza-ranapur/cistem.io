@@ -10,8 +10,9 @@ import { initTooltips } from './tooltip';
 import { cloud, startPolling, scheduleSave, saveNow, resolveConflict, openDrawer, closeDrawer, newDiagram, saveAsNew, openAsNew, toggleShare, onSyncStatus, onUserChange, signIn, signOut, bootCloud } from './cloud';
 import { onAfterRender, onStorageFull } from './state';
 import { bootTabs, syncActiveTitle, newTab, usesFor, tabs } from './tabs';
-import { seqKey } from './seqview';
-import { clsKey, organiseCls } from './clsview';
+import { seqKey, deleteSelection as seqDelete, duplicateSelection as seqDup } from './seqview';
+import { clsKey, organiseCls, deleteSelection as clsDelete, duplicateSelection as clsDup } from './clsview';
+import { actions as clipActions } from './clipboard';
 import { fromTables, fromAvro, layoutCls } from './cls';
 import { clsToFile } from './document';
 import { sequenceFromPath } from './seq';
@@ -63,7 +64,10 @@ history.onHistoryChange(refreshHistory);
 undoBtn.onclick = () => { undo(); refreshHistory(); };
 redoBtn.onclick = () => { redo(); refreshHistory(); };
 
-// ---------- delete / duplicate ----------
+// ---------- delete / duplicate (also used by cut and the right-click menu) ----------
+clipActions.system = { del: () => deleteSelection(), dup: () => duplicateSelection() };
+clipActions.sequence = { del: seqDelete, dup: seqDup };
+clipActions.class = { del: clsDelete, dup: clsDup };
 function deleteSelection() {
   const ids = selectedNodeIds();
   if (state.sel?.type === 'container') {

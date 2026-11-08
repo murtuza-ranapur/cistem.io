@@ -514,11 +514,7 @@ export function seqKey(ev: KeyboardEvent): boolean {
   const rows = seq().rows;
   if (ev.key === 'Delete' || ev.key === 'Backspace') { deleteSelection(); return true; }
   if (ev.key === 'Enter' && state.sel) { if (state.sel.type === 'row') startEdit(state.sel.id); else startEditPart(state.sel.id); return true; }
-  if (mod && ev.key.toLowerCase() === 'd' && state.sel?.type === 'row') {
-    const i = rows.findIndex(r => r.id === state.sel!.id), r = rows[i];
-    if (r?.t === 'msg' || r?.t === 'note') { const c = { ...JSON.parse(JSON.stringify(r)), id: rowId() }; mutate(() => rows.splice(i + 1, 0, c)); select({ type: 'row', id: c.id }); renderAll(); }
-    return true;
-  }
+  if (mod && ev.key.toLowerCase() === 'd' && state.sel?.type === 'row') { duplicateSelection(); return true; }
   if ((ev.key === 'ArrowUp' || ev.key === 'ArrowDown') && state.sel?.type === 'row') {
     const i = rows.findIndex(r => r.id === state.sel!.id), r = rows[i]; if (!r) return true;
     const span = r.t === 'open' ? blockEnd(rows, i) - i + 1 : r.t === 'msg' || r.t === 'note' ? 1 : 0; if (!span) return true;
@@ -539,6 +535,13 @@ export function seqKey(ev: KeyboardEvent): boolean {
     if (map[k]) { seqTool(map[k]); return true; }
   }
   return false;
+}
+/** ⌘D: a copy of the selected message or note right below it. */
+export function duplicateSelection() {
+  const rows = seq().rows;
+  if (state.sel?.type !== 'row') return;
+  const i = rows.findIndex(r => r.id === state.sel!.id), r = rows[i];
+  if (r?.t === 'msg' || r?.t === 'note') { const c = { ...JSON.parse(JSON.stringify(r)), id: rowId() }; mutate(() => rows.splice(i + 1, 0, c)); select({ type: 'row', id: c.id }); renderAll(); }
 }
 export function deleteSelection() {
   const s = state.sel; if (!s) return;

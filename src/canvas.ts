@@ -629,7 +629,12 @@ function up(ev: PointerEvent) {
 }
 svg.addEventListener('pointerup', up);
 svg.addEventListener('pointercancel', up);
-svg.addEventListener('contextmenu', ev => ev.preventDefault());
+// where the pointer is over the canvas (for paste-at-pointer); null when it's elsewhere
+let hover: { x: number; y: number } | null = null;
+svg.addEventListener('pointermove', ev => { if (ev.pointerType === 'mouse') hover = { x: ev.clientX, y: ev.clientY }; });
+svg.addEventListener('pointerleave', () => { hover = null; });
+export function pointerWorld(): { x: number; y: number } | null { return hover && state.kind === 'system' ? toWorld(hover.x, hover.y) : null; }
+export const worldAt = (cx: number, cy: number) => toWorld(cx, cy);
 
 // double-click to rename
 svg.addEventListener('dblclick', ev => startRename(ev));
