@@ -34,7 +34,7 @@
   color-scheme:dark}
 
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
+html,body,#root{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:13px;overflow:hidden;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
 button{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;transition:background var(--t) var(--ease),border-color var(--t) var(--ease),transform 120ms var(--ease)}
