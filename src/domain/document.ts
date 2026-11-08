@@ -12,6 +12,7 @@
 import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
 import { sanitizeSeq, type SeqDoc } from './seq';
 import { sanitizeCls, type ClassDoc } from './cls';
+import { itemNotes, noteToFile, sanitizeNotes, type CanvasNote, type NoteFile } from './notes';
 
 export const FORMAT_VERSION = 4;
 export type DiagramKind = 'system' | 'sequence' | 'class';
@@ -26,24 +27,33 @@ export interface DiagramFile {
     edges: Edge[];
     containers: Container[];
     links: Link[];
+    notes?: NoteFile['model'];
   };
   layout: {
     positions: Record<string, { x: number; y: number }>;
     frames: Record<string, Frame>;
     detail?: Record<string, 'compact' | 'expanded'>;
+    notes?: NoteFile['layout'];
   };
+}
+
+/** Canvas notes split into the model (content) and layout (geometry) parts of a file; nothing when there are none. */
+function notesParts(notes: CanvasNote[] | undefined) {
+  const f = noteToFile(notes);
+  return f ? { model: { notes: f.model }, layout: { notes: f.layout } } : { model: {}, layout: {} };
 }
 
 export function toFile(doc: Doc, meta?: Partial<DiagramFile['meta']>): DiagramFile {
   const now = new Date().toISOString();
   const positions: DiagramFile['layout']['positions'] = {};
   const nodes = doc.nodes.map(n => { const { x, y, ...rest } = n; positions[n.id] = { x, y }; return rest; });
+  const notes = notesParts(doc.notes);
   return {
     version: FORMAT_VERSION,
     kind: 'system',
     meta: { title: meta?.title ?? 'Untitled system', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
-    model: { nodes, edges: doc.edges, containers: doc.containers ?? [], links: doc.links ?? [] },
-    layout: { positions, frames: doc.frames ?? {}, ...(Object.keys(doc.detail ?? {}).length ? { detail: doc.detail } : {}) },
+    model: { nodes, edges: doc.edges, containers: doc.containers ?? [], links: doc.links ?? [], ...notes.model },
+    layout: { positions, frames: doc.frames ?? {}, ...(Object.keys(doc.detail ?? {}).length ? { detail: doc.detail } : {}), ...notes.layout },
   };
 }
 
@@ -52,16 +62,16 @@ export interface SequenceFile {
   version: number;
   kind: 'sequence';
   meta: DiagramFile['meta'];
-  model: SeqDoc;
-  layout: Record<string, never>;
+  model: Omit<SeqDoc, 'notes'> & { notes?: NoteFile['model'] };
+  layout: { notes?: NoteFile['layout'] };
 }
 export function seqToFile(seq: SeqDoc, meta?: Partial<DiagramFile['meta']>): SequenceFile {
   const now = new Date().toISOString();
   return {
     version: FORMAT_VERSION, kind: 'sequence',
     meta: { title: meta?.title ?? 'Untitled sequence', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
-    model: { participants: seq.participants, rows: seq.rows, ...(seq.uses ? { uses: seq.uses } : {}) },
-    layout: {},
+    model: { participants: seq.participants, rows: seq.rows, ...(seq.uses ? { uses: seq.uses } : {}), ...notesParts(seq.notes).model },
+    layout: { ...notesParts(seq.notes).layout },
   };
 }
 /** A class diagram file: classes and relations; where each box sits is layout. */
@@ -69,8 +79,8 @@ export interface ClassFile {
   version: number;
   kind: 'class';
   meta: DiagramFile['meta'];
-  model: { classes: ClassDoc['classes']; relations: ClassDoc['relations'] };
-  layout: { positions: ClassDoc['pos'] };
+  model: { classes: ClassDoc['classes']; relations: ClassDoc['relations']; notes?: NoteFile['model'] };
+  layout: { positions: ClassDoc['pos']; notes?: NoteFile['layout'] };
 }
 export function clsToFile(c: ClassDoc, meta?: Partial<DiagramFile['meta']>): ClassFile {
   const now = new Date().toISOString();
@@ -79,8 +89,8 @@ export function clsToFile(c: ClassDoc, meta?: Partial<DiagramFile['meta']>): Cla
   return {
     version: FORMAT_VERSION, kind: 'class',
     meta: { title: meta?.title ?? 'Untitled classes', created: meta?.created ?? now, updated: now, ...(meta?.tags ? { tags: meta.tags } : {}) },
-    model: { classes: c.classes, relations: c.relations },
-    layout: { positions },
+    model: { classes: c.classes, relations: c.relations, ...notesParts(c.notes).model },
+    layout: { positions, ...notesParts(c.notes).layout },
   };
 }
 export type Loaded =
@@ -94,15 +104,20 @@ export function readAny(input: unknown): Loaded {
     if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
     const m = d.model ?? {};
     if (!Array.isArray(m.classes) || !Array.isArray(m.relations)) throw new Error('Malformed class diagram');
-    return { kind: 'class', cls: sanitizeCls(m, d.layout?.positions), meta: cleanMeta(d.meta, 'Untitled classes') };
+    return { kind: 'class', cls: withNotes(sanitizeCls(m, d.layout?.positions), d), meta: cleanMeta(d.meta, 'Untitled classes') };
   }
   if (d && typeof d === 'object' && d.kind === 'sequence') {
     if (typeof d.version === 'number' && d.version > FORMAT_VERSION) throw new Error(`Document version ${d.version} is newer than this app understands (${FORMAT_VERSION})`);
     const m = d.model ?? {};
     if (!Array.isArray(m.participants) || !Array.isArray(m.rows)) throw new Error('Malformed sequence');
-    return { kind: 'sequence', seq: sanitizeSeq(m), meta: cleanMeta(d.meta, 'Untitled sequence') };
+    return { kind: 'sequence', seq: withNotes(sanitizeSeq(m), d), meta: cleanMeta(d.meta, 'Untitled sequence') };
   }
   return { kind: 'system', ...fromFile(input) };
+}
+/** Add a file's canvas notes (when it has any) to a document read from it. */
+function withNotes<D extends { notes?: CanvasNote[] }>(doc: D, file: any): D {
+  const notes = sanitizeNotes(file?.model?.notes, file?.layout?.notes);
+  return notes.length ? { ...doc, notes } : doc;
 }
 /** meta from an untrusted file: a string title, ISO-ish timestamps, string tags. */
 export function cleanMeta(raw: unknown, fallback: string): DiagramFile['meta'] {
@@ -121,7 +136,7 @@ export function kindOfFile(input: unknown): DiagramKind { const k = (input as an
 export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] } {
   const f = migrate(input);
   const c = cleanSystem(f);
-  const doc = adopt({ nodes: c.nodes, edges: c.edges, containers: c.containers, links: c.links, frames: c.frames, detail: f.layout.detail ?? {} });
+  const doc = withNotes(adopt({ nodes: c.nodes, edges: c.edges, containers: c.containers, links: c.links, frames: c.frames, detail: f.layout.detail ?? {} }), f);
   return { doc, meta: cleanMeta(f.meta, 'Untitled system') };
 }
 
@@ -141,7 +156,8 @@ function cleanSystem(f: DiagramFile) {
   const nodes = (Array.isArray(f.model?.nodes) ? f.model.nodes : []).filter(obj).map((n: any) => {
     const nid = unique(nodeIds, n.id, 'n'); if (str(n.id) && str(n.id) !== nid && !renamed.has(str(n.id))) renamed.set(str(n.id), nid);
     const p: Record<string, unknown> = obj(pos[str(n.id)]) ? pos[str(n.id)] : {};
-    const out: any = { ...n, id: nid, kind: /^[\w-]+$/.test(str(n.kind)) ? str(n.kind) : 'service', name: str(n.name), x: numOr(p.x, 0), y: numOr(p.y, 0) };
+    const { notes: _n, ...nRest } = n;
+    const out: any = { ...nRest, id: nid, kind: /^[\w-]+$/.test(str(n.kind)) ? str(n.kind) : 'service', name: str(n.name), x: numOr(p.x, 0), y: numOr(p.y, 0), ...itemNotes(n.notes) };
     if ('tables' in n) out.tables = (Array.isArray(n.tables) ? n.tables : []).filter(obj).map((t: any) => ({ ...t, name: str(t.name), columns: (Array.isArray(t.columns) ? t.columns : []).filter(obj).map((c: any) => ({ ...c, name: str(c.name), type: str(c.type) })) }));
     if ('endpoints' in n) out.endpoints = (Array.isArray(n.endpoints) ? n.endpoints : []).filter(obj).map((e: any) => ({ ...e, method: str(e.method) || 'GET', path: str(e.path) }));
     if ('container' in n) out.container = n.container === null ? null : id(n.container) || null;
@@ -151,9 +167,9 @@ function cleanSystem(f: DiagramFile) {
   const edges = (Array.isArray(f.model?.edges) ? f.model.edges : []).filter(obj)
     .map((e: any) => ({ ...e, from: renamed.get(str(e.from)) ?? id(e.from), to: renamed.get(str(e.to)) ?? id(e.to) }))
     .filter((e: any) => nodeIds.has(e.from) && nodeIds.has(e.to))
-    .map((e: any) => ({ ...e, id: unique(edgeIds, e.id, 'e') }));
+    .map(({ notes, ...e }: any) => ({ ...e, id: unique(edgeIds, e.id, 'e'), ...itemNotes(notes) }));
   const cIds = new Set<string>();
-  const containers = (Array.isArray(f.model?.containers) ? f.model.containers : []).filter(obj).map((c: any) => ({ ...c, id: unique(cIds, c.id, 'c'), name: str(c.name), kind: /^[\w-]+$/.test(str(c.kind)) ? str(c.kind) : 'cloud', parent: c.parent ? id(c.parent) : null }));
+  const containers = (Array.isArray(f.model?.containers) ? f.model.containers : []).filter(obj).map(({ notes, ...c }: any) => ({ ...c, ...itemNotes(notes), id: unique(cIds, c.id, 'c'), name: str(c.name), kind: /^[\w-]+$/.test(str(c.kind)) ? str(c.kind) : 'cloud', parent: c.parent ? id(c.parent) : null }));
   const lIds = new Set<string>();
   const links = (Array.isArray(f.model?.links) ? f.model.links : []).filter(obj).map((l: any) => ({ ...l, id: unique(lIds, l.id, 'l'), from: id(l.from), to: id(l.to), type: str(l.type) })).filter((l: any) => cIds.has(l.from) && cIds.has(l.to));
   const frames: Record<string, any> = {};

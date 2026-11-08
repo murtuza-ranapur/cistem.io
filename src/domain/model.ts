@@ -1,3 +1,4 @@
+import type { CanvasNote } from './notes';
 import TYPES_FILE from '../../shared/component-types.json';
 
 /** A component type's key in shared/component-types.json ("service", "db", "sqs"…). */
@@ -33,6 +34,8 @@ export interface Topic { name: string; partitions: number; schema: string; key?:
  */
 export interface NodeData {
   id: string; kind: Kind; name: string; latency?: number; container?: string | null;
+  /** Rich notes (markdown), see notes.ts. */
+  notes?: string;
   rps?: number; platforms?: string[];
   maxRps?: number; instances?: number; rpsPerInstance?: number; maxOps?: number; hitRatio?: number; eviction?: string;
   maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number;
@@ -46,13 +49,13 @@ export interface Node extends NodeData { x: number; y: number }
 // Names kept for readability at call sites; they're all the same shape now.
 export type EntryNode = Node; export type ServiceNode = Node; export type DbNode = Node & { tables: Table[] }; export type QueueNode = Node & { schema: string };
 
-export interface Edge { id: string; from: string; to: string; calls: number; endpoint?: number | null }
+export interface Edge { id: string; from: string; to: string; calls: number; endpoint?: number | null; notes?: string }
 
 /** A boundary that components live in: a cloud, an account, a VPC... Nested via `parent`. */
 export type ContainerKind = 'cloud' | 'account' | 'vpc' | 'region' | 'datacentre' | 'team';
 export type ContainerColor = 'blue' | 'violet' | 'teal' | 'green' | 'amber' | 'orange' | 'red' | 'pink' | 'slate';
 export type ContainerFill = 'tint' | 'solid' | 'outline';
-export interface Container { id: string; kind: ContainerKind; name: string; parent: string | null; provider?: string; owner?: string; note?: string; color?: ContainerColor; fill?: ContainerFill; border?: 'dashed' | 'solid' }
+export interface Container { id: string; kind: ContainerKind; name: string; parent: string | null; provider?: string; owner?: string; note?: string; notes?: string; color?: ContainerColor; fill?: ContainerFill; border?: 'dashed' | 'solid' }
 /** How two containers talk; adds latency to every edge crossing between them (or their descendants). */
 /**
  * Every quantity in the model (rps, calls, capacities, latencies) is a non-negative finite number. Numeric
@@ -68,7 +71,7 @@ export interface Link { id: string; from: string; to: string; type: string; late
 export interface Frame { x: number; y: number; w: number; h: number }
 
 export type Detail = 'compact' | 'expanded';
-export interface Doc { nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame>; detail: Record<string, Detail> }
+export interface Doc { nodes: Node[]; edges: Edge[]; containers: Container[]; links: Link[]; frames: Record<string, Frame>; detail: Record<string, Detail>; notes?: CanvasNote[] }
 
 export const CONTAINER_KINDS: Record<ContainerKind, { label: string; hue: number }> = {
   cloud:      { label: 'Cloud',       hue: 210 },

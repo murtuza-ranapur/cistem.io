@@ -94,6 +94,12 @@
           "items": {
             "$ref": "#/$defs/link"
           }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/canvasNote"
+          }
         }
       }
     },
@@ -128,7 +134,7 @@
         },
         "kind": {
           "type": "string",
-          "description": "A component type key from shared/component-types.json (entry, lb, apigw, cdn, service, cache, db, mongodb, queue, sqs, \u2026). The type's behaviour decides which fields matter."
+          "description": "A component type key from shared/component-types.json (entry, lb, apigw, cdn, service, cache, db, mongodb, queue, sqs, …). The type's behaviour decides which fields matter."
         },
         "rps": {
           "type": "number",
@@ -217,6 +223,9 @@
         },
         "fifo": {
           "type": "boolean"
+        },
+        "notes": {
+          "$ref": "#/$defs/noteText"
         }
       }
     },
@@ -250,6 +259,9 @@
           ],
           "minimum": 0,
           "description": "Index into the target service's endpoints, if known."
+        },
+        "notes": {
+          "$ref": "#/$defs/noteText"
         }
       }
     },
@@ -422,6 +434,9 @@
             "solid"
           ],
           "description": "Frame border style (default dashed)."
+        },
+        "notes": {
+          "$ref": "#/$defs/noteText"
         }
       }
     },
@@ -487,6 +502,9 @@
               "ref": {
                 "type": "string",
                 "description": "Id of the linked component in the system diagram this sequence uses"
+              },
+              "notes": {
+                "$ref": "#/$defs/noteText"
               }
             }
           }
@@ -642,6 +660,12 @@
             }
           },
           "description": "The system diagram this sequence draws on: its id once saved, else the browser tab it's open in"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/canvasNote"
+          }
         }
       }
     },
@@ -758,6 +782,9 @@
                     }
                   }
                 }
+              },
+              "notes": {
+                "$ref": "#/$defs/noteText"
               }
             }
           }
@@ -801,8 +828,75 @@
               },
               "toMult": {
                 "type": "string"
+              },
+              "notes": {
+                "$ref": "#/$defs/noteText"
               }
             }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/canvasNote"
+          }
+        }
+      }
+    },
+    "noteText": {
+      "type": "string",
+      "maxLength": 50000,
+      "description": "Rich notes in markdown (GitHub flavour plus ==highlight==, ++underline++, and <mark data-color>/<span style=\"color\"> for colours)."
+    },
+    "canvasNote": {
+      "type": "object",
+      "required": [
+        "id",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "color": {
+          "enum": [
+            "yellow",
+            "blue",
+            "green",
+            "pink",
+            "grey",
+            "none"
+          ]
+        },
+        "text": {
+          "$ref": "#/$defs/noteText"
+        }
+      },
+      "description": "A note placed on the canvas; where it sits is in layout.notes."
+    },
+    "noteLayout": {
+      "type": "object",
+      "description": "Canvas note id → its box in canvas units (h omitted: the height follows the text).",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "w"
+        ],
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "w": {
+            "type": "number"
+          },
+          "h": {
+            "type": "number"
           }
         }
       }
@@ -823,7 +917,12 @@
             "$ref": "#/$defs/sequenceModel"
           },
           "layout": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "notes": {
+                "$ref": "#/$defs/noteLayout"
+              }
+            }
           }
         }
       }
@@ -861,6 +960,9 @@
                     }
                   }
                 }
+              },
+              "notes": {
+                "$ref": "#/$defs/noteLayout"
               }
             }
           }
@@ -885,7 +987,7 @@
             "properties": {
               "positions": {
                 "type": "object",
-                "description": "Node id \u2192 top-left corner in canvas units.",
+                "description": "Node id → top-left corner in canvas units.",
                 "additionalProperties": {
                   "type": "object",
                   "required": [
@@ -904,7 +1006,7 @@
               },
               "frames": {
                 "type": "object",
-                "description": "Container id \u2192 drawn frame in canvas units (optional; the editor fits frames to members when absent).",
+                "description": "Container id → drawn frame in canvas units (optional; the editor fits frames to members when absent).",
                 "additionalProperties": {
                   "type": "object",
                   "required": [
@@ -931,13 +1033,16 @@
               },
               "detail": {
                 "type": "object",
-                "description": "Node id \u2192 compact | expanded (how much of a component's schema is drawn on the canvas).",
+                "description": "Node id → compact | expanded (how much of a component's schema is drawn on the canvas).",
                 "additionalProperties": {
                   "enum": [
                     "compact",
                     "expanded"
                   ]
                 }
+              },
+              "notes": {
+                "$ref": "#/$defs/noteLayout"
               }
             }
           }

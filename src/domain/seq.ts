@@ -17,13 +17,14 @@
  *   alt merchant on legacy / else / end          also opt, loop, par (with `and` branches)
  *   # a comment                                  (whole lines starting with # or //)
  */
+import { itemNotes, type CanvasNote } from './notes';
 import type { Doc } from './model';
 import type { Results } from './engine';
 
 export type MsgStyle = 'sync' | 'async' | 'reply';
 export type BlockKind = 'alt' | 'opt' | 'loop' | 'par';
 export const BLOCK_KINDS: BlockKind[] = ['alt', 'opt', 'loop', 'par'];
-export interface Participant { id: string; name: string; type?: string; ref?: string }
+export interface Participant { id: string; name: string; type?: string; ref?: string; notes?: string }
 export type Row =
   | { t: 'msg'; id: string; from: string; to: string; label: string; style: MsgStyle }
   | { t: 'note'; id: string; over: string[]; text: string }
@@ -32,7 +33,7 @@ export type Row =
   | { t: 'close'; id: string };
 /** The system diagram this sequence draws on: its cloud id when saved, else the tab it lives in. */
 export interface SeqUses { id?: string; tab?: string; title?: string }
-export interface SeqDoc { participants: Participant[]; rows: Row[]; uses?: SeqUses }
+export interface SeqDoc { participants: Participant[]; rows: Row[]; uses?: SeqUses; notes?: CanvasNote[] }
 export interface SeqError { line: number; message: string }
 
 export const blankSeq = (): SeqDoc => ({ participants: [], rows: [] });
@@ -488,7 +489,7 @@ export function sanitizeSeq(raw: unknown): SeqDoc {
     if (!ID_RE.test(id) || participants.some(x => x.id === id)) id = slugId(str(o.name) || id || 'p', participants.map(x => x.id));
     if (!idMap.has(str(o.id))) idMap.set(str(o.id), id);
     const type = safeId(o.type).replace(/[.$]/g, '');
-    participants.push({ id, name: str(o.name) || id, ...(type ? { type } : {}), ...(o.ref ? { ref: safeId(o.ref) } : {}) });
+    participants.push({ id, name: str(o.name) || id, ...(type ? { type } : {}), ...(o.ref ? { ref: safeId(o.ref) } : {}), ...itemNotes(o.notes) });
   }
   const has = (id: string) => participants.some(p => p.id === id);
   const ref = (v: unknown) => idMap.get(str(v)) ?? safeId(v);   // rows follow lifelines whose ids were cleaned

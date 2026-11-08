@@ -19,17 +19,18 @@
  *   Refund --|> Payment                                  extends
  *   Service ..> Clock                                    depends on
  */
+import { itemNotes, type CanvasNote } from './notes';
 import type { Table } from './model';
 
 export type ClassKind = 'class' | 'abstract' | 'interface' | 'enum' | 'record';
 export const CLASS_KINDS: ClassKind[] = ['class', 'abstract', 'interface', 'enum', 'record'];
 export type Vis = '+' | '-' | '#' | '~' | '';
 export interface Member { vis: Vis; name: string; type: string; /** present on methods: the parameter list as written */ params?: string; static?: boolean; abstract?: boolean }
-export interface ClassBox { name: string; kind: ClassKind; stereo?: string; fields: Member[]; methods: Member[] }
+export interface ClassBox { name: string; kind: ClassKind; stereo?: string; fields: Member[]; methods: Member[]; notes?: string }
 export type RelType = 'inherit' | 'implement' | 'composition' | 'aggregation' | 'assoc' | 'depend';
 export const REL_TYPES: RelType[] = ['composition', 'aggregation', 'assoc', 'inherit', 'implement', 'depend'];
-export interface Relation { id: string; from: string; to: string; type: RelType; label?: string; fromMult?: string; toMult?: string }
-export interface ClassDoc { classes: ClassBox[]; relations: Relation[]; pos: Record<string, { x: number; y: number }> }
+export interface Relation { id: string; from: string; to: string; type: RelType; label?: string; fromMult?: string; toMult?: string; notes?: string }
+export interface ClassDoc { classes: ClassBox[]; relations: Relation[]; pos: Record<string, { x: number; y: number }>; notes?: CanvasNote[] }
 export interface ClsError { line: number; message: string }
 
 export const blankCls = (): ClassDoc => ({ classes: [], relations: [], pos: {} });
@@ -556,7 +557,7 @@ export function sanitizeCls(model: unknown, positions: unknown): ClassDoc {
     const kind = CLASS_KINDS.includes(o.kind as ClassKind) ? o.kind as ClassKind : 'class';
     const fields = (Array.isArray(o.fields) ? o.fields : []).map(f => cleanMember(f, false)).filter((x): x is Member => !!x).map(f => (isMethod(f) ? { ...f, params: undefined } : f));
     const methods = (Array.isArray(o.methods) ? o.methods : []).map(f => cleanMember(f, true)).filter((x): x is Member => !!x).map(f => ({ ...f, params: f.params ?? '' }));
-    d.classes.push({ name, kind, fields: fields.map(f => { const { params: _p, ...rest } = f; return rest; }), methods, ...(s_(o.stereo) ? { stereo: s_(o.stereo) } : {}) });
+    d.classes.push({ name, kind, fields: fields.map(f => { const { params: _p, ...rest } = f; return rest; }), methods, ...(s_(o.stereo) ? { stereo: s_(o.stereo) } : {}), ...itemNotes(o.notes) });
   }
   const names = new Set(d.classes.map(c => c.name)), seen = new Set<string>();
   for (const r of Array.isArray(m.relations) ? m.relations : []) {
@@ -565,7 +566,7 @@ export function sanitizeCls(model: unknown, positions: unknown): ClassDoc {
     const from = s_(o.from), to = s_(o.to);
     if (!names.has(from) || !names.has(to)) continue;
     let id = s_(o.id).replace(/[^\w.-]/g, ''); if (!id || seen.has(id)) id = relId(); seen.add(id);
-    const rel: Relation = { id, from, to, type: REL_TYPES.includes(o.type as RelType) ? o.type as RelType : 'assoc' };
+    const rel: Relation = { id, from, to, type: REL_TYPES.includes(o.type as RelType) ? o.type as RelType : 'assoc', ...itemNotes(o.notes) };
     for (const k of ['label', 'fromMult', 'toMult'] as const) if (s_(o[k])) rel[k] = s_(o[k]);
     d.relations.push(rel);
   }
