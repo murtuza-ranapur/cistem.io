@@ -4,6 +4,7 @@ import { ICON, NODE_H, qty, typeDef, isSource, detailOf, nodeWidthFor, nodeHeigh
 import type { NodeResult } from '../../domain/engine';
 import { fmt, fmtMs, trunc } from '../../lib/format';
 import { kindColour, localPort, summary, SIDES } from './geometry';
+import { NoteBadge } from '../../notes/NoteBadge';
 import { layoutDetail, type DetailItem, type Tag } from './detail';
 
 interface Props {
@@ -44,6 +45,7 @@ function NodeViewImpl({ n, expanded, r, selected, dragging, target, animate }: P
         </g>
       )}
       {SIDES.map(s => { const p = localPort(w, h, s); return <circle key={s} className="handle" data-handle={s} cx={p.x} cy={p.y} r={5} />; })}
+      <NoteBadge md={n.notes} x={w} y={0} />
     </g>
   );
 }

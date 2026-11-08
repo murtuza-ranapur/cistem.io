@@ -12,7 +12,9 @@ import { useDismiss, moveFocus } from './hooks';
 /** Right-click on a canvas: select what's under the pointer (unless it's already selected), then open the menu. */
 export function openContextMenu(ev: React.MouseEvent) {
   ev.preventDefault();
-  const under = active().selectionAt(ev.target as Element);
+  const target = ev.target as Element;
+  const note = target.closest<HTMLElement>('[data-note]')?.dataset.note;
+  const under = note ? { type: 'note' as const, ids: [note] } : active().selectionAt(target);
   const cur = editor().selection;
   if (!under) select(null);
   else if (!(cur?.type === under.type && under.ids.every(id => cur.ids.includes(id)))) select(under);

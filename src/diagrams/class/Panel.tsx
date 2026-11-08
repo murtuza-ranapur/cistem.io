@@ -11,6 +11,7 @@ import { Icon } from '../../ui/Icon';
 import { docOf, useDoc } from '../shared';
 import { addMember, importDoc, remove, removeMember, sources, tryRename, updateMember } from './actions';
 import { KIND_LABEL, findClass, hasClass } from './model';
+import { NotesSection } from '../../notes/ItemNotes';
 import { useClsUi } from './ui';
 
 export function Panel() {
@@ -35,6 +36,8 @@ export function Panel() {
         <button type="button" data-cltab="code" className={tab === 'code' ? 'on' : ''} onClick={() => setTab('code')}>Code</button>
       </div>
       {tab === 'code' ? <CodeTab /> : c ? <ClassTab key={c.name} c={c} d={d} /> : r ? <RelationTab r={r} d={d} /> : <DiagramTab />}
+      {tab !== 'code' && c && <NotesSection type="class" id={c.name} value={c.notes ?? ''} />}
+      {tab !== 'code' && r && <NotesSection type="rel" id={r.id} value={r.notes ?? ''} />}
     </>
   );
 }

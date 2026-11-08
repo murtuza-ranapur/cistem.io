@@ -2,6 +2,7 @@
 import { memo, useMemo } from 'react';
 import { boxSize, isMethod, typeRefs, CLS, type ClassBox, type Member, type Relation } from '../../domain/cls';
 import type { Box, Point } from '../../store/viewport';
+import { NoteBadge } from '../../notes/NoteBadge';
 import { KIND_COLOR, along, clipRect, endMarker, startMarker } from './model';
 
 // ---------- boxes ----------
@@ -41,6 +42,7 @@ export const ClassBoxView = memo(function ClassBoxView({ c, x, y, on, names }: {
         {c.methods.map((m, i) => <MemberRow key={'m' + i} m={m} enumConst={false} x={x + 10} y={my + 15 + i * CLS.row} owner={c.name} i={i} kind="m" known={known} />)}
       </>}
       <circle className="cl-port" cx={x + w} cy={y + Math.min(h / 2, 40)} r={6} data-port={c.name}><title>Drag onto another class to relate them</title></circle>
+      <NoteBadge md={c.notes} x={x + w} y={y} />
     </g>
   );
 });

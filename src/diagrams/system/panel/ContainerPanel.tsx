@@ -7,6 +7,7 @@ import { deleteContainer } from '../actions';
 import { edit, freshId, sysDoc, useSysDoc } from '../state';
 import { AddButton, NumberField, RemoveButton, SelectField, TextField } from './controls';
 import { editItem, setPath } from './paths';
+import { NotesSection } from '../../../notes/ItemNotes';
 import { KindIcon, containerOptions } from './NodePanel';
 
 /** Fields of a link live on the document, not on the environment. */
@@ -83,6 +84,7 @@ export function ContainerPanel({ c }: { c: Container }) {
           {!links.length && <p className="empty">No links. Calls out of here cost {CROSSING_DEFAULT_MS.siblings} ms to a sibling and {CROSSING_DEFAULT_MS.differentRoots} ms to another cloud unless a link says otherwise.</p>}
         </section>
       </div>
+      <NotesSection type="container" id={c.id} value={c.notes ?? ''} />
     </>
   );
 }

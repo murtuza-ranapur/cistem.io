@@ -7,7 +7,7 @@ await rm('dist', { recursive: true, force: true });
 const res = await Bun.build({
   entrypoints: ['./index.html'],
   outdir: './dist',
-  minify: true,
+  minify: process.env.NOMINIFY ? false : true,
   splitting: true,
   publicPath: '/',
   naming: { entry: '[name].[ext]', chunk: 'assets/[name]-[hash].[ext]', asset: 'assets/[name]-[hash].[ext]' },

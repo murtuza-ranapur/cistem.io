@@ -8,6 +8,7 @@ import { deleteNodes } from '../actions';
 import { resultsOf, useSysDoc } from '../state';
 import { CheckField, NumberField, SelectField, TextField, setField } from './controls';
 import { usePanelUi, setPanelUi } from './ui';
+import { ItemNotes, NotesLabel } from '../../../notes/ItemNotes';
 import { SchemaTab } from './SchemaTab';
 
 const SCHEMA_LABEL: Record<string, string> = { endpoints: 'Endpoints', tables: 'Tables', topic: 'Topic', message: 'Message' };
@@ -25,15 +26,13 @@ export function NodePanel({ n }: { n: Node }) {
           <Icon name="ic-trash" />
         </button>
       </div>
-      {dk ? (
-        <>
-          <div className="tabs">
-            <button type="button" data-tab="capacity" className={tab === 'capacity' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'capacity' })}>Capacity</button>
-            <button type="button" data-tab="schema" className={tab === 'schema' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'schema' })}>{SCHEMA_LABEL[dk] ?? 'Detail'}</button>
-          </div>
-          {tab === 'schema' ? <SchemaTab n={n} /> : <CapacityTab n={n} />}
-        </>
-      ) : <CapacityTab n={n} />}
+      <div className="tabs">
+        <button type="button" data-tab="capacity" className={tab === 'capacity' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'capacity' })}>Capacity</button>
+        {dk && <button type="button" data-tab="schema" className={tab === 'schema' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'schema' })}>{SCHEMA_LABEL[dk] ?? 'Detail'}</button>}
+        <button type="button" data-tab="notes" className={tab === 'notes' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'notes' })}><NotesLabel value={n.notes ?? ''} /></button>
+      </div>
+      {tab === 'notes' ? <ItemNotes type="node" id={n.id} value={n.notes ?? ''} />
+        : tab === 'schema' && dk ? <SchemaTab n={n} /> : <CapacityTab n={n} />}
       <AppearsIn nodeId={n.id} />
     </>
   );

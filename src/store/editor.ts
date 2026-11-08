@@ -22,8 +22,8 @@ export type OpenDoc =
   | { kind: 'class'; doc: ClassDoc };
 export type DocOf<K extends DiagramKind> = Extract<OpenDoc, { kind: K }>['doc'];
 
-/** What's selected. System: nodes, an edge or an environment. Sequence: rows or a lifeline. Class: classes or a relation. */
-export type SelectionType = 'node' | 'edge' | 'container' | 'row' | 'part' | 'class' | 'rel';
+/** What's selected. System: nodes, an edge or an environment. Sequence: rows or a lifeline. Class: classes or a relation. Any kind: canvas notes. */
+export type SelectionType = 'node' | 'edge' | 'container' | 'row' | 'part' | 'class' | 'rel' | 'note';
 /** `ids[0]` is the primary item (the one the panel shows); the rest are selected alongside it. */
 export interface Selection { type: SelectionType; ids: string[] }
 
@@ -112,6 +112,7 @@ function idsIn(doc: OpenDoc['doc'], type: SelectionType): Set<string> {
     case 'part': return new Set(d.participants?.map(p => p.id));
     case 'class': return new Set(d.classes?.map(c => c.name));
     case 'rel': return new Set(d.relations?.map(r => r.id));
+    case 'note': return new Set(d.notes?.map(n => n.id));
   }
 }
 export { keepSelection };

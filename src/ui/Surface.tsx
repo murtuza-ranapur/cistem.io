@@ -5,7 +5,7 @@
  */
 import { forwardRef, useEffect, useImperativeHandle, useRef, type ReactNode } from 'react';
 import { useEditor, setView, ZOOM } from '../store/editor';
-import { setSurface, setHover, zoomAt, panBy } from '../store/viewport';
+import { setSurface, setHover, wheelPanZoom } from '../store/viewport';
 import { openContextMenu } from './ContextMenu';
 
 interface Props {
@@ -35,12 +35,7 @@ export const Surface = forwardRef<SVGSVGElement, Props>(function Surface(p, ref)
   // wheel / trackpad pans; pinch (ctrlKey) and ⌘-wheel zoom. Non-passive, so it's added by hand.
   useEffect(() => {
     const el = svg.current!;
-    const wheel = (ev: WheelEvent) => {
-      ev.preventDefault();
-      const r = el.getBoundingClientRect();
-      if (ev.ctrlKey || ev.metaKey) zoomAt(ev.clientX - r.left, ev.clientY - r.top, Math.exp(-ev.deltaY * 0.01));
-      else panBy(-ev.deltaX, -ev.deltaY);
-    };
+    const wheel = (ev: WheelEvent) => { ev.preventDefault(); wheelPanZoom(ev); };
     el.addEventListener('wheel', wheel, { passive: false });
     return () => el.removeEventListener('wheel', wheel);
   }, []);

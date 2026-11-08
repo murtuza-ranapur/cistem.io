@@ -41,6 +41,12 @@ export function zoomAt(cx: number, cy: number, factor: number) {
   const v = editor().view, k = clampK(v.k * factor);
   setView({ k, x: cx - (cx - v.x) * (k / v.k), y: cy - (cy - v.y) * (k / v.k) });
 }
+/** A wheel or trackpad event: pinch / ⌘-wheel zooms at the pointer, anything else pans. */
+export function wheelPanZoom(ev: WheelEvent) {
+  const r = rect();
+  if (ev.ctrlKey || ev.metaKey) zoomAt(ev.clientX - r.left, ev.clientY - r.top, Math.exp(-ev.deltaY * 0.01));
+  else panBy(-ev.deltaX, -ev.deltaY);
+}
 export function zoomBy(factor: number) { const r = rect(); zoomAt(r.width / 2, r.height / 2, factor); }
 export function panBy(dx: number, dy: number) { const v = editor().view; setView({ ...v, x: v.x + dx, y: v.y + dy }); }
 

@@ -5,6 +5,7 @@ import { select } from '../../../store/editor';
 import { Icon } from '../../../ui/Icon';
 import { deleteEdge } from '../actions';
 import { findNode, resultsOf, useSysDoc } from '../state';
+import { NotesSection } from '../../../notes/ItemNotes';
 import { NumberField, SelectField } from './controls';
 
 export function EdgePanel({ e }: { e: Edge }) {
@@ -33,6 +34,7 @@ export function EdgePanel({ e }: { e: Edge }) {
         {behaviour === 'cache' && <p className="note">Only cache misses travel down this edge.</p>}
         {behaviour === 'balancer' && <p className="note">The {typeDef(a.kind).label.toLowerCase()} splits its traffic evenly across outgoing edges.</p>}
       </div>
+      <NotesSection type="edge" id={e.id} value={e.notes ?? ''} />
     </>
   );
 }

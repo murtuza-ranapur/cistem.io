@@ -8,6 +8,7 @@ import { Inspector } from './Inspector';
 import { Drawer } from './Drawer';
 import { IoDialog } from './IoDialog';
 import { ConflictBanner, Toast } from './Banners';
+import { NoteButton } from '../notes/NoteButton';
 
 export function App() {
   const kind = useEditor(s => s.open.kind);
@@ -16,7 +17,7 @@ export function App() {
     <div id="app" data-kind={kind}>
       <Header />
       <TabBar />
-      <aside id="rail" aria-label="Components"><Rail /></aside>
+      <aside id="rail" aria-label="Components"><Rail /><NoteButton /></aside>
       <Stage />
       <Inspector />
       <Drawer />

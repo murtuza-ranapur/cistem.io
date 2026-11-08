@@ -12,6 +12,7 @@ import { Icon } from '../../ui/Icon';
 import { docOf, useDoc } from '../shared';
 import { useSeqUi } from './state';
 import { useLinkedSystem, nodeOf, labelSuggestions, REPLY_LABELS, type LinkedSystem } from './linked';
+import { NotesSection } from '../../notes/ItemNotes';
 import { addBranch, addReply, depthOf, linkByName, nameOf, removeRow, removeSelection, renameId, unwrap } from './actions';
 
 /** A field's focus-to-blur is one undo step. */
@@ -49,6 +50,7 @@ export function SeqPanel() {
         : row ? <BlockFields d={d} r={row} />
         : part ? <ParticipantFields d={d} p={part} sys={sys} />
         : <DiagramFields d={d} sys={sys} />}
+      {tab !== 'code' && part && <NotesSection type="part" id={part.id} value={part.notes ?? ''} />}
     </>
   );
 }

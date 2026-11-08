@@ -8,7 +8,8 @@ import { useUi, togglePanel } from '../store/ui';
 import { activate, tabs } from '../store/tabs';
 import { useCloud, saveNow, saveAsNew } from '../store/cloud';
 import { active, duplicateSelection, fitView, removeSelection, selectAll } from '../store/commands';
-import { zoomBy } from '../store/viewport';
+import { zoomBy, pointerWorld } from '../store/viewport';
+import { addNote, noteKeydown } from '../notes/actions';
 import { requestCloseTab } from './TabBar';
 
 /** While a pointer is held (a drag in progress), keys that change what's being dragged wait. */
@@ -44,8 +45,10 @@ function onKey(ev: KeyboardEvent) {
   if (mod && key === '0') return handled(() => fitView());
   if (mod && (ev.key === '=' || ev.key === '+')) return handled(() => zoomBy(1.2));
   if (mod && ev.key === '-') return handled(() => zoomBy(1 / 1.2));
+  if (noteKeydown(ev)) return handled(() => {});
   // the diagram's own keys can override the common ones below (e.g. Escape closing its picker first)
   if (active().keydown?.(ev)) return handled(() => {});
+  if (!mod && !ev.altKey && key === 'n') return handled(() => addNote(pointerWorld()));
   if (mod && key === 'd') return handled(duplicateSelection);
   if (mod && key === 'a') return handled(selectAll);
   if (!mod && !ev.altKey && key === 'i') return handled(togglePanel);

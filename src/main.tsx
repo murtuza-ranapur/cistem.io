@@ -1,4 +1,5 @@
 import './style.css';
+import './notes/notes.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
 import { bootTabs } from './store/tabs';

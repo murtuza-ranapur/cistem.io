@@ -5,6 +5,7 @@ import { zoomBy } from '../store/viewport';
 import { diagram } from '../diagrams';
 import { Hint } from './Banners';
 import { ContextMenu } from './ContextMenu';
+import { NotesLayer } from '../notes/NotesLayer';
 
 export function Stage() {
   const kind = useEditor(s => s.open.kind);
@@ -21,6 +22,7 @@ export function Stage() {
   return (
     <main id="stage" ref={ref}>
       <Canvas key={kind} />
+      <NotesLayer />
       <Hint />
       <div className="zoom">
         <button type="button" id="zin" aria-label="Zoom in" onClick={() => zoomBy(1.2)}>+</button>

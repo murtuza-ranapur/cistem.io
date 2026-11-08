@@ -5,7 +5,7 @@ export type FieldMode = 'fields' | 'code';
 export type BigEditor = { t: 'field'; path: string; kind: 'json' | 'avro'; label: string } | { t: 'tables' };
 
 interface PanelUi {
-  tab: 'capacity' | 'schema';
+  tab: 'capacity' | 'schema' | 'notes';
   /** The one table column being edited ("node:table:col"). */
   openCol: string;
   /** Tables shown as rows or as text, per database node. */

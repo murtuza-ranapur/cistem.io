@@ -11,6 +11,7 @@ import { useSeqUi, type Drag } from './state';
 import { useSeqGestures } from './gestures';
 import { useLinkedSystem, nodeOf, labelSuggestions, REPLY_LABELS, type LinkedSystem } from './linked';
 import { addParticipant } from './actions';
+import { NoteBadge } from '../../notes/NoteBadge';
 import { cancelEdit, commitEdit } from './edit';
 
 export function SeqCanvas() {
@@ -148,6 +149,7 @@ const Head = memo(function Head({ p, x, on, sys, offset }: { p: Participant; x: 
       <path className="sq-hbar" d={`M${x - SEQ.headW / 2 + 1} ${SEQ.top + 4}a6 6 0 0 1 6 -4h${SEQ.headW - 14}a6 6 0 0 1 6 4z`} />
       <text className="sq-htype" x={x} y={SEQ.top + 17} textAnchor="middle">{typeLabel(p)}{missing ? ' · link missing' : ''}</text>
       <text className="sq-hname" x={x} y={SEQ.top + 35} textAnchor="middle" data-edit-part={p.id}>{trunc(p.name, 22)}</text>
+      <NoteBadge md={p.notes} x={x + SEQ.headW / 2} y={SEQ.top} />
     </g>
   );
 });
