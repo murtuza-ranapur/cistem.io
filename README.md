@@ -12,12 +12,14 @@ One deployable: Spring Boot serves the API and the built frontend from the same 
 
 ```sh
 # frontend with hot reload (proxies /api and /oauth2 to :8080)
-npm install && npm run dev            # http://localhost:5173
+bun install && bun run dev            # http://localhost:5173
 
 # backend (needs Postgres on localhost:5432, user/db/password: cistem)
 cd backend && COOKIE_SECURE=false ./gradlew bootRun
 
-npm test                               # schema + migration tests
+bun run test                           # schema, format and importer tests
+bun run build && bun run preview &     # the built app on :4173
+bun run test:e2e                       # browser tests against :4173
 (cd backend && ./gradlew test)         # API tests against Postgres
 ```
 

@@ -1,16 +1,17 @@
 # syntax=docker/dockerfile:1
 # Build context is the repo root (railway.json sets it); this file lives in backend/.
 
-FROM node:22-alpine AS web
+FROM oven/bun:1.4.4 AS web
 WORKDIR /web
-COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
-COPY index.html vite.config.ts tsconfig.json ./
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY index.html tsconfig.json ./
+COPY scripts scripts
 COPY src src
 COPY schema schema
 COPY shared shared
 COPY public public
-RUN npm run build
+RUN bun run build
 
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /src

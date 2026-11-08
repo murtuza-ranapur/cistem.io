@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "description": "cistem.io: system diagrams whose components have behaviour",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "test": "tsx test/document.test.ts && tsx test/fields.test.ts && tsx test/avro.test.ts && tsx test/dbml.test.ts && tsx test/seq.test.ts && tsx test/cls.test.ts",
-    "test:e2e": "node test/e2e.js"
+    "dev": "bun scripts/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && bun scripts/build.ts",
+    "preview": "bun scripts/serve.ts",
+    "test": "bun test/document.test.ts && bun test/fields.test.ts && bun test/avro.test.ts && bun test/dbml.test.ts && bun test/seq.test.ts && bun test/cls.test.ts",
+    "test:e2e": "bun test/e2e.js"
   },
   "repository": {
     "type": "git",
@@ -24,9 +25,8 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "playwright": "1.63.0",
-    "tsx": "^4.19.4",
     "typescript": "^5.8.3",
-    "vite": "^6.3.5"
+    "@types/bun": "^1.2.0"
   },
   "private": true,
   "dependencies": {
