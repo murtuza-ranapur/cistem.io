@@ -5,7 +5,7 @@ import tools.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.UUID;
 
-/** A stored diagram. {@code document} is the full cistem.io file (see schema/cistem.schema.json). */
+/** A stored diagram. {@code document} is the full cistem.dev file (see schema/cistem.schema.json). */
 public record Diagram(
         UUID id,
         String title,

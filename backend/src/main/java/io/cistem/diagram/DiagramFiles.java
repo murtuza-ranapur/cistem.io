@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.Set;
 
 /**
- * The cistem.io file format (schema/cistem.schema.json) as the server sees it: checking an uploaded file,
+ * The cistem.dev file format (schema/cistem.schema.json) as the server sees it: checking an uploaded file,
  * reading its title and kind, starting new files, and bringing stored ones up to the current version.
  */
 public final class DiagramFiles {

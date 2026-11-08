@@ -20,7 +20,7 @@ export function Header() {
   return (
     <header id="top">
       <IconButton id="drawerBtn" icon="ic-menu" label="Diagrams" onClick={openDrawer} />
-      <div className="brand"><span className="logo" />cistem<span className="tld">.io</span></div>
+      <div className="brand"><span className="logo" />cistem<span className="tld">.dev</span></div>
       <TitleInput />
       {m.HeaderInfo && <m.HeaderInfo />}
       <SyncButton />
@@ -51,7 +51,7 @@ function TitleInput() {
   const readonly = useCloud(s => s.status === 'readonly');
   const [draft, setDraft] = useState<{ value: string; before: string } | null>(null);
   const untitled = diagram(kind).untitled;
-  useEffect(() => { document.title = `${title} · cistem.io`; }, [title]);
+  useEffect(() => { document.title = `${title} · cistem.dev`; }, [title]);
   const set = (t: string) => changeMeta(m => { m.title = t.trim() || untitled; });
   return (
     <input id="title" className="title" type="text" aria-label="Diagram title" placeholder={untitled} readOnly={readonly}

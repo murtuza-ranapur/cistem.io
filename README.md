@@ -1,6 +1,6 @@
-# cistem.io
+# cistem.dev
 
-Diagrams whose components have behaviour, not just shape.
+Diagrams whose components have behaviour, not just shape. Live at **https://cistem.dev** (MCP server: `https://cistem.dev/mcp`).
 
 The first diagram kind is **system**: draw clients → load balancer → services → Redis / Postgres / Kafka, give each component its capacity, set a target RPS, and cistem propagates load through the graph and tells you which component breaks first and roughly what the end-to-end latency looks like. Services carry their endpoints, databases their tables, Kafka its topics and Avro schemas, so the diagram is also the design doc.
 
@@ -47,7 +47,7 @@ Pushes to `main` run CI and redeploy the Railway service, which builds `backend/
 
 ## Accounts and storage
 
-Sign in with GitHub (Spring Security OAuth2 client). Sessions are cookies stored in Postgres (Spring Session JDBC), so a redeploy doesn't sign anyone out. Spring never sees a password; GitHub supplies `id`, `login`, `name` and `avatar_url`, which are upserted into `users` on each login. Diagrams belong to a user and are stored as `jsonb` in the cistem.io file format. Signed out, the editor still works and keeps the diagram in the browser; the first save after signing in creates it in the account.
+Sign in with GitHub (Spring Security OAuth2 client). Sessions are cookies stored in Postgres (Spring Session JDBC), so a redeploy doesn't sign anyone out. Spring never sees a password; GitHub supplies `id`, `login`, `name` and `avatar_url`, which are upserted into `users` on each login. Diagrams belong to a user and are stored as `jsonb` in the cistem.dev file format. Signed out, the editor still works and keeps the diagram in the browser; the first save after signing in creates it in the account.
 
 Environment variables on the service:
 

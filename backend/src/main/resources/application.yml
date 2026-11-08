@@ -26,7 +26,7 @@ spring:
     type: SYNC
     annotation-scanner.enabled: true
     instructions: >
-      cistem.io stores system-design diagrams whose components have behaviour, and sequence diagrams that
+      cistem.dev stores system-design diagrams whose components have behaviour, and sequence diagrams that
       draw on them. Use list_diagrams to find the user's diagrams (kind: system or sequence). For system
       diagrams, evaluate runs the capacity model and the add/connect/set tools change the design; every edit
       returns a fresh evaluation. For sequences, get_sequence / set_sequence / create_sequence work with a

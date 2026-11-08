@@ -206,7 +206,7 @@ export function makeNode(kind: Kind, x: number, y: number, props: Record<string,
 /** Fill in any fields a loaded document is missing (older saves, hand-edited JSON). */
 export function adopt(d: unknown): Doc {
   const doc = d as Doc;
-  if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a cistem.io document');
+  if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a cistem.dev document');
   doc.nodes.forEach(n => {
     const defs = typeDef(n.kind).defaults;
     Object.keys(defs).forEach(k => { if ((n as any)[k] === undefined) (n as any)[k] = clone(defs[k]); });

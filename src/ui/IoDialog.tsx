@@ -36,7 +36,7 @@ function Dialog({ blank }: { blank: boolean }) {
       <div className="io-card">
         <div className="io-head"><strong>Diagram JSON</strong><button type="button" className="icon" id="ioClose" aria-label="Close" onClick={close}>×</button></div>
         <textarea id="json" ref={area} aria-label="Diagram JSON" spellCheck={false} value={text} onChange={e => setText(e.target.value)}
-          placeholder="Paste a cistem.io diagram (.json) and press Load" />
+          placeholder="Paste a cistem.dev diagram (.json) and press Load" />
         <div className="io-row">
           <button type="button" id="copyJson" onClick={copy}>Copy</button>
           <button type="button" id="loadJson" className="primary" onClick={load}>Load from text</button>

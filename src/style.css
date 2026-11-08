@@ -1,4 +1,4 @@
-/* cistem.io — desktop-first three-pane shell; stacks on narrow screens. */
+/* cistem.dev — desktop-first three-pane shell; stacks on narrow screens. */
 :root{--insp-w:384px;
   --bg:#f5f6f7; --panel:#ffffff; --panel-2:#fafbfb; --fg:#1b1f24; --muted:#687079; --line:#e1e4e8; --line-2:#eef0f2; --grid:#cfd4d9;
   --accent:#b86a12; --node:#ffffff; --node-line:#c9ced4; --edge:#9aa3ad; --sel:#2b6cb0; --sel-soft:rgba(43,108,176,.14);

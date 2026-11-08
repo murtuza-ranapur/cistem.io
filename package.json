@@ -1,7 +1,7 @@
 {
   "name": "cistem",
   "version": "0.1.0",
-  "description": "cistem.io: system diagrams whose components have behaviour",
+  "description": "cistem.dev: system diagrams whose components have behaviour",
   "scripts": {
     "dev": "bun scripts/dev.ts",
     "typecheck": "tsc --noEmit",

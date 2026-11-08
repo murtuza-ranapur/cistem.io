@@ -10,7 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Sequence diagrams in cistem.io's text format — parse and print. Mirrors src/seq.ts (parseCistem /
+ * Sequence diagrams in cistem.dev's text format — parse and print. Mirrors src/seq.ts (parseCistem /
  * printSeq); ParityTest runs both over the same cases.
  *
  * <pre>

@@ -214,7 +214,7 @@ export function v3to4(d: any): any {
 export function detectVersion(d: any): number {
   if (d && typeof d === 'object' && typeof d.version === 'number') return d.version;
   if (d && Array.isArray(d.nodes) && Array.isArray(d.edges)) return 1;
-  throw new Error('Not a cistem.io document');
+  throw new Error('Not a cistem.dev document');
 }
 
 export function migrate(input: unknown): DiagramFile {

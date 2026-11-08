@@ -170,7 +170,7 @@ class T {
   await test('title edits persist and update the document title', async t => {
     await t.page.fill('#title', 'Renamed system'); await t.page.waitForTimeout(200);
     eq((await t.doc()).meta.title, 'Renamed system', 'meta title');
-    eq(await t.page.title(), 'Renamed system · cistem.io', 'document.title');
+    eq(await t.page.title(), 'Renamed system · cistem.dev', 'document.title');
   });
 
   await test('editing a property in the inspector updates the model and the verdict', async t => {

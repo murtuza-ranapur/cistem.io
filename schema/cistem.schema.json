@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://murtuza-ranapur.github.io/cistem.io/schema/cistem.schema.json",
-  "title": "cistem.io diagram",
+  "$id": "https://cistem.dev/schema/cistem.schema.json",
+  "title": "cistem.dev diagram",
   "description": "A diagram file. `model` describes the system; `layout` only says where things are drawn, so tools that import from text may leave it empty and let the editor auto-organise. Containers are the environments components live in (clouds, accounts, VPCs...); links say how two containers talk and add latency to calls that cross between them.",
   "type": "object",
   "required": [

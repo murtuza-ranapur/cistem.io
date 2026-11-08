@@ -102,7 +102,7 @@ public class McpAuthConfig {
             .with(McpServerOAuth2Configurer.mcpServerOAuth2(), mcp -> mcp
                 .authorizationServer(props.publicUrl())
                 .resourcePath(MCP_PATH)
-                .resourceName("cistem.io")
+                .resourceName("cistem.dev")
                 .validateAudienceClaim(true)
                 .jwtDecoder(jwtDecoder))
             .csrf(c -> c.disable())

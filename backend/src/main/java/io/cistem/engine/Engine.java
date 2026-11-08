@@ -7,7 +7,7 @@ import java.util.*;
 
 /**
  * Capacity model. Port of src/engine.ts; test/resources/parity.json pins both to the same numbers.
- * Works directly on the {@code model} object of a cistem.io file.
+ * Works directly on the {@code model} object of a cistem.dev file.
  */
 public final class Engine {
 

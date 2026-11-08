@@ -30,7 +30,7 @@ public class GeneralTools {
         return diagrams.service().list(diagrams.owner());
     }
 
-    @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.io file format: version, kind, meta, model, layout). For sequence diagrams get_sequence gives a readable text form.")
+    @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.dev file format: version, kind, meta, model, layout). For sequence diagrams get_sequence gives a readable text form.")
     public JsonNode getDiagram(@McpToolParam(description = "Diagram id (UUID)") String diagramId) {
         return diagrams.read(diagramId, null);
     }
@@ -47,7 +47,7 @@ public class GeneralTools {
         return diagrams.savedResult(diagrams.edit(diagramId, null, f -> object(f, "meta").put("title", title.trim())).diagram());
     }
 
-    @McpResource(uri = "cistem://schema", name = "cistem.io diagram schema", description = "JSON Schema (2020-12) for diagram files", mimeType = "application/schema+json")
+    @McpResource(uri = "cistem://schema", name = "cistem.dev diagram schema", description = "JSON Schema (2020-12) for diagram files", mimeType = "application/schema+json")
     public String schema() throws IOException {
         return readSchema();
     }

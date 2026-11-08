@@ -1,4 +1,4 @@
-# cistem.io — test plan
+# cistem.dev — test plan
 
 What the product promises, feature by feature: the **invariants** that must always hold, the **limits** it
 must survive, the **inputs** it accepts and the **outputs** it produces. Each line is something a test can
