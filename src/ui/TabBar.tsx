@@ -1,49 +1,36 @@
 /** The tab strip and the + (new diagram) menu. */
 import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { create } from 'zustand';
 import { useTabs, activate, closeTab, moveTab, newTab, type Tab } from '../store/tabs';
-import { useCloud } from '../store/cloud';
 import { useUi } from '../store/ui';
-import { openDrawer } from '../store/account';
+import { openDrawer } from '../store/projects';
 import { active } from '../store/commands';
 import { diagram } from '../diagrams';
 import type { DiagramKind } from '../domain/document';
 import { Icon } from './Icon';
 import { useDismiss, moveFocus } from './hooks';
 import { openExample } from './actions';
+import { openMenu } from './Menu';
+import { tabMenu } from './projectActions';
 
 export function TabBar() {
-  const { list, active: activeKey } = useTabs();
+  const { list, active: activeKey, project } = useTabs();
   const listRef = useRef<HTMLDivElement>(null);
   return (
-    <nav id="tabs" aria-label="Open diagrams">
+    <nav id="tabs" aria-label={project ? `Diagrams in ${project.title}` : 'Open diagrams'}>
       <div id="tabList" role="tablist" ref={listRef}>
-        {list.map(t => <TabItem key={t.key} tab={t} on={t.key === activeKey} list={listRef} />)}
+        {list.map(t => <TabItem key={t.key} tab={t} on={t.key === activeKey} only={list.length === 1} list={listRef} />)}
       </div>
-      <NewTabButton />
+      {project?.scope !== 'view' && <NewTabButton />}
     </nav>
   );
 }
 
-/** Signed out, a tab's document exists only in this browser, so closing it deletes it: ask once. */
-const needsConfirm = (t: Tab) => !t.cloudId && !t.share && !useCloud.getState().user;
-/** The tab whose × is asking "discard?". */
-const useArmed = create(() => ({ key: '' }));
-/** Close a tab from its ×, middle-click or ⌥W (asking first when closing would lose it). */
-export function requestCloseTab(key: string) {
-  const t = useTabs.getState().list.find(x => x.key === key); if (!t) return;
-  if (needsConfirm(t) && useArmed.getState().key !== key) {
-    useArmed.setState({ key });
-    setTimeout(() => useArmed.setState(s => (s.key === key ? { key: '' } : s)), 2600);
-    return;
-  }
-  void closeTab(key);
-}
+/** Close a tab from its ×, middle-click or ⌥W. The diagram stays in its project; the last tab stays open. */
+export function requestCloseTab(key: string) { void closeTab(key); }
 
-function TabItem({ tab, on, list }: { tab: Tab; on: boolean; list: React.RefObject<HTMLDivElement | null> }) {
+function TabItem({ tab, on, only, list }: { tab: Tab; on: boolean; only: boolean; list: React.RefObject<HTMLDivElement | null> }) {
   const el = useRef<HTMLDivElement>(null);
-  const armed = useArmed(s => s.key === tab.key);
   const drag = useRef<{ x0: number; moved: boolean } | null>(null);
   const requestClose = () => requestCloseTab(tab.key);
   useEffect(() => { if (on) el.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [on]);
@@ -74,17 +61,17 @@ function TabItem({ tab, on, list }: { tab: Tab; on: boolean; list: React.RefObje
     moveTab(tab.key, to);
   };
   return (
-    <div ref={el} className={`dtab k-${tab.kind}-tab${on ? ' on' : ''}`} role="tab" aria-selected={on} data-key={tab.key} title={tab.title}
-      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onAuxClick={e => e.button === 1 && e.preventDefault()}>
-      <span className={`tk k-${tab.kind}`}><Icon name={`ic-k-${tab.kind}`} /></span>
+    <div ref={el} className={`dtab k-${tab.kind}-tab${on ? ' on' : ''}`} role="tab" aria-selected={on} data-key={tab.key} title={`${tab.title} (${diagram(tab.kind).label})`}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onAuxClick={e => e.button === 1 && e.preventDefault()}
+      onContextMenu={e => { e.preventDefault(); openMenu({ x: e.clientX, y: e.clientY }, tab.title, tabMenu(tab)); }}>
+      <span className={`tk k-${tab.kind}`} role="img" aria-label={diagram(tab.kind).label}><Icon name={`ic-k-${tab.kind}`} /></span>
       <span className="tt">{tab.title || 'Untitled'}</span>
-      <span className="tkind">{diagram(tab.kind).label}</span>
-      {tab.share && <span className="tro">view only</span>}
-      <button type="button" className={'tx' + (armed ? ' armed' : '')} data-close={tab.key} aria-label={`Close ${tab.title}`}
-        title={armed ? 'Only kept in this browser. Click again to discard.' : 'Close (⌥W)'}
-        onClick={e => { e.stopPropagation(); requestClose(); }}>
-        {armed ? 'discard?' : <Icon name="ic-close" />}
-      </button>
+      {!only && (
+        <button type="button" className="tx" data-close={tab.key} aria-label={`Close ${tab.title}`} title="Close (⌥W)"
+          onClick={e => { e.stopPropagation(); requestClose(); }}>
+          <Icon name="ic-close" />
+        </button>
+      )}
     </div>
   );
 }
@@ -121,7 +108,7 @@ function NewMenu({ anchor }: { anchor: React.RefObject<HTMLButtonElement | null>
         if (/^[1-3]$/.test(ev.key)) { ev.preventDefault(); run(() => void newTab(NEW_ITEMS[+ev.key - 1].kind))(); }
         if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); moveFocus(menu.current!, '.nm-item, .nm-line, .chip', ev.key === 'ArrowDown' ? 1 : -1); }
       }}>
-      <div className="nm-head">New diagram</div>
+      <div className="nm-head">New in {useTabs.getState().project?.title ?? 'this project'}</div>
       {NEW_ITEMS.map((it, i) => (
         <button type="button" key={it.kind} className="nm-item" role="menuitem" data-new={it.kind} autoFocus={i === 0} onClick={run(() => void newTab(it.kind))}>
           <span className={`nm-ic k-${it.kind}`}><Icon name={`ic-k-${it.kind}`} /></span>
@@ -148,8 +135,8 @@ function NewMenu({ anchor }: { anchor: React.RefObject<HTMLButtonElement | null>
         </div>
       )}
       <div className="nm-foot">
-        <button type="button" className="chip" data-nm="open" onClick={run(openDrawer)}>Open existing…</button>
-        <button type="button" className="chip" data-nm="import" onClick={run(() => useUi.setState({ ioOpen: 'import' }))}>Import .json</button>
+        <button type="button" className="chip" data-nm="open" onClick={run(openDrawer)}>Projects…</button>
+        <button type="button" className="chip" data-nm="import" onClick={run(() => useUi.setState({ ioOpen: 'import' }))}>Import…</button>
         <button type="button" className="chip" data-nm="example" onClick={run(openExample)}>Example</button>
       </div>
     </div>

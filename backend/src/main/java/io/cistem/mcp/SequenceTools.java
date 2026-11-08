@@ -44,11 +44,12 @@ public class SequenceTools {
     @McpTool(name = "create_sequence", description = """
             Create a sequence diagram from text. Optionally name the system diagram it draws on (its id), so lifelines
             can link to that diagram's components (@componentId) and the editor shows timings from its capacity model.
-            Returns the new diagram's id.
+            Goes in the given project, or the user's default one. Returns the new diagram's id.
             """ + SEQ_FORMAT)
     public ObjectNode createSequence(@McpToolParam(description = "Title") String title,
                                      @McpToolParam(description = "The sequence, in the text format") String text,
-                                     @McpToolParam(description = "Id of the system diagram it uses (optional)", required = false) String systemDiagramId) {
+                                     @McpToolParam(description = "Id of the system diagram it uses (optional)", required = false) String systemDiagramId,
+                                     @McpToolParam(description = Diagrams.PROJECT_PARAM, required = false) String projectId) {
         Seq.Parsed p = parseOrThrow(text);
         if (!blank(systemDiagramId)) {
             Diagram sys = diagrams.load(systemDiagramId);
@@ -57,7 +58,7 @@ public class SequenceTools {
         }
         ObjectNode file = DiagramFiles.create(om, "sequence", title);
         file.set("model", p.model());
-        return diagrams.savedResult(diagrams.insert(file)).put("text", Seq.print(p.model()));
+        return diagrams.savedResult(diagrams.insert(file, projectId)).put("text", Seq.print(p.model()));
     }
 
     @McpTool(name = "get_sequence", description = "Read a sequence diagram as text (the format create_sequence takes), with its lifelines and the system diagram it uses.")

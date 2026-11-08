@@ -16,7 +16,7 @@ async function test(name, fn) {
   const t = new T(page);
   try {
     await page.goto(BASE); await page.waitForTimeout(300);
-    await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForTimeout(500);
+    await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('cistem'); }); await page.reload(); await page.waitForTimeout(600);
     await page.click('#resetBtn'); await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
     await fn(t);
@@ -27,12 +27,28 @@ async function test(name, fn) {
     results.push({ name, ok: false, error: e.message }); process.stdout.write(`  FAIL ${name}\n       ${e.message.split('\n')[0]}\n`);
   } finally { await browser.close(); }
 }
+/** In the page: the open tab's document from IndexedDB. */
+function idbDoc() {
+  return new Promise((ok, fail) => {
+    const key = document.querySelector('.dtab.on')?.dataset.key;
+    const r = indexedDB.open('cistem'); r.onerror = fail;
+    r.onsuccess = () => { const g = r.result.transaction('docs').objectStore('docs').get(key); g.onsuccess = () => ok(g.result?.file ?? null); g.onerror = fail; };
+  });
+}
 const assert = (c, m) => { if (!c) throw new Error(m || 'assertion failed'); };
 const eq = (a, b, m) => { if (a !== b) throw new Error(`${m || 'expected equal'}: got ${JSON.stringify(a)}, want ${JSON.stringify(b)}`); };
 
 class T {
   constructor(page) { this.page = page; }
-  doc() { return this.page.evaluate(() => JSON.parse(localStorage.getItem('cistem.doc.' + JSON.parse(localStorage.getItem('cistem.tabs')).active))); }
+  /** The open diagram as this browser stored it (IndexedDB). */
+  async doc() { await this.page.waitForTimeout(60); return this.page.evaluate(idbDoc, null); }
+  /** Change the stored copy of the open diagram (then reload to see it). */
+  editStored(fn, arg) { return this.page.evaluate(([src, a]) => new Promise((ok, fail) => {
+    const key = document.querySelector('.dtab.on').dataset.key;
+    const r = indexedDB.open('cistem'); r.onerror = fail;
+    r.onsuccess = () => { const s = r.result.transaction('docs', 'readwrite').objectStore('docs'); const g = s.get(key);
+      g.onsuccess = () => { const rec = g.result; new Function('d', 'a', src)(rec.file, a); const p = s.put(rec, key); p.onsuccess = () => ok(); p.onerror = fail; }; };
+  }), [fn, arg]); }
   async node(id) { const d = await this.doc(); const n = d.model.nodes.find(n => n.id === id); if (!n) return null; return { ...n, ...d.layout.positions[id] }; }
   async nodeByName(name) { const d = await this.doc(); const n = d.model.nodes.find(n => n.name === name); return n && { ...n, ...d.layout.positions[n.id] }; }
   async box(sel) { const el = await this.page.$(sel); if (!el) throw new Error('no element ' + sel); return el.boundingBox(); }
@@ -300,7 +316,7 @@ class T {
   await test('expanding a node pushes its neighbours out of the way; collapsing brings them back', async t => {
     // stack a node right under the database first, then expand the database
     const db = await t.node('n5'); const before = (await t.doc()).layout.positions;
-    await t.page.evaluate(([x, y]) => { const k = 'cistem.doc.' + JSON.parse(localStorage.getItem('cistem.tabs')).active; const d = JSON.parse(localStorage.getItem(k)); d.layout.positions.n4 = { x, y }; d.layout.detail = {}; localStorage.setItem(k, JSON.stringify(d)); }, [db.x, db.y + 110]);
+    await t.editStored('d.layout.positions.n4 = { x: a[0], y: a[1] }; d.layout.detail = {};', [db.x, db.y + 110]);
     await t.page.reload(); await t.page.waitForTimeout(500);
     eq((await overlaps(t)).length, 0, 'no overlaps to start with');
     const n4 = (await t.doc()).layout.positions.n4;
@@ -457,19 +473,14 @@ class T {
     eq(await t.page.inputValue('#title'), 'Beta', 'the active tab is reopened');
   });
 
-  await test('closing a local-only tab asks once; the last tab leaves a blank diagram', async t => {
-    const n0 = await t.page.$$eval('.dtab', els => els.length);
-    await t.page.click('.dtab.on [data-close]'); await t.page.waitForTimeout(100);
-    eq(await t.page.$$eval('.dtab', els => els.length), n0, 'first click only arms');
-    assert((await t.page.textContent('.dtab.on [data-close]')).includes('discard'), 'says what happens');
-    await t.page.click('.dtab.on [data-close]'); await t.page.waitForTimeout(300);
-    eq(await t.page.$$eval('.dtab', els => els.length), n0 - 1, 'closed');
-    while (await t.page.$$eval('.dtab', els => els.length) > 1) { await t.page.keyboard.press('Alt+w'); await t.page.keyboard.press('Alt+w'); await t.page.waitForTimeout(250); }
-    await t.page.keyboard.press('Alt+w'); await t.page.keyboard.press('Alt+w'); await t.page.waitForTimeout(300);
-    eq(await t.page.$$eval('.dtab', els => els.length), 1, 'one tab left');
-    eq((await t.doc()).model.nodes.length, 1, 'a blank diagram');
-    const keys = await t.page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('cistem.doc.')).length);
-    eq(keys, 1, 'closed tabs leave nothing behind in storage');
+  await test('projects: closing a tab keeps the diagram in the project; the last tab has no close button', async t => {
+    const n = await t.page.$$eval('.dtab', els => els.length);
+    while (await t.page.$$eval('.dtab', els => els.length) > 1) { await t.page.keyboard.press('Alt+w'); await t.page.waitForTimeout(250); }
+    eq(await t.page.$$eval('.dtab [data-close]', els => els.length), 0, 'the last tab can\'t be closed');
+    await t.page.keyboard.press('Alt+w'); await t.page.waitForTimeout(250);
+    eq(await t.page.$$eval('.dtab', els => els.length), 1, 'still one tab');
+    await t.page.click('#drawerBtn'); await t.page.waitForTimeout(250);
+    eq(await t.page.$$eval('#drawer .prow.on .ditem', els => els.length), n, 'every diagram is still in the project');
   });
 
   // ---- sequence diagrams ----
@@ -1143,7 +1154,8 @@ abstract class Entity { protected long version; }`;
     const d = await t.doc(); eq(d.model.nodes.length, n0, 'back');
     const pasted = d.model.nodes[d.model.nodes.length - 1];
     const box = await t.box(`[data-node="${pasted.id}"] rect.body`);
-    assert(Math.abs(box.x - p.x) < 20 && Math.abs(box.y - p.y) < 20, `at the pointer (${box.x},${box.y} vs ${p.x},${p.y})`);
+    // (near the bottom edge the view then scrolls it fully into sight, so allow for that vertically)
+    assert(Math.abs(box.x - p.x) < 20 && Math.abs(box.y - p.y) < 60, `at the pointer (${box.x},${box.y} vs ${p.x},${p.y})`);
     eq((await t.sel()) !== null, true, 'the pasted component is selected');
   });
 
@@ -1382,6 +1394,180 @@ abstract class Entity { protected long version; }`;
     await t.page.setViewportSize({ width: 1440, height: 800 }); await t.page.waitForTimeout(200);
     const b = await t.box('#addNote');
     assert(b.y >= 0 && b.y + b.height <= 800, `note button at ${b.y}..${b.y + b.height}`);
+  });
+
+  // ---- projects ----
+  /**
+   * A fake account server (the /api contract) inside the test: signed in as `me`, keeping projects and diagrams
+   * in memory for the whole test (reloads included).
+   */
+  async function fakeAccount(page, { signedIn = true } = {}) {
+    const db = { user: signedIn ? { id: 'u1', login: 'murtu' } : null, projects: [], diagrams: [], n: 0 };
+    const id = p => `${p}-${++db.n}`;
+    const now = () => new Date(Date.now() + db.n * 1000).toISOString();
+    const summary = d => ({ id: d.id, projectId: d.projectId, title: d.title, kind: d.kind, version: d.version, shared: !!d.shareToken, createdAt: d.createdAt, updatedAt: d.updatedAt });
+    const project = p => ({ ...p, shared: !!p.shareToken, diagrams: db.diagrams.filter(d => d.projectId === p.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(summary) });
+    const touch = pid => { const p = db.projects.find(x => x.id === pid); if (p) p.updatedAt = now(); };
+    const ensure = () => { if (!db.projects.length) db.projects.push({ id: id('p'), title: 'My diagrams', createdAt: now(), updatedAt: now() }); };
+    await page.route('**/api/**', async route => {
+      const req = route.request(), url = new URL(req.url()), path = url.pathname, m = req.method();
+      const body = () => { try { return JSON.parse(req.postData() || '{}'); } catch { return {}; } };
+      const json = (status, b) => route.fulfill({ status, contentType: 'application/json', body: b === undefined ? '' : JSON.stringify(b), headers: b && b.version ? { ETag: `"${b.version}"` } : {} });
+      let r;
+      if (path === '/api/me') return db.user ? json(200, db.user) : json(401, { error: 'no' });
+      if (path === '/api/logout') { db.user = null; return json(204); }
+      if ((r = /^\/api\/share\/project\/(.+)$/.exec(path))) {
+        const p = db.projects.find(x => x.shareToken === r[1]); if (!p) return json(404, { error: 'No such project' });
+        return json(200, { title: p.title, diagrams: db.diagrams.filter(d => d.projectId === p.id).map(({ shareToken, ...d }) => d) });
+      }
+      if ((r = /^\/api\/share\/(.+)$/.exec(path))) {
+        const d = db.diagrams.find(x => x.shareToken === r[1]); if (!d) return json(404, { error: 'No such diagram' });
+        const { shareToken, ...rest } = d; return json(200, rest);
+      }
+      if (!db.user) return json(401, { error: 'Sign in' });
+      if (path === '/api/projects' && m === 'GET') { ensure(); return json(200, [...db.projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(project)); }
+      if (path === '/api/projects' && m === 'POST') { const p = { id: id('p'), title: body().title.trim(), createdAt: now(), updatedAt: now() }; db.projects.push(p); return json(201, project(p)); }
+      if ((r = /^\/api\/projects\/([^/]+)(\/share)?$/.exec(path))) {
+        const p = db.projects.find(x => x.id === r[1]); if (!p) return json(404, { error: 'No such project' });
+        if (r[2]) { if (m === 'POST') { p.shareToken = 'tok-' + p.id; return json(200, project(p)); } delete p.shareToken; return json(204); }
+        if (m === 'PATCH') { p.title = body().title.trim(); touch(p.id); return json(200, project(p)); }
+        if (m === 'DELETE') { db.projects = db.projects.filter(x => x !== p); db.diagrams = db.diagrams.filter(d => d.projectId !== p.id); return json(204); }
+      }
+      if (path === '/api/diagrams' && m === 'GET') return json(200, db.diagrams.map(summary));
+      if (path === '/api/diagrams' && m === 'POST') {
+        ensure(); const b = body(); const pid = b.projectId ?? db.projects[0].id;
+        if (!db.projects.some(p => p.id === pid)) return json(404, { error: 'No such project' });
+        const d = { id: id('d'), projectId: pid, title: b.document.meta.title, kind: b.document.kind, document: b.document, version: 1, createdAt: now(), updatedAt: now() };
+        db.diagrams.push(d); touch(pid); return json(201, d);
+      }
+      if ((r = /^\/api\/diagrams\/([^/]+)(\/share|\/project)?$/.exec(path))) {
+        const d = db.diagrams.find(x => x.id === r[1]); if (!d) return json(404, { error: 'No such diagram' });
+        if (r[2] === '/share') { if (m === 'POST') { d.shareToken = 'dtok-' + d.id; return json(200, d); } delete d.shareToken; return json(204); }
+        if (r[2] === '/project') { d.projectId = body().projectId; touch(d.projectId); return json(200, summary(d)); }
+        if (m === 'GET') return json(200, d);
+        if (m === 'DELETE') { db.diagrams = db.diagrams.filter(x => x !== d); return json(204); }
+        if (m === 'PUT') { const b = body(); d.document = b.document; d.title = b.document.meta.title; d.version++; d.updatedAt = now(); touch(d.projectId); return json(200, d); }
+      }
+      return json(404, { error: 'not faked: ' + m + ' ' + path });
+    });
+    return db;
+  }
+  const drawer = async t => { if (!(await t.page.$('#drawer'))) { await t.page.click('#drawerBtn'); await t.page.waitForTimeout(250); } };
+  const tabTitles = t => t.page.$$eval('.dtab .tt', els => els.map(e => e.textContent));
+  const newProject = async (t, name) => { await drawer(t); await t.page.click('#newProject'); await t.page.fill('#dlgInput', name); await t.page.click('#dlgOk'); await t.page.waitForTimeout(600); };
+
+  await test('projects: create, switch, and each project keeps its own tabs across a reload', async t => {
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'My diagrams', 'starts in My diagrams');
+    const mine = await tabTitles(t);
+    await newProject(t, 'Pay at table');
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'Pay at table', 'the new project is open');
+    eq((await tabTitles(t)).join('|'), 'Untitled system', 'with one blank diagram');
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="sequence"]'); await t.page.waitForTimeout(300);
+    await t.page.reload(); await t.page.waitForTimeout(900);
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'Pay at table', 'still open after a reload');
+    eq((await tabTitles(t)).join('|'), 'Untitled system|Untitled sequence', 'its tabs came back');
+    await drawer(t); await t.page.click('.prow:has-text("My diagrams") [data-open-project]'); await t.page.waitForTimeout(600);
+    eq((await tabTitles(t)).join('|'), mine.join('|'), 'My diagrams tabs came back');
+  });
+
+  await test('projects: move a diagram to another project, delete a diagram, delete a project after typing its name', async t => {
+    const title = (await tabTitles(t))[0];
+    await newProject(t, 'Target');
+    await drawer(t); await t.page.click('.prow:has-text("My diagrams") [data-open-project]'); await t.page.waitForTimeout(600);
+    const n = (await tabTitles(t)).length;
+    await t.page.click('.dtab', { button: 'right' }); await t.page.click('[data-menu="t-move"]'); await t.page.click('.popmenu button:has-text("Target")'); await t.page.waitForTimeout(500);
+    eq((await tabTitles(t)).length, n - 1, 'its tab closed here');
+    await drawer(t);
+    assert((await t.page.textContent('.prow:has-text("Target")')).includes(title) || (await t.page.click('.prow:has-text("Target") .ptoggle'), (await t.page.textContent('.prow:has-text("Target")')).includes(title)), 'it is in Target now');
+    // delete the open diagram from its tab
+    const before = await tabTitles(t);
+    await t.page.click('.dtab.on', { button: 'right' }); await t.page.click('[data-menu="t-delete"]'); await t.page.click('#dlgOk'); await t.page.waitForTimeout(500);
+    eq((await tabTitles(t)).length, Math.max(1, before.length - 1), 'deleted');
+    // delete the Target project: needs its name typed
+    await drawer(t); await t.page.click('.prow:has-text("Target") [data-project-menu]'); await t.page.click('[data-menu="p-delete"]');
+    assert(await t.page.isDisabled('#dlgOk'), 'not until the name is typed');
+    await t.page.fill('#dlgInput', 'Target'); await t.page.click('#dlgOk'); await t.page.waitForTimeout(500);
+    assert(!(await t.page.$('.prow:has-text("Target")')), 'gone');
+  });
+
+  await test('projects: export a project and import it back as a new project, with the sequence still linked', async t => {
+    // a sequence drawing on the example system
+    await t.page.click('#newTabBtn'); await t.page.click('[data-nm="seq-path"]'); await t.page.waitForTimeout(500);
+    const seq = await t.doc(); assert(seq.model.uses?.tab, 'the sequence draws on the system tab');
+    const [dl] = await Promise.all([t.page.waitForEvent('download'), (async () => { await drawer(t); await t.page.click('.prow.on [data-project-menu]'); await t.page.click('[data-menu="p-export"]'); })()]);
+    const text = require('fs').readFileSync(await dl.path(), 'utf8'); const file = JSON.parse(text);
+    eq(file.format, 'cistem-project', 'a project file');
+    await t.page.click('#ioBtn'); await t.page.fill('#json', text.replace('"My diagrams"', '"Copied"')); await t.page.click('#loadJson'); await t.page.waitForTimeout(900);
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'Copied', 'opened as a new project');
+    await t.page.click('.dtab:has(.k-sequence)'); await t.page.waitForTimeout(400);
+    const copied = await t.doc();
+    const sysKeys = await t.page.$$eval('.dtab', els => els.filter(e => e.querySelector('.k-system')).map(e => e.dataset.key));
+    assert(sysKeys.includes(copied.model.uses.tab), 'the copy points at the copied system: ' + JSON.stringify(copied.model.uses));
+  });
+
+  await test('projects: tabs from before projects become "My diagrams"', async t => {
+    await t.page.evaluate(() => {
+      indexedDB.deleteDatabase('cistem');
+      const doc = { version: 4, kind: 'system', meta: { title: 'Old one', created: '2026-01-01T00:00:00Z', updated: '2026-01-01T00:00:00Z' }, model: { nodes: [], edges: [], containers: [], links: [] }, layout: { positions: {}, frames: {} } };
+      localStorage.setItem('cistem.tabs', JSON.stringify({ tabs: [{ key: 'tOld', kind: 'system', title: 'Old one' }], active: 'tOld' }));
+      localStorage.setItem('cistem.doc.tOld', JSON.stringify(doc));
+    });
+    await t.page.reload(); await t.page.waitForTimeout(900);
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'My diagrams');
+    eq((await tabTitles(t)).join('|'), 'Old one', 'the old tab is there');
+    eq(await t.page.evaluate(() => localStorage.getItem('cistem.tabs')), null, 'moved out of localStorage');
+  });
+
+  await test('projects: a diagram deleted in another window closes here and isn\'t brought back', async t => {
+    const [b] = await Promise.all([t.page.waitForEvent('popup'), t.page.evaluate(u => { window.open(u); }, BASE)]); await b.setViewportSize({ width: 1400, height: 900 }); await b.waitForTimeout(1200);
+    const key = await t.page.$eval('.dtab.on', e => e.dataset.key);
+    const n = (await tabTitles(t)).length;
+    await b.click(`.dtab[data-key="${key}"]`); await b.waitForTimeout(300);
+    await b.click('.dtab.on', { button: 'right' }); await b.click('[data-menu="t-delete"]'); await b.click('#dlgOk'); await b.waitForTimeout(600);
+    await t.page.waitForTimeout(400);
+    eq((await tabTitles(t)).length, n - 1, 'its tab closed in the other window too');
+    await t.page.reload(); await t.page.waitForTimeout(900);
+    assert(!(await t.page.$(`.dtab[data-key="${key}"]`)), 'still gone after a reload');
+    await b.close();
+  });
+
+  await test('account: signed in, projects come from the account; share a project; the link opens read-only and can be copied', async t => {
+    const db = await fakeAccount(t.page);
+    await t.page.reload(); await t.page.waitForTimeout(1000);
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'My diagrams', 'the account default project');
+    eq(db.diagrams.length, 1, 'an empty project opens with a new blank diagram, saved to the account');
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="system"]'); await t.page.waitForTimeout(500);
+    eq(db.diagrams.length, 2, 'new diagrams are saved to the account');
+    await t.page.click('.dtab.on', { button: 'right' }); await t.page.click('[data-menu="t-delete"]'); await t.page.click('#dlgOk'); await t.page.waitForTimeout(500);
+    eq(db.diagrams.length, 1, 'deleted from the account');
+    await t.page.fill('#title', 'Upload pipeline'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(1500);
+    eq(db.diagrams[0].title, 'Upload pipeline', 'autosaved');
+    assert(await t.page.isVisible('#leftovers') || (await drawer(t), await t.page.isVisible('#leftovers')), 'offers the browser diagrams');
+    // share the project
+    await t.page.click('#shareBtn'); await t.page.click('#shareProjectTab'); await t.page.click('#shareSwitch'); await t.page.waitForSelector('#shareLink');
+    const link = await t.page.inputValue('#shareLink');
+    assert(link.includes('?p=tok-'), link);
+    await t.page.click('#shareDone');
+    // open the link signed out
+    db.user = null;
+    await t.page.goto(link); await t.page.waitForTimeout(1000);
+    assert(await t.page.isVisible('.tag.viewonly'), 'view only');
+    eq((await tabTitles(t)).join('|'), 'Upload pipeline', 'the shared diagrams');
+    await t.page.click('#copyView'); await t.page.waitForTimeout(800);
+    assert(!(await t.page.$('.tag.viewonly')), 'a copy of your own');
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'My diagrams', 'named after the project');
+    eq((await tabTitles(t)).join('|'), 'Upload pipeline', 'with its diagram, in this browser');
+  });
+
+  await test('account: diagrams made signed out can be added to the account', async t => {
+    await t.page.fill('#title', 'Made offline'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(300);
+    const db = await fakeAccount(t.page);
+    await t.page.reload(); await t.page.waitForTimeout(1000);
+    await drawer(t);
+    await t.page.click('#importLocal'); await t.page.waitForTimeout(1200);
+    assert(db.diagrams.some(d => d.title === 'Made offline'), 'copied to the account: ' + db.diagrams.map(d => d.title));
+    eq(await t.page.textContent('#drawerBtn .sw-title'), 'My diagrams (from this browser)', 'in its own project');
+    assert(!(await t.page.$('#leftovers')), 'nothing left to offer');
   });
 
   const failed = results.filter(r => !r.ok);

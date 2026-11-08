@@ -16,6 +16,9 @@ import java.util.function.Consumer;
 @Component
 public class Diagrams {
 
+    /** How the create tools describe their optional projectId. */
+    static final String PROJECT_PARAM = "Project (id) to put it in; omit for the user's default project";
+
     private final DiagramService service;
     private final CurrentUser user;
     private final ObjectMapper om;
@@ -38,8 +41,9 @@ public class Diagrams {
         return service.read(owner(), uuid(id), kind);
     }
 
-    public Diagram insert(JsonNode file) {
-        return service.create(owner(), file);
+    /** Store a new diagram in the project named by id (null or blank: the user's default project). */
+    public Diagram insert(JsonNode file, String projectId) {
+        return service.create(owner(), optionalUuid(projectId, "project"), file);
     }
 
     /** Read-modify-write a diagram of `kind`, with optimistic concurrency. */
@@ -63,6 +67,16 @@ public class Diagrams {
     }
 
     public static UUID uuid(String s) {
-        try { return UUID.fromString(s); } catch (IllegalArgumentException | NullPointerException e) { throw new IllegalArgumentException("Not a diagram id: " + s); }
+        return uuid(s, "diagram");
+    }
+
+    /** Parse an id; `what` ("diagram", "project") words the error. */
+    public static UUID uuid(String s, String what) {
+        try { return UUID.fromString(s); } catch (IllegalArgumentException | NullPointerException e) { throw new IllegalArgumentException("Not a " + what + " id: " + s); }
+    }
+
+    /** As {@link #uuid(String, String)}, but null or blank means none. */
+    public static UUID optionalUuid(String s, String what) {
+        return s == null || s.isBlank() ? null : uuid(s, what);
     }
 }

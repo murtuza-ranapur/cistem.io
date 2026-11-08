@@ -6,7 +6,7 @@ import { hasMod, isTyping } from '../lib/browser';
 import { select, undo, redo } from '../store/editor';
 import { useUi, togglePanel } from '../store/ui';
 import { activate, tabs } from '../store/tabs';
-import { useCloud, saveNow, saveAsNew } from '../store/cloud';
+import { saveNow } from '../store/cloud';
 import { active, duplicateSelection, fitView, removeSelection, selectAll } from '../store/commands';
 import { zoomBy, pointerWorld } from '../store/viewport';
 import { addNote, noteKeydown } from '../notes/actions';
@@ -28,7 +28,7 @@ function tabKey(ev: KeyboardEvent): boolean {
 function onKey(ev: KeyboardEvent) {
   if (ev.defaultPrevented) return;
   const mod = hasMod(ev), key = ev.key.toLowerCase();
-  if (mod && key === 's') { ev.preventDefault(); void (useCloud.getState().id ? saveNow() : saveAsNew()); return; }
+  if (mod && key === 's') { ev.preventDefault(); void saveNow(); return; }
   if (tabKey(ev)) { ev.preventDefault(); return; }
   const target = ev.target as HTMLElement;
   if (isTyping(target)) {

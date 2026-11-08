@@ -28,7 +28,7 @@ bun run test:e2e                       # browser tests against :4173
 ```
 src/
   domain/     the model, capacity engine, parsers and file format: plain TypeScript, no UI
-  store/      app state (Zustand + Immer): the open document, undo as patches, tabs, cloud sync, clipboard
+  store/      app state (Zustand + Immer): the open document, undo as patches, projects and tabs, browser storage (IndexedDB), cloud sync, clipboard
   ui/         the shell (React): header, tabs, details panel, menus, dialogs, the canvas surface
   diagrams/   one folder per kind (system, sequence, class) implementing DiagramModule (diagrams/types.ts)
   editor/     CodeMirror languages and the <CodeEditor> wrapper (loaded on first use)
@@ -47,7 +47,7 @@ Pushes to `main` run CI and redeploy the Railway service, which builds `backend/
 
 ## Accounts and storage
 
-Sign in with GitHub (Spring Security OAuth2 client). Sessions are cookies stored in Postgres (Spring Session JDBC), so a redeploy doesn't sign anyone out. Spring never sees a password; GitHub supplies `id`, `login`, `name` and `avatar_url`, which are upserted into `users` on each login. Diagrams belong to a user and are stored as `jsonb` in the cistem.dev file format. Signed out, the editor still works and keeps the diagram in the browser; the first save after signing in creates it in the account.
+Sign in with GitHub (Spring Security OAuth2 client). Sessions are cookies stored in Postgres (Spring Session JDBC), so a redeploy doesn't sign anyone out. Spring never sees a password; GitHub supplies `id`, `login`, `name` and `avatar_url`, which are upserted into `users` on each login. Diagrams belong to a user and are stored as `jsonb` in the cistem.dev file format, each in exactly one **project** (every account has at least one; "My diagrams" is created when needed). Signed out, the editor still works: projects and diagrams are kept in the browser (IndexedDB), and after signing in they can be added to the account. A whole project exports as one file (`{ "format": "cistem-project", "version": 1, "title", "diagrams": [{ "id", "file" }] }`) and imports as a new project.
 
 Environment variables on the service:
 
@@ -64,12 +64,17 @@ Environment variables on the service:
 | `GET /api/me` | profile, or 401 |
 | `GET /oauth2/authorization/github` → `POST /api/logout` | sign in / out |
 | `GET /api/diagrams` | your diagrams (no bodies) |
-| `POST /api/diagrams` | `{ "document": <file> }` → 201 + `ETag: "<version>"` |
+| `POST /api/diagrams` | `{ "document": <file>, "projectId"? }` → 201 + `ETag: "<version>"` (default project when none) |
 | `GET /api/diagrams/{id}` | full diagram |
 | `PUT /api/diagrams/{id}` | replace; send `If-Match`; 409 with current body on conflict |
 | `DELETE /api/diagrams/{id}` | |
 | `POST / DELETE /api/diagrams/{id}/share` | create or revoke a share token |
 | `GET /api/share/{token}` | public, read-only |
+| `GET / POST /api/projects` | your projects, each with its diagrams (never empty) / create `{ "title" }` |
+| `PATCH / DELETE /api/projects/{id}` | rename / delete the project **and its diagrams** |
+| `POST / DELETE /api/projects/{id}/share` | create or revoke a project share token |
+| `GET /api/share/project/{token}` | public, read-only: the project's title and diagrams |
+| `PUT /api/diagrams/{id}/project` | `{ "projectId" }` move a diagram (its version doesn't change) |
 
 Cookie sessions carry CSRF protection (`XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header); API-key calls don't need it.
 

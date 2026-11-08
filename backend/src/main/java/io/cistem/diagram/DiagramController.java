@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.*;
 import tools.jackson.databind.JsonNode;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,17 +26,22 @@ public class DiagramController {
         this.user = user;
     }
 
-    /** Request body for create/update: the full diagram file (title and kind are read from it). */
-    public record DiagramBody(@NotNull JsonNode document, Integer version) {}
+    /**
+     * Request body for create/update: the full diagram file (title and kind are read from it). On create,
+     * {@code projectId} names the project to put it in (default: the oldest project); on update it's ignored.
+     */
+    public record DiagramBody(@NotNull JsonNode document, Integer version, UUID projectId) {}
+
+    public record MoveBody(UUID projectId) {}
 
     @GetMapping("/diagrams")
     public List<Diagram.Summary> list() {
-        return diagrams.list(user.id());
+        return diagrams.list(user.id(), null);
     }
 
     @PostMapping("/diagrams")
     public ResponseEntity<Diagram> create(@RequestBody DiagramBody body) {
-        return withEtag(HttpStatus.CREATED, diagrams.create(user.id(), body.document()));
+        return withEtag(HttpStatus.CREATED, diagrams.create(user.id(), body.projectId(), body.document()));
     }
 
     @GetMapping("/diagrams/{id}")
@@ -59,6 +63,12 @@ public class DiagramController {
         diagrams.delete(user.id(), id);
     }
 
+    /** Move to another of the user's projects; the version and document don't change. */
+    @PutMapping("/diagrams/{id}/project")
+    public Diagram.Summary move(@PathVariable UUID id, @RequestBody MoveBody body) {
+        return diagrams.move(user.id(), id, body.projectId());
+    }
+
     @PostMapping("/diagrams/{id}/share")
     public Diagram share(@PathVariable UUID id) {
         return diagrams.share(user.id(), id);
@@ -73,24 +83,14 @@ public class DiagramController {
     /** Public and read-only (permitted in SecurityConfig). */
     @GetMapping("/share/{token}")
     public Diagram shared(@PathVariable String token) {
-        return diagrams.shared(token).orElseThrow(() -> new DiagramService.NotFound("No such diagram"));
+        return diagrams.shared(token).orElseThrow(() -> new NotFound("diagram", null));
     }
 
-    // ---------- errors ----------
-
-    @ExceptionHandler(DiagramService.NotFound.class)
-    ResponseEntity<Map<String, String>> notFound(DiagramService.NotFound e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such diagram"));
-    }
+    // ---------- errors (404 and 400 are answered by ApiErrors) ----------
 
     @ExceptionHandler(DiagramService.Conflict.class)
     ResponseEntity<Diagram> conflict(DiagramService.Conflict e) {
         return withEtag(HttpStatus.CONFLICT, e.current);
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
     }
 
     private static ResponseEntity<Diagram> withEtag(HttpStatus status, Diagram d) {

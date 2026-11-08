@@ -1,6 +1,6 @@
 /**
- * The open tab's link to the account: autosave, conflicts, live refresh and sharing.
- * Signed out, nothing here runs and the editor works from this browser's storage alone.
+ * The open tab's link to the account: autosave, conflicts, live refresh and sharing a diagram.
+ * Signed out, or in a browser project, nothing here runs: the diagram lives in this browser (./local).
  */
 import { create } from 'zustand';
 import { api, ConflictError, AuthError, type Stored, type Profile } from '../lib/api';
@@ -36,14 +36,15 @@ export function setStatus(status: SyncStatus, detail = '') {
 }
 
 /** The cloud link of the open tab; tabs swap it in and out when switching. */
-export interface CloudSlot { id: string | null; version: number; status: SyncStatus; readonly: boolean; lastSaved: string }
+export interface CloudSlot { id: string | null; version: number; status: SyncStatus; readonly: boolean; lastSaved: string; conflict?: Stored | null }
 export function takeSlot(): CloudSlot {
   clearTimeout(timer);
   const c = cloud();
-  return { id: c.id, version: c.version, status: c.status, readonly: c.readonly, lastSaved };
+  return { id: c.id, version: c.version, status: c.status, readonly: c.readonly, lastSaved, conflict: pendingConflict };
 }
 export function putSlot(s: CloudSlot | null) {
   clearTimeout(timer);
+  pendingConflict = s?.conflict ?? null;
   useCloud.setState({ id: s?.id ?? null, version: s?.version ?? 0, readonly: s?.readonly ?? false, status: s?.status ?? 'local', detail: '' });
   lastSaved = s?.lastSaved ?? '';
   syncUrl();
@@ -75,9 +76,7 @@ export function scheduleSave() {
   timer = window.setTimeout(saveNow, 900);
 }
 export async function saveNow() {
-  if (!signedIn()) return;
-  if (!cloud().id) { await saveAsNew(); return; }
-  if (cloud().readonly) return;
+  if (!signedIn() || !cloud().id || cloud().readonly) return;
   if (inflight) await inflight;
   const file = currentFile(), sig = signature();
   if (sig === lastSaved) { setStatus('saved'); return; }
@@ -97,17 +96,6 @@ export async function saveNow() {
     } finally { inflight = null; }
   })();
   await inflight;
-}
-/** Save the open document as a new diagram in the account. */
-export async function saveAsNew() {
-  if (!signedIn()) { signIn(); return; }
-  try {
-    setStatus('saving');
-    const stored = await api.create(currentFile() as never);
-    useCloud.setState({ id: stored.id, version: stored.version, readonly: false });
-    lastSaved = signature();
-    setStatus('saved'); syncUrl(stored.id); onSaved();
-  } catch (e) { setStatus('error', (e as Error).message); }
 }
 /** Something wants to know about saves (the drawer's list). */
 let onSaved = () => {};
@@ -169,10 +157,14 @@ export async function toggleShare(): Promise<string | null> {
   return shareUrl(after.shareToken!);
 }
 
+/** While a shared link is being viewed, its address stays as it is (so a reload shows it again). */
+let addressLocked = false;
+export const lockAddress = (on: boolean) => { addressLocked = on; };
 /** Keep ?d= in the address bar pointing at the open diagram. */
 export function syncUrl(id?: string) {
+  if (addressLocked) return;
   const u = new URL(location.href);
-  u.searchParams.delete('s'); u.searchParams.delete('login');
+  u.searchParams.delete('s'); u.searchParams.delete('p'); u.searchParams.delete('login');
   const d = id ?? cloud().id;
   if (d) u.searchParams.set('d', d); else u.searchParams.delete('d');
   window.history.replaceState(null, '', u.toString());

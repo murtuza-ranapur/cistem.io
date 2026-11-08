@@ -1,61 +1,117 @@
-/** The account's diagrams. Signed out, it explains where diagrams live and offers sign-in. */
-import { useState } from 'react';
+/**
+ * Projects: every project with its diagrams. The open one is expanded; open another to switch to it.
+ * Signed out, they're this browser's; signed in, the account's (and this browser's can be brought over).
+ */
+import { useEffect, useState } from 'react';
 import { useUi } from '../store/ui';
-import { useCloud, signIn, saveAsNew } from '../store/cloud';
-import { useTabs } from '../store/tabs';
-import { useDiagramList, closeDrawer, newDiagram, openDiagram, deleteDiagram } from '../store/account';
+import { useCloud, signIn } from '../store/cloud';
+import { useTabs, newTab } from '../store/tabs';
+import { useProjectList, closeDrawer, openProjectById, importBrowserProjects, dismissLeftovers } from '../store/projects';
+import type { DiagramInfo, ProjectInfo } from '../store/backends';
 import { timeAgo } from '../lib/format';
-import type { Summary } from '../lib/api';
+import { Icon } from './Icon';
+import { openMenu } from './Menu';
+import { askNewProject, diagramMenu, projectMenu, KindIcon } from './projectActions';
 
 export function Drawer() {
   const open = useUi(s => s.drawerOpen);
   const user = useCloud(s => s.user);
   if (!open) return null;
   return (
-    <aside id="drawer" aria-label="Diagrams">
+    <aside id="drawer" aria-label="Projects">
       <div className="dhead">
-        <strong>Diagrams</strong><span className="spacer" />
-        <button type="button" className="small primary" id="newDiagram" onClick={() => void newDiagram()}>+ New</button>
+        <strong>Projects</strong><span className="spacer" />
+        <button type="button" className="small primary" id="newProject" onClick={() => void askNewProject()}>+ New project</button>
         <button type="button" className="icon" id="drawerClose" aria-label="Close" onClick={closeDrawer}>×</button>
       </div>
-      <div id="drawerList">{user ? <DiagramList /> : <SignInPitch />}</div>
-      {user && <div className="dfoot"><button type="button" className="small" id="saveAsNew" onClick={() => { void saveAsNew(); closeDrawer(); }}>Save current as new</button></div>}
+      <Leftovers />
+      <div id="drawerList"><ProjectList /></div>
+      <div className="dfoot">
+        {user
+          ? <span className="muted">Saved to your account.</span>
+          : <>
+              <p className="muted">Kept in this browser. Sign in to save to your account, share links and use them from Claude.</p>
+              <button type="button" className="small primary" data-signin onClick={signIn}>Sign in with GitHub</button>
+            </>}
+        <button type="button" className="small" id="importBtn" onClick={() => { closeDrawer(); useUi.setState({ ioOpen: 'import' }); }}>Import…</button>
+      </div>
     </aside>
   );
 }
 
-function SignInPitch() {
+/** Signed in with diagrams still in this browser: offer to bring them over. */
+function Leftovers() {
+  const n = useProjectList(s => s.leftovers);
+  const [busy, setBusy] = useState(false);
+  if (!n) return null;
   return (
-    <div className="dsignin">
-      <p>Your diagrams are kept in this browser, one per tab.</p>
-      <p>Sign in with GitHub to save them to your account, open them on other devices, share links and use them from Claude (MCP).</p>
-      <button type="button" className="small primary" data-signin onClick={signIn}>Sign in with GitHub</button>
+    <div className="leftovers" id="leftovers">
+      <p>{n} diagram{n === 1 ? ' is' : 's are'} only in this browser.</p>
+      <div>
+        <button type="button" className="small primary" id="importLocal" disabled={busy} onClick={() => { setBusy(true); void importBrowserProjects().finally(() => setBusy(false)); }}>Add to my account</button>
+        <button type="button" className="small" onClick={dismissLeftovers}>Not now</button>
+      </div>
     </div>
   );
 }
 
-function DiagramList() {
-  const { items, error } = useDiagramList();
-  const current = useCloud(s => s.id);
-  const openIds = new Set(useTabs(s => s.list).map(t => t.cloudId));
-  if (error) return <p className="empty">Couldn't load diagrams: {error}</p>;
+function ProjectList() {
+  const { items, error } = useProjectList();
+  const openId = useTabs(s => s.project?.id);
+  if (error) return <p className="empty">Couldn’t load projects: {error}</p>;
   if (!items) return null;
-  if (!items.length) return <p className="empty">No diagrams yet. Save this one or start a new one.</p>;
-  return <>{items.map(d => <DiagramItem key={d.id} d={d} on={d.id === current} open={openIds.has(d.id)} />)}</>;
+  return <>{items.map(p => <ProjectRow key={p.id} p={p} isOpen={p.id === openId} />)}</>;
 }
 
-function DiagramItem({ d, on, open }: { d: Summary; on: boolean; open: boolean }) {
-  const [armed, setArmed] = useState(false);
-  const remove = (ev: React.MouseEvent) => {
-    ev.stopPropagation();
-    if (armed) { void deleteDiagram(d.id); return; }
-    setArmed(true); setTimeout(() => setArmed(false), 2500);
-  };
+function ProjectRow({ p, isOpen }: { p: ProjectInfo; isOpen: boolean }) {
+  const [expanded, setExpanded] = useState(isOpen);
+  useEffect(() => { if (isOpen) setExpanded(true); }, [isOpen]);
   return (
-    <div className={'ditem' + (on ? ' on' : '')} data-open={d.id} onClick={() => void openDiagram(d.id)}>
-      <div className="dtitle">{d.title}{d.shared && <> <span className="tag">shared</span></>}{open && !on && <> <span className="tag">open</span></>}</div>
-      <div className="dmeta">{d.kind} · v{d.version} · {timeAgo(d.updatedAt)}</div>
-      <button type="button" className={'x' + (armed ? ' armed' : '')} data-del={d.id} aria-label="Delete" onClick={remove}>{armed ? 'sure?' : '×'}</button>
+    <section className={'prow' + (isOpen ? ' on' : '')} data-project={p.id}>
+      <div className="phead">
+        <button type="button" className="ptoggle" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>
+          <span className="caret" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+          <Icon name="ic-folder" className="pfolder" />
+          <span className="ptitle">{p.title}</span>
+          {p.shared && <span className="tag">shared</span>}
+          <span className="pcount">{p.diagrams.length}</span>
+        </button>
+        {!isOpen && <button type="button" className="small" data-open-project={p.id} onClick={() => void openProjectById(p.id)}>Open</button>}
+        <button type="button" className="icon pmore" aria-label={`${p.title} menu`} data-project-menu={p.id} onClick={e => openMenu(e.currentTarget, p.title, projectMenu(p))}>⋯</button>
+      </div>
+      {expanded && (
+        <div className="plist">
+          {p.diagrams.map(d => <DiagramRow key={d.id} d={d} p={p} />)}
+          {!p.diagrams.length && <p className="empty">No diagrams yet.</p>}
+          {isOpen && (
+            <div className="pnew">
+              <span>New:</span>
+              {(['system', 'sequence', 'class'] as const).map(k => (
+                <button type="button" key={k} className="chip" data-new-in={k} onClick={() => { closeDrawer(); void newTab(k); }}>
+                  <KindIcon kind={k} />{k[0].toUpperCase() + k.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DiagramRow({ d, p }: { d: DiagramInfo; p: ProjectInfo }) {
+  const active = useTabs(s => s.project?.id === p.id && s.active === d.id);
+  const open = useTabs(s => s.project?.id === p.id && s.list.some(t => t.key === d.id));
+  const menu = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); openMenu({ x: e.clientX, y: e.clientY }, d.title, diagramMenu(d, p)); };
+  return (
+    <div className={'ditem' + (active ? ' on' : '')} data-open={d.id} role="button" tabIndex={0}
+      onClick={() => void openProjectById(p.id, d.id)} onKeyDown={e => e.key === 'Enter' && void openProjectById(p.id, d.id)} onContextMenu={menu}>
+      <KindIcon kind={d.kind} />
+      <div className="dtext">
+        <div className="dtitle">{d.title}{d.shared && <> <span className="tag">shared</span></>}{open && !active && <> <span className="tag">open</span></>}</div>
+        <div className="dmeta">{d.updatedAt ? timeAgo(d.updatedAt) : ''}</div>
+      </div>
+      <button type="button" className="x" aria-label={`${d.title} menu`} data-diagram-menu={d.id} onClick={e => { e.stopPropagation(); openMenu(e.currentTarget, d.title, diagramMenu(d, p)); }}>⋯</button>
     </div>
   );
 }

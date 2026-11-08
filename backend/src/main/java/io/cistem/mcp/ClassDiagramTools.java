@@ -38,15 +38,16 @@ public class ClassDiagramTools {
               implement (from implements to), depend (from depends on to).
             Class names are unique identifiers (letters, digits, _ $). Positions are worked out by the editor.""";
 
-    @McpTool(name = "create_class_diagram", description = "Create a class diagram. Returns its id.\n" + CLASS_FORMAT)
+    @McpTool(name = "create_class_diagram", description = "Create a class diagram, in the given project or the user's default one. Returns its id.\n" + CLASS_FORMAT)
     public ObjectNode createClassDiagram(@McpToolParam(description = "Title") String title,
                                          @McpToolParam(description = "Classes (see format)") List<Map<String, Object>> classes,
-                                         @McpToolParam(description = "Relations (see format)", required = false) List<Map<String, Object>> relations) {
+                                         @McpToolParam(description = "Relations (see format)", required = false) List<Map<String, Object>> relations,
+                                         @McpToolParam(description = Diagrams.PROJECT_PARAM, required = false) String projectId) {
         ObjectNode model = classModel(classes, relations, null);
         ObjectNode file = DiagramFiles.create(om, "class", title);
         file.set("model", model);
         object(file, "layout").putObject("positions");
-        return counts(diagrams.savedResult(diagrams.insert(file)), model);
+        return counts(diagrams.savedResult(diagrams.insert(file, projectId)), model);
     }
 
     @McpTool(name = "set_class_diagram", description = "Replace a class diagram's classes and relations. Boxes keep their place when the class name stays the same.\n" + CLASS_FORMAT)

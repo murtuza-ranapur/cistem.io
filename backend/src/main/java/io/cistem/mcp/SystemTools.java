@@ -51,9 +51,10 @@ public class SystemTools {
         for (ObjectNode c : clients) c.put("rps", sum > 0 ? c.path("rps").asDouble(0) * total / sum : total / clients.size());
     }
 
-    @McpTool(name = "create_diagram", description = "Create a new, empty system diagram with one Clients node. Returns its id.")
+    @McpTool(name = "create_diagram", description = "Create a new, empty system diagram with one Clients node, in the given project or the user's default one. Returns its id and projectId.")
     public Diagram.Summary createDiagram(@McpToolParam(description = "Title") String title,
-                                         @McpToolParam(description = "Peak requests/sec of the Clients node (default 1000)", required = false) Double targetRps) {
+                                         @McpToolParam(description = "Peak requests/sec of the Clients node (default 1000)", required = false) Double targetRps,
+                                         @McpToolParam(description = Diagrams.PROJECT_PARAM, required = false) String projectId) {
         ObjectNode file = DiagramFiles.create(om, "system", title);
         ObjectNode model = object(file, "model");
         ArrayNode nodes = model.putArray("nodes");
@@ -64,7 +65,7 @@ public class SystemTools {
         ObjectNode layout = object(file, "layout");
         layout.putObject("positions").putObject("n1").put("x", 40).put("y", 40);
         layout.putObject("frames");
-        return diagrams.insert(file).summary();
+        return diagrams.insert(file, projectId).summary();
     }
 
     @McpTool(name = "list_component_types", description = """

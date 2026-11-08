@@ -9,6 +9,9 @@ import { Drawer } from './Drawer';
 import { IoDialog } from './IoDialog';
 import { ConflictBanner, Toast } from './Banners';
 import { NoteButton } from '../notes/NoteButton';
+import { Dialogs } from './Dialogs';
+import { MenuHost } from './Menu';
+import { ShareDialog } from './ShareDialog';
 
 export function App() {
   const kind = useEditor(s => s.open.kind);
@@ -24,6 +27,9 @@ export function App() {
       <ConflictBanner />
       <Toast />
       <IoDialog />
+      <ShareDialog />
+      <Dialogs />
+      <MenuHost />
     </div>
   );
 }

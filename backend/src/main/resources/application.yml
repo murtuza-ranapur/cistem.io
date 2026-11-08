@@ -27,7 +27,9 @@ spring:
     annotation-scanner.enabled: true
     instructions: >
       cistem.dev stores system-design diagrams whose components have behaviour, and sequence diagrams that
-      draw on them. Use list_diagrams to find the user's diagrams (kind: system or sequence). For system
+      draw on them. Diagrams are grouped into projects: every diagram is in exactly one project; list_projects shows
+      them with their diagrams, the create tools take an optional projectId (default: the user's first project), and
+      move_to_project moves a diagram. Use list_diagrams to find the user's diagrams (kind: system or sequence). For system
       diagrams, evaluate runs the capacity model and the add/connect/set tools change the design; every edit
       returns a fresh evaluation. For sequences, get_sequence / set_sequence / create_sequence work with a
       short text format (a -> b: call, b --> a: reply, a ->> q: async, alt/opt/loop/par ... end).

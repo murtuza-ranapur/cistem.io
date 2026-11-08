@@ -46,3 +46,13 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 /** ⌘ on a Mac, Ctrl elsewhere — the label for shortcuts. */
 export const modLabel = isMac ? '⌘' : 'Ctrl+';
 export const hasMod = (ev: KeyboardEvent | MouseEvent) => ev.metaKey || ev.ctrlKey;
+
+/** Save text as a file through the browser's download. */
+export function download(filename: string, text: string, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+/** A title as a file name (keeps letters, digits, spaces, - and _). */
+export const fileName = (title: string, ext: string) => (title.replace(/[^\p{L}\p{N} _-]+/gu, '').trim() || 'cistem') + ext;

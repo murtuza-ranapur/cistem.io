@@ -25,9 +25,9 @@ public class GeneralTools {
         this.diagrams = diagrams;
     }
 
-    @McpTool(name = "list_diagrams", description = "List the user's diagrams: id, title, kind, version, last updated.")
-    public List<Diagram.Summary> listDiagrams() {
-        return diagrams.service().list(diagrams.owner());
+    @McpTool(name = "list_diagrams", description = "List the user's diagrams, newest-updated first: id, projectId, title, kind, version, last updated. Pass projectId to list only the diagrams in that project (list_projects gives the projects).")
+    public List<Diagram.Summary> listDiagrams(@McpToolParam(description = "Only diagrams in this project (id); omit for all", required = false) String projectId) {
+        return diagrams.service().list(diagrams.owner(), Diagrams.optionalUuid(projectId, "project"));
     }
 
     @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.dev file format: version, kind, meta, model, layout). For sequence diagrams get_sequence gives a readable text form.")

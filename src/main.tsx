@@ -1,9 +1,9 @@
 import './style.css';
 import './notes/notes.css';
+import './ui/projects.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
-import { bootTabs } from './store/tabs';
-import { bootCloud } from './store/account';
+import { bootWorkspace, bootAccount } from './store/projects';
 import { startPolling } from './store/cloud';
 import { startPersisting } from './store/persist';
 import { listenForClipboard } from './store/clipboard';
@@ -22,8 +22,8 @@ initTooltips();
 if (new URL(openedWith).searchParams.get('login') === 'failed') toast('GitHub sign-in didn\'t complete. Try again.', 5000);
 
 (async () => {
-  await bootTabs(exampleFile);   // this device's tabs, from their local copies
+  await bootWorkspace(exampleFile);   // the project this device had open, from what this browser keeps
   startPersisting();
-  await bootCloud(openedWith);   // links them up with the account (and ?d= / ?s=)
+  await bootAccount(openedWith);     // the account's projects when signed in (and ?d= / ?p= / ?s=)
   startPolling();
 })();

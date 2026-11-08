@@ -279,6 +279,37 @@ class McpOAuthFlowTest {
                 {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(cdId)));
         assertTrue(!noNotes.contains("\"notes\":[") && !noNotes.contains("Decisions"), noNotes);
 
+        // projects: create one, create a diagram straight into it, move another in; the moved one keeps its version
+        // (and its updatedAt, so it lists after the new one)
+        String proj = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"create_project","arguments":{"title":"MCP project"}}}"""));
+        String projectId = JsonPath.read(proj, "$.id");
+        String inProject = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"create_diagram","arguments":{"title":"In project","projectId":"%s"}}}""".formatted(projectId)));
+        assertEquals(projectId, JsonPath.read(inProject, "$.projectId"));
+        List<Object> cdVersions = JsonPath.read(unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"list_diagrams","arguments":{}}}""")), "$[?(@.id=='" + cdId + "')].version");
+        String cdVersion = String.valueOf(cdVersions.get(0));
+        String moved = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"move_to_project","arguments":{"diagramId":"%s","projectId":"%s"}}}""".formatted(cdId, projectId)));
+        assertEquals(projectId, JsonPath.read(moved, "$.projectId"));
+        assertEquals(cdVersion, String.valueOf((Object) JsonPath.read(moved, "$.version")), "moving keeps the version");
+        String projectsList = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}"""));
+        assertEquals(List.of("In project", "Domain"), JsonPath.read(projectsList, "$[?(@.id=='" + projectId + "')].diagrams[*].title"), projectsList);
+        String filtered = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":65,"method":"tools/call","params":{"name":"list_diagrams","arguments":{"projectId":"%s"}}}""".formatted(projectId)));
+        assertEquals(List.of("In project", "Domain"), JsonPath.read(filtered, "$[*].title"));
+        String renamed = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":66,"method":"tools/call","params":{"name":"rename_project","arguments":{"projectId":"%s","title":"Renamed project"}}}""".formatted(projectId)));
+        assertEquals("Renamed project", JsonPath.read(renamed, "$.title"));
+        assertTrue(list.contains("\"delete_project\"") && list.contains("AND every diagram"), "delete_project warns about its diagrams");
+        unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":67,"method":"tools/call","params":{"name":"delete_project","arguments":{"projectId":"%s"}}}""".formatted(projectId)));
+        String afterDelete = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":68,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(cdId)), false);
+        assertTrue(afterDelete.contains("No such diagram"), afterDelete);
+
 
         // the diagram is owned by murtu and visible through the REST API as that user
         mvc.perform(get("/api/diagrams/" + diagramId).with(oauth2Login().oauth2User(principal)))

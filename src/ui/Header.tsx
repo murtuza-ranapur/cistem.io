@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useEditor, changeMeta, undo, redo } from '../store/editor';
 import { useHistory } from '../store/history';
 import * as history from '../store/history';
-import { useCloud, saveNow, signIn, signOut, toggleShare, type SyncStatus } from '../store/cloud';
-import { useUi, togglePanel, toast } from '../store/ui';
-import { openDrawer } from '../store/account';
+import { useCloud, saveNow, signIn, type SyncStatus } from '../store/cloud';
+import { useUi, togglePanel } from '../store/ui';
+import { useTabs } from '../store/tabs';
+import { openDrawer, signOutHere, copyView } from '../store/projects';
 import { fitView, organise } from '../store/commands';
 import { diagram } from '../diagrams';
-import { IconButton } from './Icon';
+import { Icon, IconButton } from './Icon';
 import { useDismiss } from './hooks';
 import { openExample } from './actions';
 
@@ -19,8 +20,8 @@ export function Header() {
   const panelOpen = useUi(s => s.panelOpen);
   return (
     <header id="top">
-      <IconButton id="drawerBtn" icon="ic-menu" label="Diagrams" onClick={openDrawer} />
       <div className="brand"><span className="logo" />cistem<span className="tld">.dev</span></div>
+      <ProjectSwitcher />
       <TitleInput />
       {m.HeaderInfo && <m.HeaderInfo />}
       <SyncButton />
@@ -41,6 +42,27 @@ export function Header() {
         <IconButton id="resetBtn" icon="ic-example" label="Open example" title="Open the example (as a new diagram)" onClick={openExample} />
       </div>
     </header>
+  );
+}
+
+/** The open project's name: opens the projects drawer. A shared link shows "view only" and a way to copy it. */
+function ProjectSwitcher() {
+  const p = useTabs(s => s.project);
+  const drawer = useUi(s => s.drawerOpen);
+  const user = useCloud(s => s.user);
+  return (
+    <>
+      <button type="button" id="drawerBtn" className={'switcher' + (drawer ? ' on' : '')} aria-haspopup="true" aria-expanded={drawer}
+        title="Projects" onClick={() => (drawer ? useUi.setState({ drawerOpen: false }) : openDrawer())}>
+        <Icon name="ic-folder" /><span className="sw-title">{p?.title ?? 'Projects'}</span><span className="caret" aria-hidden="true">▾</span>
+      </button>
+      {p?.scope === 'view' && (
+        <>
+          <span className="tag viewonly">view only</span>
+          <button type="button" id="copyView" className="small primary" title={user ? 'Copy into your account' : 'Copy into this browser'} onClick={() => void copyView()}>Make a copy</button>
+        </>
+      )}
+    </>
   );
 }
 
@@ -68,7 +90,7 @@ function TitleInput() {
 }
 
 const SYNC_TEXT: Record<SyncStatus, (signedIn: boolean) => [string, string]> = {
-  local: u => (u ? ['save', 'Save this diagram to your account'] : ['not saved', 'Kept in this browser only. Sign in to save.']),
+  local: () => ['in this browser', 'Saved in this browser only. Sign in to keep your projects in your account.'],
   saved: () => ['saved', 'All changes saved'],
   saving: () => ['saving…', 'Saving…'],
   dirty: () => ['unsaved', 'Changes pending'],
@@ -79,7 +101,7 @@ const SYNC_TEXT: Record<SyncStatus, (signedIn: boolean) => [string, string]> = {
 function SyncButton() {
   const { status, detail, user } = useCloud();
   const [text, tip] = SYNC_TEXT[status](!!user);
-  const canSave = status === 'local' || status === 'dirty' || status === 'error';
+  const canSave = status === 'dirty' || status === 'error';
   return (
     <button type="button" className={'sync ' + status} id="sync" title={detail || tip} onClick={() => canSave && void saveNow()}>
       <span className="sdot" /><span id="syncText">{text}</span>
@@ -98,17 +120,8 @@ function VerdictBadge() {
 }
 
 function ShareButton() {
-  const share = async () => {
-    const c = useCloud.getState();
-    if (!c.user) { signIn(); return; }
-    if (!c.id) { await saveNow(); if (!useCloud.getState().id) return; }
-    try {
-      const url = await toggleShare();
-      if (!url) { toast('Share link removed'); return; }
-      try { await navigator.clipboard.writeText(url); toast('Share link copied'); } catch { prompt('Share link', url); }
-    } catch (e) { toast((e as Error).message, 4000); }
-  };
-  return <IconButton id="shareBtn" icon="ic-share" label="Share" title="Share link" onClick={() => void share()} />;
+  const open = () => { if (!useCloud.getState().user) { signIn(); return; } useUi.setState({ shareOpen: {} }); };
+  return <IconButton id="shareBtn" icon="ic-share" label="Share" title="Share" onClick={open} />;
 }
 
 function Account() {
@@ -132,7 +145,7 @@ function Account() {
       {menu && (
         <div id="accountMenu" className="menu" ref={menuRef}>
           <div className="menu-head" id="accountName">{user.name || user.login}</div>
-          <button type="button" id="signOutBtn" className="menu-item" onClick={() => { setMenu(false); void signOut(); }}>Sign out</button>
+          <button type="button" id="signOutBtn" className="menu-item" onClick={() => { setMenu(false); void signOutHere(); }}>Sign out</button>
         </div>
       )}
     </>

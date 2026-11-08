@@ -22,17 +22,22 @@ Personas used for exploratory testing are at the end.
   - `kind` decides the model: system → nodes/edges/containers/links; sequence → participants/rows; class → classes/relations.
 - **Limits:** a malformed file (wrong types, missing arrays, `null`s, extra fields, 5 MB of JSON, deeply nested JSON) must be rejected with a message, never crash the page or replace the current diagram.
 
-### 1.2 Local persistence and tabs
-- **Inputs:** edits; reloads; closing/opening/reordering tabs; private windows (no storage).
+### 1.2 Projects, local persistence and tabs
+- **Inputs:** creating, renaming, opening, deleting projects; moving and deleting diagrams; edits; reloads; closing/opening/reordering tabs; export and import of project files; private windows (no storage).
 - **Invariants**
-  - Every tab's document survives a reload, in its own storage slot. `[e2e]`
-  - The tab list, order and active tab survive a reload. `[e2e]`
+  - Every diagram is in exactly one project; one project is open at a time and the tab bar shows only its diagrams. `[e2e]`
+  - Signed out, projects and diagrams live in this browser (IndexedDB); signed in, in the account (the browser keeps a cache). `[e2e]`
+  - Each project's tabs, order and active tab survive a reload and come back when switching back to it. `[e2e]`
   - Each tab keeps its own undo history and view while the page is open. `[e2e]`
-  - Closing a tab deletes its local slot; closing a local-only tab asks once. `[e2e]`
-  - Closing the last tab leaves one blank tab — never zero tabs. `[e2e]`
-  - A pre-tabs local document becomes the first tab (migration).
-  - Storage being unavailable or full never breaks editing (writes are best-effort).
-- **Limits:** 30+ tabs; very long titles; two browser windows editing the same storage.
+  - Closing a tab never deletes the diagram; the last tab can't be closed. `[e2e]`
+  - Moving a diagram closes its tab here and keeps its id, version and content. `[e2e]` `[java]`
+  - Deleting a project deletes its diagrams, and asks for the project's name first when it has any. `[e2e]` `[java]`
+  - An empty project (new, or its last diagram deleted) opens with a blank system diagram.
+  - A project file imports as a new project, with sequences pointing at the imported copies of their system diagrams. `[e2e]` `[unit]`
+  - Tabs from before projects (localStorage) become "My diagrams", and leave localStorage only once safely in IndexedDB. `[e2e]`
+  - After signing in, diagrams made signed out are offered to the account (the untouched first-visit example isn't). `[e2e]`
+  - Storage being unavailable or full never breaks editing (writes are best-effort, with a hint).
+- **Limits:** 30+ tabs; 50+ projects; very long titles; two browser windows editing the same project.
 
 ### 1.3 Cloud (signed in)
 - **Inputs:** GitHub sign-in; edits; MCP edits made elsewhere; another device; deleting from the drawer; share links.
@@ -42,7 +47,8 @@ Personas used for exploratory testing are at the end.
   - Edits made through MCP appear in the open tab within ~4 s when it has no unsaved edits.
   - A version conflict never silently loses work: the user chooses.
   - Deleting a diagram closes its tab; opening one already open switches to its tab.
-  - A share link opens read-only; editing is impossible; it opens in its own tab.
+  - A diagram or project share link opens as a read-only "view" project; "Make a copy" copies it into your own projects. `[e2e]`
+  - Every account has at least one project ("My diagrams" is created when needed); existing diagrams were moved into it. `[java]`
   - Sessions last 30 days and survive server restarts. `[java]`
 - **Limits:** offline (requests fail) → status says so and retries; 401 mid-session → sign-in prompt, local work kept.
 

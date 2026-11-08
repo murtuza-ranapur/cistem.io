@@ -24,6 +24,8 @@ interface UiState {
   toast: string | null;
   ioOpen: 'export' | 'import' | null;
   drawerOpen: boolean;
+  /** The share dialog: open on the open diagram, or on a project. */
+  shareOpen: { projectId?: string } | null;
   newMenuOpen: boolean;
   contextMenu: ContextMenuState | null;
 }
@@ -37,6 +39,7 @@ export const useUi = create<UiState>(() => ({
   toast: null,
   ioOpen: null,
   drawerOpen: false,
+  shareOpen: null,
   newMenuOpen: false,
   contextMenu: null,
 }));
