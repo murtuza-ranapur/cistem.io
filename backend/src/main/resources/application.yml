@@ -31,7 +31,7 @@ spring:
       diagrams, evaluate runs the capacity model and the add/connect/set tools change the design; every edit
       returns a fresh evaluation. For sequences, get_sequence / set_sequence / create_sequence work with a
       short text format (a -> b: call, b --> a: reply, a ->> q: async, alt/opt/loop/par ... end).
-      Class diagrams: create_class_diagram / set_class_diagram take classes and relations as JSON.
+      Class diagrams: create_class_diagram / set_class_diagram take classes and relations as JSON. Notes (markdown) on any diagram: add_note / update_note / remove_note put sticky notes on the canvas; set_item_notes writes the notes on a component, class, lifeline or connection.
     capabilities:
       tool: true
       resource: true

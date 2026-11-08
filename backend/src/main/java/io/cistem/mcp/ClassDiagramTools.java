@@ -2,6 +2,7 @@ package io.cistem.mcp;
 
 import io.cistem.diagram.Diagram;
 import io.cistem.diagram.DiagramFiles;
+import io.cistem.diagram.Notes;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
@@ -55,6 +56,8 @@ public class ClassDiagramTools {
         ObjectNode[] model = new ObjectNode[1];
         var saved = diagrams.edit(diagramId, "class", file -> {
             model[0] = classModel(classes, relations, file.path("model").path("relations"));
+            Notes.carryOver(file.path("model"), model[0], "classes", "name");
+            Notes.carryOver(file.path("model"), model[0], "relations", "id");
             file.set("model", model[0]);
             // boxes of classes that are gone lose their place; the others keep theirs
             Set<String> names = new HashSet<>();

@@ -4,7 +4,6 @@
  * coloured highlights `<mark data-color>` and text colour `<span style="color">`.
  */
 import { Node, mergeAttributes, type Extensions, type JSONContent } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Highlight from '@tiptap/extension-highlight';
@@ -136,8 +135,8 @@ export const Callout = Node.create({
 /** Links: web links open in a new tab; `#cistem:<kind>:<id>` links point at an item in the diagram. */
 export const COMPONENT_LINK = '#cistem:';
 
-/** `toggleTask` ticks a checkbox while the note isn't being edited (the editor's own handler only flips the box). */
-export function noteExtensions(opts: { placeholder: string; toggleTask?: (node: PMNode, checked: boolean) => boolean }): Extensions {
+/** `toggleTask` says whether a checkbox may be ticked while the note isn't being edited (NoteEditor then updates the note). */
+export function noteExtensions(opts: { placeholder: string; toggleTask?: () => boolean }): Extensions {
   return [
     StarterKit.configure({
       codeBlock: false,   // replaced by the highlighted one

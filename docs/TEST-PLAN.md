@@ -54,6 +54,17 @@ Personas used for exploratory testing are at the end.
   - Undo never crosses tabs.
 - **Limits:** 100+ steps; undo during a drag; undo while a text editor has focus (the editor's own undo wins).
 
+### 1.6 Notes
+- **Inputs:** the rail's Note button or N; typing with markdown shortcuts, the floating toolbar (canvas) or fixed toolbar (panel), `/` blocks, `@` links; ticking checkboxes; drag, resize, colour; ⌘C/⌘V/⌘D/Delete; MCP add_note / update_note / remove_note / set_item_notes.
+- **Outputs:** canvas notes in `model.notes` (id, colour, markdown) with boxes in `layout.notes`; item notes as a `notes` field on components, connections, environments, classes, relations and lifelines.
+- **Invariants**
+  - What's typed is saved as markdown (headings, bold, italic, underline, strike, code, ==highlight==, coloured `<mark>`/`<span>`, lists, checklists, quotes, `> [!WARNING]` callouts, code blocks, tables, links, `#cistem:` item links) and reads back the same. `[unit][e2e]`
+  - A checkbox ticks without entering edit mode; each tick is one undo step; a focus-to-leave typing session is one step. `[e2e]`
+  - Notes copy and paste between tabs of any kind. `[e2e]`
+  - Replacing a sequence or class diagram over MCP keeps its notes. `[backend]`
+  - Hostile notes: markup the editor doesn't know is dropped (no script, no event handlers, no `javascript:` links, only palette colours), text is size-capped, ids sanitised. `[unit][e2e]`
+- **Limits:** 50,000 characters per note; the editor (≈208 KB compressed) loads only when a note is shown.
+
 ### 1.5 Copy, cut, paste
 - **Inputs:** ⌘/Ctrl+C, X, V, D; the right-click menu (Cut, Copy, Paste, Duplicate, Delete) on all three canvases; text pasted from other apps.
 - **Outputs:** the system clipboard gets readable text (system: JSON marked `"cistem-clipboard": 1`; sequence: the text format; class: the text format headed `%% cistem copy {positions}`). A copy is also kept in `cistem.clip`, so the menu's Paste works without clipboard permission.

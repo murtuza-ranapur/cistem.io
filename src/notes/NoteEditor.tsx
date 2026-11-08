@@ -7,7 +7,6 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Editor } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { noteExtensions, COMPONENT_LINK } from './extensions';
 import { suggestionMenu, SuggestionPopup, type MenuItem } from './suggest';
@@ -40,7 +39,7 @@ export default function NoteEditor(p: NoteEditorProps) {
   const emitted = useRef(p.value);
 
   const extensions = useMemo(() => [
-    ...noteExtensions({ placeholder: p.placeholder ?? 'Write something… (/ for blocks)', toggleTask: (node, checked) => toggleTask(node, checked) }),
+    ...noteExtensions({ placeholder: p.placeholder ?? 'Write something… (/ for blocks)', toggleTask: () => true }),
     suggestionMenu('slashMenu', '/', () => BLOCKS),
     suggestionMenu('linkMenu', '@', () => (latest.current.linkTargets?.() ?? []).map(linkItem)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,20 +73,28 @@ export default function NoteEditor(p: NoteEditorProps) {
     });
     editorRef.current = ed;
     setEditor(ed);
-    return () => { ed.destroy(); editorRef.current = null; setEditor(null); };
+    const el = host.current!;
+    el.addEventListener('change', tickFromDom);
+    return () => { el.removeEventListener('change', tickFromDom); ed.destroy(); editorRef.current = null; setEditor(null); };
     // made once; props are read through `latest`
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Tick a checkbox in the read view: find the item and set it (reported through onChange like any edit). */
-  function toggleTask(node: PMNode, checked: boolean): boolean {
+  /** Tick a checkbox in the read view: find its item from the checkbox and set it (reported through onChange like any edit). */
+  function tickFromDom(ev: Event) {
+    const box = ev.target as HTMLInputElement;
     const ed = editorRef.current;
-    if (!ed || ed.isDestroyed) return false;
-    let pos = -1;
-    ed.state.doc.descendants((n, at) => { if (pos >= 0) return false; if (n === node) { pos = at; return false; } return true; });
-    if (pos < 0) return false;
-    ed.view.dispatch(ed.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, checked }));
-    return true;
+    if (!ed || ed.isDestroyed || ed.isEditable || box.type !== 'checkbox') return;
+    const li = box.closest('li');
+    if (!li || !host.current?.contains(li)) return;
+    // the item starts just before its first content position (or at it, depending on the view)
+    const inner = ed.view.posAtDOM(li, 0);
+    for (const at of [inner - 1, inner, inner - 2]) {
+      const node = at >= 0 ? ed.state.doc.nodeAt(at) : null;
+      if (node?.type.name !== 'taskItem') continue;
+      ed.view.dispatch(ed.state.tr.setNodeMarkup(at, undefined, { ...node.attrs, checked: box.checked }));
+      return;
+    }
   }
 
   /** `@` links select the item; they never navigate. */

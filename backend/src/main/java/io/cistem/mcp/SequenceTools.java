@@ -2,6 +2,7 @@ package io.cistem.mcp;
 
 import io.cistem.diagram.Diagram;
 import io.cistem.diagram.DiagramFiles;
+import io.cistem.diagram.Notes;
 import io.cistem.engine.Seq;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
@@ -78,6 +79,7 @@ public class SequenceTools {
             Seq.keepIds(file.path("model"), p.model());
             JsonNode uses = file.path("model").path("uses");
             if (uses.isObject() && !p.model().has("uses")) p.model().set("uses", uses);
+            Notes.carryOver(file.path("model"), p.model(), "participants", "id");
             file.set("model", p.model());
         });
         return diagrams.savedResult(saved.diagram()).put("text", Seq.print(p.model()));

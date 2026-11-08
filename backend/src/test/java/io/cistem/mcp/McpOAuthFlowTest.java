@@ -256,6 +256,28 @@ class McpOAuthFlowTest {
         String wrong2 = unwrap(mcp(access, session, """
                 {"jsonrpc":"2.0","id":45,"method":"tools/call","params":{"name":"add_component","arguments":{"diagramId":"%s","kind":"service","name":"x"}}}""".formatted(cdId)), false);
         assertTrue(wrong2.contains("class diagram"), wrong2);
+        // notes: on the canvas and on items, in any kind; replacing the model keeps them
+        String note = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":50,"method":"tools/call","params":{"name":"add_note","arguments":{"diagramId":"%s","text":"## Decisions\\n- [ ] money as minor units","color":"blue"}}}""".formatted(cdId)));
+        String noteId = JsonPath.read(note, "$.noteId");
+        unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":51,"method":"tools/call","params":{"name":"set_item_notes","arguments":{"diagramId":"%s","itemId":"Order","text":"**aggregate root**"}}}""".formatted(cdId)));
+        unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":52,"method":"tools/call","params":{"name":"set_class_diagram","arguments":{"diagramId":"%s","classes":[{"name":"Order"},{"name":"Money","kind":"record"}],"relations":[]}}}""".formatted(cdId)));
+        String withNotes = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":53,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(cdId)));
+        assertEquals("## Decisions\n- [ ] money as minor units", JsonPath.read(withNotes, "$.model.notes[0].text"));
+        assertEquals("blue", JsonPath.read(withNotes, "$.model.notes[0].color"));
+        assertEquals("**aggregate root**", JsonPath.read(withNotes, "$.model.classes[0].notes"), "item notes survive a replace");
+        assertEquals(Integer.valueOf(280), JsonPath.read(withNotes, "$.layout.notes." + noteId + ".w"));
+        String badColour = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":54,"method":"tools/call","params":{"name":"update_note","arguments":{"diagramId":"%s","noteId":"%s","color":"neon"}}}""".formatted(cdId, noteId)), false);
+        assertTrue(badColour.contains("color must be one of"), badColour);
+        unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":55,"method":"tools/call","params":{"name":"remove_note","arguments":{"diagramId":"%s","noteId":"%s"}}}""".formatted(cdId, noteId)));
+        String noNotes = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":56,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(cdId)));
+        assertTrue(!noNotes.contains("\"notes\":[") && !noNotes.contains("Decisions"), noNotes);
 
 
         // the diagram is owned by murtu and visible through the REST API as that user

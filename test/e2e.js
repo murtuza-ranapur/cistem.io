@@ -1254,6 +1254,130 @@ abstract class Entity { protected long version; }`;
     }
   });
 
+
+  // ---- notes ----
+  const notesIn = async t => { const d = await t.doc(); return (d.model.notes ?? []).map(n => ({ ...n, ...(d.layout.notes?.[n.id] ?? {}) })); };
+  const typeNote = async (t, lines) => { for (const [i, l] of lines.entries()) { if (i) await t.page.keyboard.press('Enter'); await t.page.keyboard.type(l); } await t.page.waitForTimeout(150); };
+  const leave = async t => { await t.page.mouse.click(t.page.viewportSize().width - 420, 140); await t.page.waitForTimeout(300); };
+
+  await test('notes: a canvas note formats as you type and is saved as markdown', async t => {
+    await t.page.click('#addNote'); await t.page.waitForSelector('.cnote.editing .ProseMirror-focused');
+    await typeNote(t, ['## Launch plan', 'Hold **4,000 rps** with ==headroom== and `p99`', '[ ] load test', 'sign-off']);
+    await t.page.keyboard.press('Enter'); await t.page.keyboard.press('Enter');
+    await t.page.keyboard.type('> quoted'); await t.page.keyboard.press('Enter'); await t.page.keyboard.press('Enter');
+    await t.page.keyboard.type('/warn'); await t.page.waitForSelector('.note-suggest button'); await t.page.keyboard.press('Enter');
+    await t.page.keyboard.type('Ordering per merchant');
+    await t.page.keyboard.press('Enter'); await t.page.keyboard.press('Enter');
+    await t.page.keyboard.type('see @check'); await t.page.waitForSelector('.note-suggest button'); await t.page.keyboard.press('Enter');
+    await leave(t);
+    const [n] = await notesIn(t);
+    assert(n, 'note saved');
+    for (const piece of ['## Launch plan', '**4,000 rps**', '==headroom==', '`p99`', '- [ ] load test', '- [ ] sign-off', '> quoted', '> [!WARNING]\n> Ordering per merchant', '(#cistem:node:'])
+      assert(n.text.includes(piece), `has ${JSON.stringify(piece)} in ${JSON.stringify(n.text)}`);
+    eq(await t.page.$$eval('.cnote h2', e => e.map(x => x.textContent)).then(x => x[0]), 'Launch plan', 'drawn formatted');
+    await t.page.reload(); await t.page.waitForSelector('.cnote .ProseMirror');
+    eq((await notesIn(t))[0].text, n.text, 'survives a reload');
+  });
+
+  await test('notes: ticking a checkbox works without editing, and undoes in one step', async t => {
+    await t.page.click('#addNote'); await t.page.waitForSelector('.cnote.editing .ProseMirror-focused');
+    await typeNote(t, ['[ ] first', 'second']); await leave(t);
+    await t.page.click('.cnote li[data-checked] input >> nth=1'); await t.page.waitForTimeout(250);
+    assert(!(await t.page.$('.cnote.editing')), 'not in edit mode');
+    assert((await notesIn(t))[0].text.includes('- [x] second'), 'ticked: ' + JSON.stringify((await notesIn(t))[0]?.text));
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(250);
+    assert((await notesIn(t))[0].text.includes('- [ ] second'), 'undo unticks');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(250);
+    eq((await notesIn(t))[0]?.text, '', 'the next undo takes back all the typing: one step');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(250);
+    eq((await notesIn(t)).length, 0, 'and the next removes the note');
+  });
+
+  await test('notes: the floating toolbar styles a selection (highlight colour, text colour, bold)', async t => {
+    await t.page.click('#addNote'); await t.page.waitForSelector('.cnote.editing .ProseMirror-focused');
+    await typeNote(t, ['important bit']);
+    await t.page.keyboard.press('Shift+Home'); await t.page.waitForSelector('.note-toolbar.floating');
+    await t.page.click('.note-toolbar [data-fmt="highlight"]'); await t.page.click('.note-pop [data-colour="green"]');
+    await t.page.click('.note-toolbar [data-fmt="color"]'); await t.page.click('.note-pop [data-colour="red"]');
+    await t.page.click('.note-toolbar [data-fmt="bold"]');
+    await leave(t);
+    const text = (await notesIn(t))[0].text;
+    assert(text.includes('<mark data-color="#bbf7d0">') && text.includes('color: #c73a3a') && text.includes('**'), text);
+  });
+
+  await test('notes: move, resize, recolour, copy/paste and delete a note', async t => {
+    await t.page.click('#addNote'); await t.page.waitForSelector('.cnote.editing .ProseMirror-focused');
+    await typeNote(t, ['Drag me']); await leave(t);
+    const before = (await notesIn(t))[0];
+    const b = await t.box('.cnote');
+    await t.page.mouse.move(b.x + 20, b.y + b.height - 12); await t.page.mouse.down();
+    await t.page.mouse.move(b.x + 120, b.y + b.height + 68, { steps: 5 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    let n = (await notesIn(t))[0];
+    assert(n.x > before.x + 60 && n.y > before.y + 40, `moved ${before.x},${before.y} → ${n.x},${n.y}`);
+    const h = await t.box('.cnote [data-resize]');
+    await t.page.mouse.move(h.x + 6, h.y + 6); await t.page.mouse.down(); await t.page.mouse.move(h.x + 106, h.y + 86, { steps: 4 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    n = (await notesIn(t))[0];
+    assert(n.w > before.w + 50 && n.h > 0, 'resized');
+    await t.page.click('[data-note-color="blue"]'); await t.page.waitForTimeout(150);
+    eq((await notesIn(t))[0].color, 'blue');
+    await t.page.keyboard.press('Control+d'); await t.page.waitForTimeout(250);
+    eq((await notesIn(t)).length, 2, 'duplicated');
+    await t.page.keyboard.press('Delete'); await t.page.waitForTimeout(200);
+    eq((await notesIn(t)).length, 1, 'deleted the copy');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(200);
+    eq((await notesIn(t)).length, 2, 'undo brings it back');
+  });
+
+  await test('notes: notes paste into another kind of diagram', async t => {
+    await t.page.click('#addNote'); await t.page.waitForSelector('.cnote.editing .ProseMirror-focused');
+    await typeNote(t, ['Portable']); await leave(t);
+    const b = await t.box('.cnote'); await t.page.mouse.click(b.x + 20, b.y + 20); await t.page.waitForTimeout(150);
+    const text = await t.page.evaluate(() => { document.execCommand('copy'); return localStorage.getItem('cistem.clip'); });
+    assert(text && text.includes('cistem-notes'), 'copied');
+    await newCls(t);
+    await t.page.mouse.move(5, 5); await t.page.keyboard.press('Control+v'); await t.page.waitForTimeout(400);
+    const notes = await notesIn(t);
+    eq(notes.length, 1, 'pasted into the class diagram'); assert(notes[0].text.includes('Portable'));
+  });
+
+  await test('notes: a component gets notes in the panel and a badge on the canvas', async t => {
+    await t.clickNode('n3');
+    await t.page.click('[data-tab="notes"]'); await t.page.waitForSelector('.item-notes .ProseMirror');
+    await t.page.click('.item-notes .ProseMirror');
+    await typeNote(t, ['# Runbook', '[ ] idempotency keys', 'timeouts']);
+    await t.page.click('.item-notes li[data-checked] input >> nth=1');
+    await leave(t);
+    const n = (await t.doc()).model.nodes.find(x => x.id === 'n3');
+    assert(n.notes.includes('# Runbook') && n.notes.includes('- [x] timeouts'), n.notes);
+    eq(await t.page.textContent('[data-node="n3"] .note-badge text'), '1/2', 'badge shows checklist progress');
+    await t.clickNode('n3');
+    eq((await t.page.textContent('[data-tab="notes"]')).replace(/\s/g, ''), 'Notes1/2');
+  });
+
+  await test('notes: lifelines and classes take notes too', async t => {
+    await newSeq(t); await addParts(t, ['web']);
+    await t.page.click('[data-head="web"]'); await t.page.waitForTimeout(300);
+    await t.page.click('.notes-section .ProseMirror'); await typeNote(t, ['the browser']); await leave(t);
+    eq((await t.doc()).model.participants[0].notes, 'the browser');
+    await newCls(t); await pasteOnCanvas(t, 'class Order {}'); await t.page.waitForTimeout(400);
+    await t.page.click('.cl-box[data-class="Order"] .cl-body', { position: { x: 20, y: 10 } }); await t.page.waitForTimeout(300);
+    await t.page.click('.notes-section .ProseMirror'); await typeNote(t, ['aggregate root']); await leave(t);
+    eq((await t.doc()).model.classes[0].notes, 'aggregate root');
+  });
+
+  await test('notes: markup from a hostile file is dropped', async t => {
+    await t.page.evaluate(() => { window.__pwned = 0; });
+    const f = await t.doc();
+    f.model.notes = [{ id: 'x', color: 'yellow', text: '<img src=x onerror="window.__pwned=1"> <script>window.__pwned=2</script> <a href="javascript:window.__pwned=3">link</a> <span style="color: red; background: url(x)">styled</span> fine' }];
+    f.layout.notes = { x: { x: 100, y: 100, w: 300 } };
+    await t.page.click('#ioBtn'); await t.page.fill('#json', JSON.stringify(f)); await t.page.click('#loadJson');
+    await t.page.waitForSelector('.cnote .ProseMirror'); await t.page.waitForTimeout(300);
+    await t.page.click('.cnote a').catch(() => {});
+    eq(await t.page.evaluate(() => window.__pwned), 0, 'nothing ran');
+    assert(!(await t.page.$('.cnote img, .cnote script')), 'no img or script');
+    eq(await t.page.$eval('.cnote span[style]', e => e.getAttribute('style')).catch(() => null), null, 'unknown colours are dropped');
+  });
+
   const failed = results.filter(r => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} passed${failed.length ? ' — screenshots in ' + OUT : ''}`);
   process.exit(failed.length ? 1 : 0);
