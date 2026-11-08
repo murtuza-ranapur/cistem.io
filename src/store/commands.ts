@@ -7,8 +7,9 @@ export const active = () => diagram(editor().open.kind);
 
 /** Fit everything into view. */
 export function fitView(animated = true) {
-  const { open } = editor();
-  fitTo(active().bounds(open.doc as never), { animated });
+  const { open } = editor(), m = active();
+  if (m.fit) { m.fit(animated); return; }
+  fitTo(m.bounds(open.doc as never), { animated });
 }
 /** Keep the selected item clear of the panel and the canvas edges. */
 export function revealSelection() {

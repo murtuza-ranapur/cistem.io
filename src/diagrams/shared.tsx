@@ -14,8 +14,10 @@ export const docOf = <K extends DiagramKind>(_kind: K): DocOf<K> => editor().ope
  * A text box over the canvas for editing a label in place. It takes focus once the click that opened it
  * has landed, selects its text, commits on Enter or blur and cancels on Escape. An empty value isn't committed.
  */
-export function InlineEdit({ id, value, style, onCommit, onCancel, onKeyDown, list, mono, ariaLabel = 'Edit text' }: {
+export function InlineEdit({ id, value, style, onCommit, onCancel, onKeyDown, list, mono, allowEmpty, ariaLabel = 'Edit text' }: {
   id: string; value: string; style: React.CSSProperties;
+  /** Commit an emptied box too (a label can be cleared; a name can't). */
+  allowEmpty?: boolean;
   onCommit: (value: string) => void; onCancel: () => void;
   onKeyDown?: (ev: React.KeyboardEvent<HTMLInputElement>) => boolean | void;
   list?: string; mono?: boolean; ariaLabel?: string;
@@ -31,7 +33,7 @@ export function InlineEdit({ id, value, style, onCommit, onCancel, onKeyDown, li
     if (done.current) return;
     done.current = true;
     const v = input.current?.value.trim() ?? '';
-    if (commit && v) onCommit(v); else onCancel();
+    if (commit && (v || allowEmpty)) onCommit(v); else onCancel();
   };
   return (
     <input id={id} ref={input} type="text" aria-label={ariaLabel} autoComplete="off" spellCheck={false} list={list}
