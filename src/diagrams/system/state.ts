@@ -52,9 +52,10 @@ export function nodeMap(doc: Doc): Map<string, Node> {
 }
 export const findNode = (doc: Doc, id: string | null | undefined): Node | undefined => (id ? nodeMap(doc).get(id) : undefined);
 
-/** A new id that nothing in the diagram uses yet. */
-export function freshId(doc: Doc, prefix: 'n' | 'e' | 'c' | 'l'): string {
+/** A new id that nothing in the diagram uses yet (`candidate` when it's free). */
+export function freshId(doc: Doc, prefix: 'n' | 'e' | 'c' | 'l', candidate?: string): string {
   const taken = new Set<string>([...doc.nodes, ...doc.edges, ...doc.containers, ...doc.links].map(x => x.id));
+  if (candidate && !taken.has(candidate)) return candidate;
   let id: string;
   do id = nextId(prefix); while (taken.has(id));
   return id;

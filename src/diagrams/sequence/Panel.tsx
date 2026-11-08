@@ -215,6 +215,8 @@ function DiagramFields({ d, sys }: { d: SeqDoc; sys: LinkedSystem | null }) {
 function CodeTab({ d }: { d: SeqDoc }) {
   const draft = useSeqUi(s => s.draft);
   const onChange = (text: string) => {
+    // the editor following the document (undo, edits on the canvas) isn't an edit: recording it would wipe redo
+    if (text === printSeq(docOf('sequence'))) { useSeqUi.setState({ draft: null }); return; }
     const p = parseSeq(text);
     if (p.errors.length) { useSeqUi.setState({ draft: text }); return; }
     useSeqUi.setState({ draft: null });

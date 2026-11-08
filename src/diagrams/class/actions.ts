@@ -4,7 +4,7 @@ import {
   boxSize, layoutCls, mergeCls, parseMember, isMethod, relId, renameClass, fromTables, fromAvro,
   type ClassBox, type ClassDoc, type ClassKind, type Member, type RelType, type Vis,
 } from '../../domain/cls';
-import { change, editor, select, selectOne, selectedIds, primary, useEditor } from '../../store/editor';
+import { change, editor, select, selectOne, selectedIds, useEditor } from '../../store/editor';
 import * as history from '../../store/history';
 import { centre } from '../../store/viewport';
 import { fitView } from '../../store/commands';
@@ -12,7 +12,7 @@ import { hint } from '../../store/ui';
 import { peek, systemTabs } from '../../store/tabs';
 import { animate } from '../../lib/browser';
 import { docOf } from '../shared';
-import { copyName, findClass, freeName, hasClass, isName, rectOf, snap } from './model';
+import { findClass, freeName, hasClass, isName, rectOf, snap } from './model';
 import { useClsUi } from './ui';
 
 const doc = () => docOf('class');
@@ -120,13 +120,6 @@ export function remove() {
     });
   } else return;
   select(null);
-}
-export function duplicate() {
-  const name = primary('class'); if (!name) return;
-  const c = findClass(doc(), name); if (!c) return;
-  const n = copyName(taken, name), p = doc().pos[name] ?? { x: 0, y: 0 };
-  change('class', d => { d.classes.push({ ...structuredClone(c), name: n }); d.pos[n] = { x: p.x + 32, y: p.y + 32 }; });
-  selectOne('class', n);
 }
 export const selectAll = () => select({ type: 'class', ids: doc().classes.map(c => c.name) });
 export function nudge(dx: number, dy: number) {

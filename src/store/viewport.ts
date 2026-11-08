@@ -10,7 +10,16 @@ export interface Point { x: number; y: number }
 
 let surface: SVGSVGElement | null = null;
 /** The canvas currently on screen (each canvas calls this when it mounts). */
-export const setSurface = (el: SVGSVGElement | null) => { surface = el; };
+export const setSurface = (el: SVGSVGElement | null) => {
+  surface = el;
+  if (el) waiting.splice(0).forEach(fn => fn());
+};
+const waiting: (() => void)[] = [];
+/** Run `fn` once a canvas is on screen and laid out (now, if one already is). */
+export function whenDrawn(fn: () => void) {
+  const run = () => requestAnimationFrame(() => requestAnimationFrame(fn));
+  if (surface) run(); else waiting.push(run);
+}
 export const getSurface = () => surface;
 const rect = () => surface?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
 

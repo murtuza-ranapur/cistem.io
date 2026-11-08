@@ -14,7 +14,7 @@ import { editor, freshMeta, replace, useEditor, type EditorState, type Meta, typ
 import * as history from './history';
 import { cloud, putSlot, takeSlot, saveNow, saveAsNew, signedIn, adoptStored, setStatus, markSaved, useCloud, type CloudSlot } from './cloud';
 import { readFile, readLocal } from './files';
-import { fitView } from './commands';
+import { fitWhenDrawn } from './commands';
 import { hint } from './ui';
 
 export interface Tab { key: string; kind: DiagramKind; title: string; cloudId?: string; version?: number; share?: string }
@@ -64,7 +64,7 @@ function blank(kind: DiagramKind, title?: string): { open: OpenDoc; meta: Meta }
 }
 function show(open: OpenDoc, meta: Meta) {
   replace(open, meta);
-  requestAnimationFrame(() => fitView(false));
+  fitWhenDrawn();
 }
 
 export async function activate(key: string) {

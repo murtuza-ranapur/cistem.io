@@ -1,5 +1,6 @@
 /** The right-click menu on every canvas: Cut, Copy, Paste, Duplicate, Delete. */
 import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useUi } from '../store/ui';
 import { editor, select } from '../store/editor';
 import { active, duplicateSelection, removeSelection } from '../store/commands';
@@ -21,7 +22,8 @@ export function openContextMenu(ev: React.MouseEvent) {
 export function ContextMenu() {
   const state = useUi(s => s.contextMenu);
   if (!state) return null;
-  return <Menu x={state.x} y={state.y} world={state.world} />;
+  // on <body>, so no panel or rail can paint over it
+  return createPortal(<Menu x={state.x} y={state.y} world={state.world} />, document.body);
 }
 
 function Menu({ x, y, world }: { x: number; y: number; world: { x: number; y: number } | null }) {

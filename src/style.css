@@ -661,3 +661,4 @@ button.cl-tag.ref{border:none;background:color-mix(in srgb,var(--fk) 16%,transpa
 .ctx button:disabled{opacity:.4;cursor:default}
 .ctx kbd{font:11.5px var(--mono);color:var(--muted);background:none;border:0}
 .ctx hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
+#stage>svg:focus{outline:none}

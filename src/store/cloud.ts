@@ -7,7 +7,7 @@ import { api, ConflictError, AuthError, type Stored, type Profile } from '../lib
 import { editor, replace } from './editor';
 import * as history from './history';
 import { currentFile, readFile, signature } from './files';
-import { fitView } from './commands';
+import { fitWhenDrawn } from './commands';
 import { toast } from './ui';
 
 export type SyncStatus = 'local' | 'saved' | 'saving' | 'dirty' | 'conflict' | 'error' | 'readonly';
@@ -133,7 +133,7 @@ export function adoptStored(s: Stored, readonly = false) {
   useCloud.setState({ id: readonly ? null : s.id, version: s.version, readonly });
   lastSaved = signature();
   history.reset();
-  if (!same) requestAnimationFrame(() => fitView(false));
+  if (!same) fitWhenDrawn();
   setStatus(readonly ? 'readonly' : 'saved');
   syncUrl(readonly ? undefined : s.id);
 }

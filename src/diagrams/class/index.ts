@@ -2,9 +2,12 @@
 import { blankCls, type ClassDoc } from '../../domain/cls';
 import { clsToFile } from '../../domain/document';
 import { primary } from '../../store/editor';
+import * as history from '../../store/history';
+import { fitTo } from '../../store/viewport';
+import { docOf } from '../shared';
 import { hasMod } from '../../lib/browser';
 import type { DiagramModule } from '../types';
-import { addClass, duplicate, nudge, organise, remove, selectAll, startRename } from './actions';
+import { addClass, nudge, organise, remove, selectAll, startRename } from './actions';
 import { copy, paste } from './clipboard';
 import { classBounds, findClass, rectOf, QUICK } from './model';
 import { clsUi, useClsUi } from './ui';
@@ -38,6 +41,8 @@ export const classes: DiagramModule<'class'> = {
   panelFor: sel => !!sel,
   verdict: (d: ClassDoc) => ({ status: 'none', text: `${plural(d.classes.length, 'class', 'classes')} · ${plural(d.relations.length, 'relation', 'relations')}` }),
   bounds: classBounds,
+  // class boxes are text-heavy: don't blow them up past 120%
+  fit: animated => fitTo(classBounds(docOf('class')), { animated, maxK: 1.2, pad: 60 }),
   selectionBox: (d, sel) => { const c = sel.type === 'class' ? findClass(d, sel.ids[0]) : undefined; return c ? rectOf(d, c) : null; },
   selectionAt(target) {
     const c = target.closest<SVGElement>('[data-class]')?.dataset.class;
@@ -45,7 +50,9 @@ export const classes: DiagramModule<'class'> = {
     const r = target.closest<SVGElement>('[data-rel]')?.dataset.rel;
     return r ? { type: 'rel', ids: [r] } : null;
   },
-  keydown, remove, duplicate, selectAll, organise,
+  keydown, remove, selectAll, organise,
+  // a duplicate is a paste of a copy: every selected class, with the relations between them
+  duplicate: () => { const text = copy(); if (text) history.transaction(() => paste(text, 1)); },
   copy,
   paste: (text, _at, repeat) => paste(text, repeat),
 };

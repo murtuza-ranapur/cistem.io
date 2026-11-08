@@ -1221,6 +1221,39 @@ abstract class Entity { protected long version; }`;
     assert(!(await t.page.isVisible('#ctxMenu')), 'Escape closes it');
   });
 
+
+  // ---- found testing the React rewrite ----
+  await test('regression: undo and redo in a sequence while its Code tab is open', async t => {
+    await t.page.click('#newTabBtn'); await t.page.click('[data-new="sequence"]'); await t.page.waitForTimeout(300);
+    await t.page.click('#panelBtn'); await t.page.waitForTimeout(300);
+    await t.page.click('[data-sqtab="code"]'); await t.page.waitForTimeout(600);
+    await t.page.click('.sq-cm .cm-content'); await t.page.keyboard.type('a -> b: one'); await t.page.waitForTimeout(300);
+    await t.page.mouse.click(400, 600); await t.page.waitForTimeout(200);
+    const rows = async () => (await t.doc()).model.rows.length;
+    eq(await rows(), 1);
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(250);
+    eq(await rows(), 0, 'undone');
+    assert(await t.page.isDisabled('#undoBtn'), 'nothing left to undo');
+    await t.page.keyboard.press('Control+Shift+z'); await t.page.waitForTimeout(250);
+    eq(await rows(), 1, 'redo brings it back');
+  });
+
+  await test('regression: the + menu draws above the details panel', async t => {
+    await t.clickNode('n3');
+    await t.page.click('#newTabBtn'); await t.page.waitForTimeout(200);
+    const onTop = await t.page.$eval('#newMenu', el => { const r = el.getBoundingClientRect(); return [[r.right - 12, r.top + 40], [r.left + 12, r.bottom - 12]].every(([x, y]) => el.contains(document.elementFromPoint(x, y))); });
+    assert(onTop, 'nothing covers the menu');
+  });
+
+  await test('regression: a diagram is fitted to the view when the page opens', async t => {
+    await t.page.reload(); await t.page.waitForTimeout(900);
+    const svg = await t.box('#svg');
+    for (const id of ['n1', 'n2', 'n3']) {
+      const b = await t.box(`[data-node="${id}"] rect.body`);
+      assert(b.x >= svg.x && b.x + b.width <= svg.x + svg.width && b.y >= svg.y && b.y + b.height <= svg.y + svg.height, id + ' is in view');
+    }
+  });
+
   const failed = results.filter(r => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} passed${failed.length ? ' — screenshots in ' + OUT : ''}`);
   process.exit(failed.length ? 1 : 0);

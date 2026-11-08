@@ -1,5 +1,6 @@
 /** The tab strip and the + (new diagram) menu. */
 import { useCallback, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { useTabs, activate, closeTab, moveTab, newTab, type Tab } from '../store/tabs';
 import { useCloud } from '../store/cloud';
@@ -101,7 +102,7 @@ function NewTabButton() {
     <>
       <button type="button" ref={btn} className="newtab" id="newTabBtn" title="New diagram (⌥T)" aria-label="New diagram" aria-haspopup="menu" aria-expanded={open}
         onClick={() => useUi.setState({ newMenuOpen: !open })}>+</button>
-      {open && <NewMenu anchor={btn} />}
+      {open && createPortal(<NewMenu anchor={btn} />, document.body)}
     </>
   );
 }

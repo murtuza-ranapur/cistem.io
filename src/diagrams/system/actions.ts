@@ -31,7 +31,8 @@ export function addNode(kind: Kind, x?: number, y?: number): Node {
       if (free(px, py)) { x = px; y = py; break outer; }
     }
   }
-  const n = { ...makeNode(kind, snap(x!), snap(y!)), id: freshId(doc, 'n') };
+  const made = makeNode(kind, snap(x!), snap(y!));
+  const n = { ...made, id: freshId(doc, 'n', made.id) };
   n.container = containerAt(doc, computeFrames(doc), n.x + nodeWidth(n) / 2, n.y + NODE_H / 2);
   edit(d => { d.nodes.push(n); });
   selectOne('node', n.id);
@@ -42,7 +43,8 @@ export function addNode(kind: Kind, x?: number, y?: number): Node {
 export function addContainer(kind: ContainerKind = 'cloud', x?: number, y?: number) {
   const doc = sysDoc();
   if (x === undefined || y === undefined) { const c = centre(); x = c.x - 130; y = c.y - 70; }
-  const c = { ...makeContainer(kind, kind === 'cloud' ? 'New environment' : CONTAINER_KINDS[kind].label), id: freshId(doc, 'c') };
+  const made = makeContainer(kind, kind === 'cloud' ? 'New environment' : CONTAINER_KINDS[kind].label);
+  const c = { ...made, id: freshId(doc, 'c', made.id) };
   c.parent = containerAt(doc, computeFrames(doc), x + 130, y + 70);
   const frame = { x: snap(x), y: snap(y), w: 260, h: 140 };
   edit(d => { d.containers.push(c); d.frames[c.id] = frame; });
