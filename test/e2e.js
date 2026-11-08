@@ -1378,6 +1378,12 @@ abstract class Entity { protected long version; }`;
     eq(await t.page.$eval('.cnote span[style]', e => e.getAttribute('style')).catch(() => null), null, 'unknown colours are dropped');
   });
 
+  await test('regression: the Note button is on screen on a laptop-height window', async t => {
+    await t.page.setViewportSize({ width: 1440, height: 800 }); await t.page.waitForTimeout(200);
+    const b = await t.box('#addNote');
+    assert(b.y >= 0 && b.y + b.height <= 800, `note button at ${b.y}..${b.y + b.height}`);
+  });
+
   const failed = results.filter(r => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} passed${failed.length ? ' — screenshots in ' + OUT : ''}`);
   process.exit(failed.length ? 1 : 0);

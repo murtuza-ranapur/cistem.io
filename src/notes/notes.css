@@ -155,3 +155,7 @@
 .item-notes .note-prose { min-height: 100px; color: var(--fg); }
 .notes-section { border-top: 1px solid var(--line-2); margin-top: 8px; }
 .notes-section > h4 { margin: 14px 0 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: flex; align-items: center; }
+/* the Note button sits with the tools, above the rail's "drag onto canvas" hint; a short window scrolls the rail */
+#rail > .rail-hint { order: 1; }
+#rail { overflow-y: auto; scrollbar-width: none; }
+#rail::-webkit-scrollbar { display: none; }
