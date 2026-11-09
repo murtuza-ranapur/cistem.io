@@ -59,10 +59,10 @@ export function edgeGeometry(doc: Doc, a: Node, b: Node): EdgeGeometry {
 
 /** The one-line summary under a node's name, from its type's detail (or behaviour). */
 export function summary(n: Node): string {
-  if (isSource(n)) return (n.platforms || []).map(p => ({ web: 'Web', app: 'App' } as Record<string, string>)[p] || p).join(' · ') || 'no platforms';
+  if (isSource(n)) return (n.platforms || []).map(p => ({ web: 'Web', app: 'App' } as Record<string, string>)[p] || p).join(' · ');
   switch (detailOf(n)) {
-    case 'endpoints': { const e = n.endpoints || []; return e.length ? e.slice(0, 2).map(x => `${x.method} ${x.path}`).join('  ') + (e.length > 2 ? `  +${e.length - 2}` : '') : 'no endpoints'; }
-    case 'tables': { const t = n.tables || []; return t.length ? t.slice(0, 3).map(x => x.name).join(', ') + (t.length > 3 ? ` +${t.length - 3}` : '') : 'no tables'; }
+    case 'endpoints': { const e = n.endpoints || []; return e.length ? e.slice(0, 2).map(x => `${x.method} ${x.path}`).join('  ') + (e.length > 2 ? `  +${e.length - 2}` : '') : ''; }
+    case 'tables': { const t = n.tables || []; return t.length ? t.slice(0, 3).map(x => x.name).join(', ') + (t.length > 3 ? ` +${t.length - 3}` : '') : ''; }
     case 'topic': return [n.cluster, `${n.partitions ?? '?'} partitions`, n.key ? `key ${n.key}` : ''].filter(Boolean).join(' · ');
     case 'message': return [n.fifo ? 'FIFO' : 'standard', n.key ? `group ${n.key}` : ''].filter(Boolean).join(' · ');
   }
