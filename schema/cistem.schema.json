@@ -296,8 +296,8 @@
         },
         "label": {
           "type": "string",
-          "maxLength": 200,
-          "description": "Text shown on the line."
+          "maxLength": 500,
+          "description": "Text shown on the line; newlines start new lines."
         },
         "showNotes": {
           "type": "boolean",

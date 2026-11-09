@@ -121,6 +121,10 @@ A **Service** has a type — Microservice, Application, Monolith, Function, Work
 
 Any component can have a **dashed border** (panel → Border), e.g. to mark what you don't run, and a **logo**: paste an image (`⌘V`) with components selected, drop an image file onto one, or pick one in the panel. Pasting or dropping an image on empty canvas makes a new Application named after the file. Logos are shrunk to 64 px and stored in the diagram (no uploads), so they work signed out and travel with exports.
 
+## Copy as image
+
+The image button in the top bar (or `⌘⇧C`) copies the whole diagram, not just what's on screen, as a PNG at 2×: paste it straight into Confluence, a doc or a slide. Export / import also has **Download PNG** and **Download SVG**. The picture leaves out the grid, selection and app chrome, always uses the light theme, includes canvas notes, and embeds the app's fonts (IBM Plex, OFL, served from `/fonts`).
+
 ## Load view
 
 The load model (rps on cards and connections, capacity bars, the verdict and the header total) is hidden by default, since most diagrams are architecture. Turn it on with the gauge button or `L`; the choice is remembered in your browser. With it off, the capacity fields sit in a collapsed *Load model* section of the panel and connection labels show the endpoint called.

@@ -36,6 +36,19 @@ export function TextField({ path, label, wide, value, placeholder, list, require
   );
 }
 
+/** Several lines of text (Enter starts a new line); grows with its content up to a few lines. */
+export function TextAreaField({ path, label, wide, value, placeholder, rows = 2, onSave = setField }: Common & {
+  value: string; placeholder?: string; rows?: number; onSave?: (path: string, v: string) => void;
+}) {
+  const lines = Math.min(6, Math.max(rows, value.split('\n').length));
+  return (
+    <Label label={label} wide={wide}>
+      <textarea data-path={path} value={value} placeholder={placeholder} rows={lines} className="textarea-field"
+        onChange={e => onSave(path, e.target.value)} />
+    </Label>
+  );
+}
+
 /** A quantity: stored as you type (never negative — the engine reads junk as 0); the field shows what was stored once you leave it. */
 export function NumberField({ path, label, wide, value, min, max, step, onSave = setField }: Common & {
   value: unknown; min?: number; max?: number; step?: number; onSave?: (path: string, v: number) => void;

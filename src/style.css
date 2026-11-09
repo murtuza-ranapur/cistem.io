@@ -696,3 +696,6 @@ button.link:hover{text-decoration:underline}
 .edge.sel.tinted path.line{stroke:var(--ec);filter:drop-shadow(0 0 2.5px var(--sel))}
 .edge.crit.tinted path.line{stroke:var(--crit)}
 .props .look-seg{border:none;border-radius:999px;background:var(--panel-2,#f0f1f3);padding:2px;gap:2px}
+.props textarea.textarea-field{padding:6px 8px;border:1px solid var(--node-line);border-radius:6px;background:var(--panel);color:var(--fg);font-family:var(--mono);font-size:12.5px;min-width:0;width:100%;resize:vertical;line-height:1.45;box-sizing:border-box}
+.props textarea.textarea-field:hover{border-color:var(--muted)}
+.props textarea.textarea-field:focus{outline:none;border-color:var(--sel);box-shadow:0 0 0 3px var(--sel-soft)}

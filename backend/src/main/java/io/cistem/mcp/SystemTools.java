@@ -182,7 +182,7 @@ public class SystemTools {
     public ObjectNode setEdge(@McpToolParam(description = "Diagram id") String diagramId,
                               @McpToolParam(description = "Edge id") String edgeId,
                               @McpToolParam(description = "Calls per incoming request", required = false) Double calls,
-                              @McpToolParam(description = "Text shown on the line; \"\" removes it", required = false) String label,
+                              @McpToolParam(description = "Text shown on the line, newlines start new lines; \"\" removes it", required = false) String label,
                               @McpToolParam(description = "Show the connection's notes on the line under the label", required = false) Boolean showNotes,
                               @McpToolParam(description = "Line: solid, dashed or dotted (\"default\" resets)", required = false) String line,
                               @McpToolParam(description = "Colour: blue, violet, teal, green, amber, orange, red, pink, slate (\"default\" resets)", required = false) String color,
@@ -193,7 +193,7 @@ public class SystemTools {
                 if (!edgeId.equals(n.path("id").asText())) continue;
                 ObjectNode e = (ObjectNode) n;
                 if (calls != null) e.put("calls", calls);
-                if (label != null) { if (label.isBlank()) e.remove("label"); else e.put("label", label.length() > 200 ? label.substring(0, 200) : label); }
+                if (label != null) { if (label.isBlank()) e.remove("label"); else e.put("label", label.length() > 500 ? label.substring(0, 500) : label); }
                 if (showNotes != null) { if (showNotes) e.put("showNotes", true); else e.remove("showNotes"); }
                 style(e, "line", line, Set.of("solid", "dashed", "dotted"), "default");
                 style(e, "color", color, Set.of("blue", "violet", "teal", "green", "amber", "orange", "red", "pink", "slate"), "default");

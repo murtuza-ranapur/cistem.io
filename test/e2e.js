@@ -1469,11 +1469,11 @@ abstract class Entity { protected long version; }`;
     const e = doc.model.edges.find(x => x.to === svc.id);
     await clickEdge(t.page, e.id);
     await t.page.selectOption('#sheetBody select[data-path="endpoint"]', '0');
-    await t.page.fill('#sheetBody input[data-path="label"]', 'route payments'); await t.page.waitForTimeout(200);
+    await t.page.fill('#sheetBody textarea[data-path="label"]', 'route payments\nvia the ALB'); await t.page.waitForTimeout(200);
     await t.page.click('#sheetBody [contenteditable]'); await t.page.keyboard.type('Sticky sessions off; health check every 5s.'); await t.page.waitForTimeout(400);
     await t.page.click('#sheetBody input[data-path="showNotes"]'); await t.page.waitForTimeout(250);
-    const lab = await t.page.$eval(`#labels [data-edge="${e.id}"]`, el => ({ label: el.querySelector('.t-label')?.textContent, ep: el.querySelector('.t-ep')?.textContent, rps: el.querySelector('.t-rps')?.textContent, notes: [...el.querySelectorAll('.enote text')].map(x => x.textContent).join(' '), hidden: el.classList.contains('hidden') }));
-    eq(lab.label, 'route payments'); assert(/^\w+ \//.test(lab.ep || ''), 'endpoint under it: ' + lab.ep);
+    const lab = await t.page.$eval(`#labels [data-edge="${e.id}"]`, el => ({ label: [...el.querySelectorAll('.t-label')].map(x => x.textContent).join('|'), ep: el.querySelector('.t-ep')?.textContent, rps: el.querySelector('.t-rps')?.textContent, notes: [...el.querySelectorAll('.enote text')].map(x => x.textContent).join(' '), hidden: el.classList.contains('hidden') }));
+    eq(lab.label, 'route payments|via the ALB', 'two lines'); assert(/^\w+ \//.test(lab.ep || ''), 'endpoint under it: ' + lab.ep);
     assert(/rps/.test(lab.rps || ''), 'rps with the load view on'); assert(/health check/.test(lab.notes), 'notes on the line: ' + lab.notes);
     await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Escape');
     await t.page.keyboard.press('l'); await t.page.waitForTimeout(250);
@@ -1520,6 +1520,38 @@ abstract class Entity { protected long version; }`;
     await pasteImage(t.page);
     const app = (await t.doc()).model.nodes.find(n => n.name === 'Stripe');
     assert(app && app.logo && app.kind === 'service', 'a new service with the logo, named after the file'); eq(app.variant, 'Application');
+  });
+
+  // ---- image export ----
+  await test('image export: copy as image puts a PNG of the whole diagram on the clipboard; downloads work for every kind', async t => {
+    await t.page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+    const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
+    await t.clickNode(svc.id);
+    await t.page.keyboard.press('Control+Shift+c'); await t.page.waitForTimeout(1500);
+    const clip = await t.page.evaluate(async () => {
+      const items = await navigator.clipboard.read(); const it = items.find(i => i.types.includes('image/png'));
+      if (!it) return null;
+      const bmp = await createImageBitmap(await it.getType('image/png')); return { w: bmp.width, h: bmp.height };
+    });
+    assert(clip && clip.w > 1000 && clip.h > 500, 'a 2x PNG of the whole diagram: ' + JSON.stringify(clip));
+    eq(await t.page.evaluate(() => document.querySelector('#nodes .node.sel') !== null), true, 'the selection comes back afterwards');
+    // the SVG: framed on the drawing, no grid, fonts embedded, icons carried along
+    await t.page.click('#ioBtn');
+    const [dl] = await Promise.all([t.page.waitForEvent('download'), t.page.click('#downloadSvg')]);
+    const svg = require('fs').readFileSync(await dl.path(), 'utf8');
+    assert(!/<pattern/.test(svg), 'no grid'); assert(/@font-face/.test(svg), 'fonts embedded'); assert(/<symbol id="ic-service"/.test(svg), 'icons included');
+    assert(!/class="hit"/.test(svg) && !/\.hit/.test(svg.slice(0, 200)), 'no hit areas');
+    // sequence and class diagrams export too
+    for (const kind of ['sequence', 'class']) {
+      await t.page.click('#newTabBtn'); await t.page.waitForTimeout(150); await t.page.click(`[data-new="${kind}"]`); await t.page.waitForTimeout(600);
+      await t.page.click('#ioBtn');
+      const dl2 = t.page.waitForEvent('download', { timeout: 4000 }).catch(() => null);
+      const said = t.page.waitForFunction(() => /Nothing to export/.test(document.querySelector('#toast')?.textContent || ''), null, { timeout: 4000 }).then(() => 'Nothing to export', () => '');
+      await t.page.click('#downloadPng');
+      const [d2, msg] = await Promise.all([dl2, said]);
+      if (d2) { const size = require('fs').statSync(await d2.path()).size; assert(size > 500, kind + ' PNG: ' + size); }
+      else assert(/Nothing to export/.test(msg || ''), kind + ': an empty canvas says so (' + msg + ')');
+    }
   });
 
   // ---- projects ----

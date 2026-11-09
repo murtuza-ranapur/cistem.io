@@ -1,5 +1,6 @@
 /** The top bar: title, save status, verdict and the toolbar. */
 import { useLoadView } from '../store/loadView';
+import { copyImage } from '../store/imageExport';
 import { useEffect, useRef, useState } from 'react';
 import { useEditor, changeMeta, undo, redo } from '../store/editor';
 import { useHistory } from '../store/history';
@@ -37,6 +38,7 @@ export function Header() {
         {m.Tools && <m.Tools />}
         <span className="sep" />
         <ShareButton />
+        <IconButton id="copyImageBtn" icon="ic-image" label="Copy as image" title="Copy as image (⌘⇧C) — paste into Confluence, docs, slides" onClick={() => void copyImage()} />
         <IconButton id="ioBtn" icon="ic-save" label="Export or import" title="Export / import JSON" onClick={() => useUi.setState({ ioOpen: 'export' })} />
         <span className="sep" />
         <Account />

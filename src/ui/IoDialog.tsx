@@ -7,6 +7,7 @@ import { useUi } from '../store/ui';
 import { serialize, readFile } from '../store/files';
 import { useTabs } from '../store/tabs';
 import { exportProject, importFile } from '../store/projects';
+import { downloadPng, downloadSvg } from '../store/imageExport';
 import { isProjectFile, readProjectFile } from '../domain/project';
 
 export function IoDialog() {
@@ -55,6 +56,8 @@ function Dialog({ blank }: { blank: boolean }) {
         <div className="io-row">
           <button type="button" id="copyJson" onClick={copy}>Copy diagram</button>
           {project && project.scope !== 'view' && <button type="button" id="exportProject" onClick={() => { close(); void exportProject(project.id); }}>Download project</button>}
+          <button type="button" id="downloadPng" onClick={() => { close(); void downloadPng(); }}>Download PNG</button>
+          <button type="button" id="downloadSvg" onClick={() => { close(); void downloadSvg(); }}>Download SVG</button>
           <button type="button" id="openFile" onClick={() => picker.current?.click()}>Open file…</button>
           <input ref={picker} type="file" accept=".json,application/json" hidden onChange={e => void open(e.target.files?.[0])} />
           <button type="button" id="loadJson" className="primary" onClick={() => load(text)}>Load from text</button>

@@ -11,7 +11,7 @@ import { deleteEdge } from '../actions';
 import { edit, findNode, resultsOf, useSysDoc } from '../state';
 import { NotesSection } from '../../../notes/ItemNotes';
 import { hasNotes } from '../../../domain/notes';
-import { CheckField, NumberField, SelectField, TextField } from './controls';
+import { CheckField, NumberField, SelectField, TextAreaField } from './controls';
 import { Seg, StyleRow, Swatches } from './StyleControls';
 
 const LineIcon = ({ dash, cap }: { dash?: string; cap?: boolean }) =>
@@ -50,7 +50,7 @@ export function EdgePanel({ e }: { e: Edge }) {
       </div>
       <div className="tab">
         <div className="props">
-          <TextField path="label" label="Label · shown on the line" wide value={e.label ?? ''} />
+          <TextAreaField path="label" label="Label · shown on the line (Enter for a new line)" wide rows={1} value={e.label ?? ''} />
           {eps.length > 0 && (
             <SelectField path="endpoint" label={`Endpoint called · from ${b.name}`} wide int empty="Unspecified" value={e.endpoint == null ? '' : String(e.endpoint)}
               options={eps.map((_, i) => String(i))} labelOf={i => `${eps[+i].method} ${eps[+i].path}`} />

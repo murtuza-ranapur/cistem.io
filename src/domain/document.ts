@@ -144,7 +144,7 @@ export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] 
 /** Keep an edge's label and style only when they are values the editor writes. */
 function edgeStyle(e: any) {
   if ('label' in e && (typeof e.label !== 'string' || !e.label.trim())) delete e.label;
-  else if (typeof e.label === 'string') e.label = e.label.slice(0, 200);
+  else if (typeof e.label === 'string') e.label = e.label.slice(0, 500);
   if ('showNotes' in e && e.showNotes !== true) delete e.showNotes;
   if ('line' in e && !['solid', 'dashed', 'dotted'].includes(e.line)) delete e.line;
   if ('color' in e && !isPaletteColor(e.color)) delete e.color;

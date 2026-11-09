@@ -11,3 +11,10 @@ assert.equal(strokeOf({}, false).dash, 'none'); assert.notEqual(strokeOf({}, tru
 assert.equal(strokeOf({ line: 'solid' }, true).dash, 'none', 'unless solid is picked');
 assert.ok(strokeOf({ line: 'dotted', width: 'thick' }, false).dotted);
 console.log('edge view helpers');
+
+import { labelRows } from '../src/diagrams/system/EdgeView';
+assert.deepEqual(labelRows('fraud check\nPOST /score'), ['fraud check', 'POST /score'], 'typed newlines');
+assert.deepEqual(labelRows('a\n\nb'), ['a', 'b'], 'blank lines skipped');
+assert.ok(labelRows('word '.repeat(30)).length > 1, 'a long line wraps');
+assert.ok(labelRows(Array(10).fill('x').join('\n')).length === 6, 'at most 6 lines');
+console.log('multi-line labels');

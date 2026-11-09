@@ -47,9 +47,9 @@ export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 export const modLabel = isMac ? '⌘' : 'Ctrl+';
 export const hasMod = (ev: KeyboardEvent | MouseEvent) => ev.metaKey || ev.ctrlKey;
 
-/** Save text as a file through the browser's download. */
-export function download(filename: string, text: string, type = 'application/json') {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+/** Save text (or a blob) as a file through the browser's download. */
+export function download(filename: string, text: string | Blob, type = 'application/json') {
+  const url = URL.createObjectURL(typeof text === 'string' ? new Blob([text], { type }) : text);
   const a = Object.assign(document.createElement('a'), { href: url, download: filename });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);

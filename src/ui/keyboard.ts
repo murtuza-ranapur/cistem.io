@@ -11,6 +11,7 @@ import { active, duplicateSelection, fitView, removeSelection, selectAll } from 
 import { zoomBy, pointerWorld } from '../store/viewport';
 import { addNote, noteKeydown } from '../notes/actions';
 import { requestCloseTab } from './TabBar';
+import { copyImage } from '../store/imageExport';
 
 /** While a pointer is held (a drag in progress), keys that change what's being dragged wait. */
 let pointersHeld = 0;
@@ -43,6 +44,7 @@ function onKey(ev: KeyboardEvent) {
   if (mod && key === 'z') return handled(ev.shiftKey ? redo : undo);
   if (mod && key === 'y') return handled(redo);
   if (mod && key === '0') return handled(() => fitView());
+  if (mod && ev.shiftKey && key === 'c') return handled(() => void copyImage());
   if (mod && (ev.key === '=' || ev.key === '+')) return handled(() => zoomBy(1.2));
   if (mod && ev.key === '-') return handled(() => zoomBy(1 / 1.2));
   if (noteKeydown(ev)) return handled(() => {});
