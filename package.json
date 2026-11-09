@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && bun scripts/build.ts",
     "preview": "bun scripts/serve.ts",
-    "test": "bun test/document.test.ts && bun test/fields.test.ts && bun test/avro.test.ts && bun test/dbml.test.ts && bun test/seq.test.ts && bun test/cls.test.ts && bun test/notes.test.ts && bun test/project.test.ts",
+    "test": "bun test/document.test.ts && bun test/fields.test.ts && bun test/avro.test.ts && bun test/dbml.test.ts && bun test/seq.test.ts && bun test/cls.test.ts && bun test/notes.test.ts && bun test/project.test.ts && bun test/edgeview.test.ts",
     "test:e2e": "bun test/e2e.js"
   },
   "repository": {

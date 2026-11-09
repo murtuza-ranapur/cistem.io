@@ -5,13 +5,15 @@ import { select } from '../../../store/editor';
 import { activate, peek, tabs, useTabs } from '../../../store/tabs';
 import { Icon } from '../../../ui/Icon';
 import { deleteNodes } from '../actions';
-import { resultsOf, useSysDoc } from '../state';
+import { edit, resultsOf, selectedNodeIds, useSysDoc } from '../state';
 import { CheckField, NumberField, SelectField, TextField, setField } from './controls';
 import { usePanelUi, setPanelUi } from './ui';
 import { ItemNotes, NotesLabel } from '../../../notes/ItemNotes';
 import { SchemaTab } from './SchemaTab';
 import { useLoadView } from '../../../store/loadView';
 import { LogoField } from './LogoField';
+import { Seg, StyleRow, Swatches } from './StyleControls';
+import { kindColour } from '../geometry';
 
 const SCHEMA_LABEL: Record<string, string> = { endpoints: 'Endpoints', tables: 'Tables', topic: 'Topic', message: 'Message' };
 
@@ -85,7 +87,7 @@ function CapacityTab({ n }: { n: Node }) {
         {(load ? fields : other).map(field)}
         {isSource(n) && <Platforms n={n} />}
         <LogoField n={n} />
-        <BorderField n={n} />
+        <NodeStyle n={n} />
       </div>
       {load ? numbers : loadFields.length > 0 && (
         <details className="loadsec" id="loadSection">
@@ -98,16 +100,21 @@ function CapacityTab({ n }: { n: Node }) {
   );
 }
 
-/** Card style: a dashed border marks something you don't run (a third party, a partner…). */
-function BorderField({ n }: { n: Node }) {
-  const cur = n.border === 'dashed' ? 'dashed' : 'solid';
+/** Card style: a colour instead of the type's, and a dashed border (e.g. for something you don't run). Applies to every selected component. */
+function NodeStyle({ n }: { n: Node }) {
+  const targets = () => { const ids = selectedNodeIds(); return ids.includes(n.id) ? ids : [n.id]; };
+  const apply = (f: (x: Node) => void) => { const ids = targets(); edit(d => { for (const x of d.nodes) if (ids.includes(x.id)) f(x); }); };
   return (
-    <div className="wide look-row"><span className="look-l">Border</span>
-      <span className="seg look-seg">{([['solid', 'Solid'], ['dashed', 'Dashed']] as const).map(([v, l]) => (
-        <button type="button" key={v} data-nstyle={`border:${v}`} className={cur === v ? 'on' : ''} aria-pressed={cur === v}
-          onClick={() => setField('border', v === 'dashed' ? 'dashed' : undefined)}>{l}</button>
-      ))}</span>
-    </div>
+    <>
+      <StyleRow label="Colour">
+        <Swatches attr="color" value={n.color} fallback={kindColour(n.kind)} defaultLabel={`Default for ${typeDef(n.kind).label}`}
+          onPick={c => apply(x => { if (c) x.color = c; else delete x.color; })} />
+      </StyleRow>
+      <StyleRow label="Border">
+        <Seg attr="border" value={n.border === 'dashed' ? 'dashed' : 'solid'} options={[['solid', 'Solid'], ['dashed', 'Dashed']] as const}
+          onPick={v => apply(x => { if (v === 'dashed') x.border = 'dashed'; else delete x.border; })} />
+      </StyleRow>
+    </>
   );
 }
 

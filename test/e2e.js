@@ -113,7 +113,7 @@ class T {
   await test('Delete key removes the selected edge', async t => {
     const hit = await t.page.$('[data-edge="e2"] path.hit'); const b = await hit.boundingBox();
     await t.page.mouse.click(b.x + b.width / 2, b.y + b.height / 2); await t.page.waitForTimeout(150);
-    eq(await t.page.evaluate(() => document.querySelector('#sheetBody .head .k')?.textContent), 'Edge', 'edge selected');
+    eq(await t.page.evaluate(() => document.querySelector('#sheetBody .head .k')?.textContent), 'Connection', 'edge selected');
     await t.page.keyboard.press('Delete'); await t.page.waitForTimeout(200);
     const d = await t.doc(); assert(!d.model.edges.some(e => e.id === 'e2'), 'edge e2 should be gone');
   });
@@ -1433,12 +1433,65 @@ abstract class Entity { protected long version; }`;
   await test('component style: a dashed border, from the panel', async t => {
     const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
     await t.clickNode(svc.id);
-    await t.page.click('[data-nstyle="border:dashed"]'); await t.page.waitForTimeout(200);
+    await t.page.click('[data-style="border:dashed"]'); await t.page.waitForTimeout(200);
     eq((await t.node(svc.id)).border, 'dashed');
     const dash = await t.page.$eval(`[data-node="${svc.id}"] rect.body`, r => getComputedStyle(r).strokeDasharray);
     assert(dash && dash !== 'none', 'dashed on the canvas: ' + dash);
-    await t.page.click('[data-nstyle="border:solid"]'); await t.page.waitForTimeout(200);
+    await t.page.click('[data-style="border:solid"]'); await t.page.waitForTimeout(200);
     eq((await t.node(svc.id)).border, undefined, 'back to solid');
+  });
+
+  /** Click the middle of a connection. */
+  async function clickEdge(page, id) {
+    const pt = await page.$eval(`[data-edge="${id}"] path.hit`, el => { const l = el.getTotalLength(), p = el.getPointAtLength(l / 2), m = el.getScreenCTM(); return { x: p.x * m.a + m.e, y: p.y * m.d + m.f }; });
+    await page.mouse.click(pt.x, pt.y); await page.waitForTimeout(250);
+  }
+
+  await test('connection style: pattern, colour, width and arrows from the panel; reset clears them', async t => {
+    const e = (await t.doc()).model.edges.find(x => x.from !== 'n1');
+    await clickEdge(t.page, e.id);
+    for (const s of ['line:dotted', 'color:violet', 'width:thick', 'arrows:both']) await t.page.click(`[data-style="${s}"]`);
+    await t.page.waitForTimeout(200);
+    const saved = (await t.doc()).model.edges.find(x => x.id === e.id);
+    eq([saved.line, saved.color, saved.width, saved.arrows].join(), 'dotted,violet,thick,both');
+    const g = await t.page.$eval(`#edges [data-edge="${e.id}"]`, el => ({ cls: el.getAttribute('class'), dash: getComputedStyle(el.querySelector('path.line')).strokeDasharray, w: getComputedStyle(el.querySelector('path.line')).strokeWidth, start: el.querySelector('path.line').getAttribute('marker-start') }));
+    assert(/tinted/.test(g.cls) && /dotted/.test(g.cls), g.cls);
+    assert(g.dash.startsWith('0.1'), 'dotted: ' + g.dash);
+    assert(/arrow-violet/.test(g.start || ''), 'arrow at the start, in violet: ' + g.start);
+    await t.page.click('#resetEdgeStyle'); await t.page.waitForTimeout(200);
+    const back = (await t.doc()).model.edges.find(x => x.id === e.id);
+    eq([back.line, back.color, back.width, back.arrows].join(), ',,,', 'reset');
+  });
+
+  await test('connection text: label, endpoint and notes stack on the line; written text never hides', async t => {
+    const doc = await t.doc();
+    const svc = doc.model.nodes.find(n => n.kind === 'service' && (n.endpoints || []).length);
+    const e = doc.model.edges.find(x => x.to === svc.id);
+    await clickEdge(t.page, e.id);
+    await t.page.selectOption('#sheetBody select[data-path="endpoint"]', '0');
+    await t.page.fill('#sheetBody input[data-path="label"]', 'route payments'); await t.page.waitForTimeout(200);
+    await t.page.click('#sheetBody [contenteditable]'); await t.page.keyboard.type('Sticky sessions off; health check every 5s.'); await t.page.waitForTimeout(400);
+    await t.page.click('#sheetBody input[data-path="showNotes"]'); await t.page.waitForTimeout(250);
+    const lab = await t.page.$eval(`#labels [data-edge="${e.id}"]`, el => ({ label: el.querySelector('.t-label')?.textContent, ep: el.querySelector('.t-ep')?.textContent, rps: el.querySelector('.t-rps')?.textContent, notes: [...el.querySelectorAll('.enote text')].map(x => x.textContent).join(' '), hidden: el.classList.contains('hidden') }));
+    eq(lab.label, 'route payments'); assert(/^\w+ \//.test(lab.ep || ''), 'endpoint under it: ' + lab.ep);
+    assert(/rps/.test(lab.rps || ''), 'rps with the load view on'); assert(/health check/.test(lab.notes), 'notes on the line: ' + lab.notes);
+    await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Escape');
+    await t.page.keyboard.press('l'); await t.page.waitForTimeout(250);
+    const off = await t.page.$eval(`#labels [data-edge="${e.id}"]`, el => ({ rps: !!el.querySelector('.t-rps'), hidden: el.classList.contains('hidden') }));
+    eq(off.rps, false, 'no rps with the load view off'); eq(off.hidden, false, 'written text stays');
+    await t.page.keyboard.press('l');
+  });
+
+  await test('component colour: applies to every selected component, Default restores the type colour', async t => {
+    const nodes = (await t.doc()).model.nodes.filter(n => n.kind !== 'entry').slice(0, 2);
+    await t.clickNode(nodes[0].id); await t.clickNode(nodes[1].id, ['Shift']);
+    await t.page.click('[data-style="color:amber"]'); await t.page.waitForTimeout(200);
+    const after = (await t.doc()).model.nodes.filter(n => nodes.some(m => m.id === n.id)).map(n => n.color);
+    eq(after.join(), 'amber,amber', 'both recoloured');
+    const kc = await t.page.$eval(`[data-node="${nodes[0].id}"]`, el => el.style.getPropertyValue('--kc'));
+    assert(/hsl\(42/.test(kc), 'card uses the colour: ' + kc);
+    await t.page.click('[data-style="color:default"]'); await t.page.waitForTimeout(200);
+    eq((await t.node(nodes[1].id)).color, undefined, 'default');
   });
 
   await test('service type: pick Application and the card says so', async t => {

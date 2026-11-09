@@ -4,7 +4,8 @@
  * shift/alt-drag to select several, drag the background to pan, double-click to rename, drop from the rail.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ancestry, typeDef, TYPES, NODE_H, ICON, qty, type Doc, type Frame, type Kind } from '../../domain/model';
+import { ancestry, typeDef, TYPES, NODE_H, ICON, qty, paletteCss, CONTAINER_COLORS, type ContainerColor, type Doc, type Frame, type Kind } from '../../domain/model';
+import { hasNotes, notePreview } from '../../domain/notes';
 import { fmt, fmtCalls } from '../../lib/format';
 import { useEditor, editor, select, selectOne, toggleSelected, makePrimary, isSelected } from '../../store/editor';
 import * as history from '../../store/history';
@@ -22,7 +23,7 @@ import { addContainer, addNode, connect, toggleDetail } from './actions';
 import { edit, findNode, resultsOf, selectedNodeIds, sysDoc, useSysDoc } from './state';
 import { FrameView } from './FrameView';
 import { NodeView } from './NodeView';
-import { EdgeLabel, EdgeLine } from './EdgeView';
+import { EdgeLabel, EdgeLine, labelBox, wrap, type LabelLines } from './EdgeView';
 
 type Gesture =
   | { t: 'node'; ids: string[]; start: Record<string, Point>; origin: Point; moved: boolean }
@@ -43,6 +44,9 @@ interface Overlay {
 const DEFS = <>
   <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--edge)" /></marker>
   <marker id="arrowCrit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--crit)" /></marker>
+  {(Object.keys(CONTAINER_COLORS) as ContainerColor[]).map(c => (
+    <marker key={c} id={'arrow-' + c} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill={paletteCss(c)!} /></marker>
+  ))}
   <marker id="arrowSel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--sel)" /></marker>
   <marker id="crow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1 1L11 6L1 11M1 6H11" fill="none" stroke="var(--fk)" strokeWidth="1.3" /></marker>
   <filter id="lift" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="6" stdDeviation="8" floodColor="#000" floodOpacity="0.18" /></filter>
@@ -319,24 +323,32 @@ function edgeItems(doc: Doc): EdgeItem[] {
 function EdgeLines({ doc, items, selected, animate, load }: { doc: Doc; items: EdgeItem[]; selected: string | null; animate: boolean; load: boolean }) {
   const results = resultsOf(doc);
   return <g id="edges">{items.map(({ e, geo }) => (
-    <EdgeLine key={e.id} id={e.id} geo={geo} selected={selected === e.id} crit={load && results.nodes[e.to]?.status === 'crit'} cross={!!results.crossings?.[e.id]} animate={animate} />
+    <EdgeLine key={e.id} id={e.id} geo={geo} selected={selected === e.id} crit={load && results.nodes[e.to]?.status === 'crit'} cross={!!results.crossings?.[e.id]} animate={animate}
+      style={{ line: e.line, color: e.color, width: e.width, arrows: e.arrows }} />
   ))}</g>;
 }
 
 /**
- * Connection labels (over the nodes): calls per request and the rps carried — or, without the load model,
- * just the endpoint called (when one is picked).
+ * Connection labels (over the nodes): the person's label, the endpoint called, the rps carried (load view) and,
+ * when asked, the notes. Text someone wrote always shows; computed text is hidden where it would be cramped.
  */
 function EdgeLabels({ doc, items, selected, load }: { doc: Doc; items: EdgeItem[]; selected: string | null; load: boolean }) {
   const results = resultsOf(doc);
   return <g id="labels">{items.map(({ e, geo }) => {
     const cross = results.crossings?.[e.id] || 0, isSel = selected === e.id;
-    const text = load ? `${fmtCalls(qty(e.calls))}× · ${fmt(results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '') : endpointLabel(doc, e);
-    if (!text) return null;
-    const tw = text.length * 6.1 + 12;
-    // labels are decoration (the panel has the number): hide one that's cramped or would land on a node
-    const hidden = !isSel && (geo.len < tw + 36 || overlapsNode(doc, { x: geo.mid.x - tw / 2, y: geo.mid.y - 9, w: tw, h: 18 }));
-    return <EdgeLabel key={e.id} id={e.id} text={text} x={geo.mid.x} y={geo.mid.y} selected={isSel} hidden={hidden} />;
+    const label = e.label?.trim() || undefined, ep = endpointLabel(doc, e) || undefined;
+    const lines: LabelLines = {
+      label: label ?? ep,
+      endpoint: label ? ep : undefined,
+      rps: load ? `${fmtCalls(qty(e.calls))}× · ${fmt(results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '') : undefined,
+      notes: e.showNotes && hasNotes(e.notes) ? wrap(notePreview(e.notes, 400)) : undefined,
+    };
+    if (!lines.label && !lines.rps && !lines.notes) return null;
+    const box = labelBox(lines);
+    const written = !!label || !!lines.notes;
+    // computed labels are decoration (the panel has the number): hide one that's cramped or would land on a node
+    const hidden = !isSel && !written && (geo.len < box.w + 36 || overlapsNode(doc, { x: geo.mid.x - box.w / 2, y: geo.mid.y - box.h / 2, w: box.w, h: box.h }));
+    return <EdgeLabel key={e.id} id={e.id} lines={lines} x={geo.mid.x} y={geo.mid.y} selected={isSel} hidden={hidden} colour={paletteCss(e.color)} />;
   })}</g>;
 }
 

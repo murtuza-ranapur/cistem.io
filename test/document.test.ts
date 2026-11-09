@@ -127,3 +127,18 @@ console.log('document tests passed');
   assert.ok(validate(toFile({ nodes: [good], edges: [], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'x' })), JSON.stringify(validate.errors));
   console.log('logos, types and borders');
 }
+
+// connection labels and styles, component colours: kept when valid, dropped otherwise
+{
+  const a = makeNode('service', 0, 0, { name: 'a', color: 'teal' }), b = makeNode('service', 300, 0, { name: 'b', color: 'chartreuse' });
+  const good = { id: 'e1', from: a.id, to: b.id, calls: 1, label: 'route', showNotes: true, line: 'dotted', color: 'violet', width: 'thick', arrows: 'both' };
+  const bad = { id: 'e2', from: b.id, to: a.id, calls: 1, label: 42, showNotes: 'yes', line: 'wavy', color: '#f00', width: 'huge', arrows: 'left' };
+  const f = toFile({ nodes: [a, b], edges: [good, bad], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'style' });
+  const back = fromFile(JSON.parse(JSON.stringify(f))).doc;
+  const [e1, e2] = back.edges;
+  assert.deepEqual([e1.label, e1.showNotes, e1.line, e1.color, e1.width, e1.arrows], ['route', true, 'dotted', 'violet', 'thick', 'both']);
+  for (const k of ['label', 'showNotes', 'line', 'color', 'width', 'arrows']) assert.equal((e2 as any)[k], undefined, k + ' dropped');
+  assert.equal(back.nodes[0].color, 'teal'); assert.equal(back.nodes[1].color, undefined);
+  assert.ok(validate(toFile({ nodes: [a], edges: [], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'x' })), JSON.stringify(validate.errors));
+  console.log('connection labels and styles, component colours');
+}

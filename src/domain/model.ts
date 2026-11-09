@@ -42,6 +42,10 @@ export interface NodeData {
   notes?: string;
   /** A small logo drawn instead of the type's icon: a data: URL (PNG, JPEG or WebP), see lib/logo.ts. */
   logo?: string;
+  /** Card style: a dashed border (e.g. for something you don't run), and a colour instead of the type's. */
+  border?: 'dashed'; color?: ContainerColor;
+  /** What it calls itself on the card (a service's type: Application, Worker…), see kindLabel. */
+  variant?: string;
   rps?: number; platforms?: string[];
   maxRps?: number; instances?: number; rpsPerInstance?: number; maxOps?: number; hitRatio?: number; eviction?: string;
   maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number;
@@ -55,7 +59,14 @@ export interface Node extends NodeData { x: number; y: number }
 // Names kept for readability at call sites; they're all the same shape now.
 export type EntryNode = Node; export type ServiceNode = Node; export type DbNode = Node & { tables: Table[] }; export type QueueNode = Node & { schema: string };
 
-export interface Edge { id: string; from: string; to: string; calls: number; endpoint?: number | null; notes?: string }
+export interface Edge {
+  id: string; from: string; to: string; calls: number; endpoint?: number | null; notes?: string;
+  /** Text shown on the line (see EdgeLabel); `showNotes` puts the notes under it too. */
+  label?: string; showNotes?: boolean;
+  /** Style; absent = the default (solid — dashed when it crosses an environment —, grey, medium, arrow at the end). */
+  line?: EdgeLine; color?: ContainerColor; width?: 'thin' | 'thick'; arrows?: 'both' | 'none';
+}
+export type EdgeLine = 'solid' | 'dashed' | 'dotted';
 
 /** A boundary that components live in: a cloud, an account, a VPC... Nested via `parent`. */
 export type ContainerKind = 'cloud' | 'account' | 'vpc' | 'region' | 'datacentre' | 'team';
@@ -92,6 +103,12 @@ export const CONTAINER_COLORS: Record<ContainerColor, { h: number; s: number }> 
   blue: { h: 212, s: 60 }, violet: { h: 262, s: 45 }, teal: { h: 176, s: 45 }, green: { h: 140, s: 40 }, amber: { h: 42, s: 75 },
   orange: { h: 24, s: 70 }, red: { h: 356, s: 60 }, pink: { h: 326, s: 50 }, slate: { h: 215, s: 14 },
 };
+/** A palette colour as CSS (its lightness follows the theme, --pal-l), or null for "the default". */
+export const paletteCss = (c: unknown) => {
+  const p = typeof c === 'string' ? CONTAINER_COLORS[c as ContainerColor] : undefined;
+  return p ? `hsl(${p.h} ${p.s}% var(--pal-l))` : null;
+};
+export const isPaletteColor = (c: unknown): c is ContainerColor => typeof c === 'string' && c in CONTAINER_COLORS;
 /** The colour a frame shows: its own, or its kind's default. */
 export const frameColor = (c: Container) => c.color && CONTAINER_COLORS[c.color] ? CONTAINER_COLORS[c.color] : { h: CONTAINER_KINDS[c.kind].hue, s: 45 };
 export const LINK_TYPES: Record<string, number> = {

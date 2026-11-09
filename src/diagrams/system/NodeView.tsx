@@ -1,6 +1,6 @@
 /** A component on the canvas: its card (kind, name, summary, load bar), expanded detail and connection ports. */
 import { memo, useState } from 'react';
-import { ICON, NODE_H, qty, typeDef, kindLabel, isSource, detailOf, nodeWidthFor, nodeHeight, type Node } from '../../domain/model';
+import { ICON, NODE_H, qty, typeDef, kindLabel, paletteCss, isSource, detailOf, nodeWidthFor, nodeHeight, type Node } from '../../domain/model';
 import type { NodeResult } from '../../domain/engine';
 import { fmt, fmtMs, trunc } from '../../lib/format';
 import { kindColour, localPort, summary, SIDES } from './geometry';
@@ -20,10 +20,10 @@ function NodeViewImpl({ n, expanded, r, load, selected, dragging, target, animat
   const detail = expanded ? 'expanded' : undefined;
   const w = nodeWidthFor(n, detail), h = nodeHeight(n, detail);
   const util = r ? Math.min(1, Number.isFinite(r.util) ? r.util : 1) : 0;
-  const cls = ['node', `k-${n.kind}`, `b-${t.behaviour}`, selected && 'sel', expanded && 'expanded', n.border === 'dashed' && 'dashed', load && r?.status === 'crit' && 'crit', entering && 'enter', dragging && 'dragging', target && 'target'].filter(Boolean).join(' ');
+  const cls = ['node', `k-${n.kind}`, `b-${t.behaviour}`, selected && 'sel', expanded && 'expanded', n.border === 'dashed' && 'dashed', paletteCss(n.color) && 'tinted', load && r?.status === 'crit' && 'crit', entering && 'enter', dragging && 'dragging', target && 'target'].filter(Boolean).join(' ');
   return (
     <g className={cls} data-node={n.id} transform={`translate(${n.x} ${n.y})`}
-      style={{ '--kc': kindColour(n.kind), '--nx': n.x + 'px', '--ny': n.y + 'px' } as React.CSSProperties}
+      style={{ '--kc': paletteCss(n.color) ?? kindColour(n.kind), '--nx': n.x + 'px', '--ny': n.y + 'px' } as React.CSSProperties}
       onAnimationEnd={e => { if (e.target === e.currentTarget) setEntering(false); }}>
       <rect className="body" width={w} height={h} rx={9} />
       <rect className="accent" x={0} y={0} width={3} height={h} rx={1.5} />

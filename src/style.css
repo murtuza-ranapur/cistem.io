@@ -3,7 +3,7 @@
   --bg:#f5f6f7; --panel:#ffffff; --panel-2:#fafbfb; --fg:#1b1f24; --muted:#687079; --line:#e1e4e8; --line-2:#eef0f2; --grid:#cfd4d9;
   --accent:#b86a12; --node:#ffffff; --node-line:#c9ced4; --edge:#9aa3ad; --sel:#2b6cb0; --sel-soft:rgba(43,108,176,.14);
   --ok:#2f8f5b; --warn:#d08a0e; --crit:#c73a3a; --ok-soft:#dff1e6; --warn-soft:#fbeccc; --crit-soft:#f9dede;
-  --c-entry:#b86a12; --c-lb:#5b6b7c; --c-service:#2b6cb0; --c-cache:#c0392b; --c-db:#2f6f9f; --c-queue:#2a2f35;
+  --c-entry:#b86a12; --c-lb:#5b6b7c; --c-service:#2b6cb0; --c-cache:#c0392b; --c-db:#2f6f9f; --c-queue:#2a2f35; --pal-l:46%;
   --fk:#8a6d3b; --pk:#b86a12; --uq:#2f8f5b; --ix:#5b6b7c;
   --frame-solid-l:95%; --frame-head-l:90%;
   --syn-key:#1f5f99; --syn-str:#2f7a4d; --syn-num:#a35a0c; --syn-kw:#8a3fa8;
@@ -16,7 +16,7 @@
   --bg:#121417; --panel:#1a1d21; --panel-2:#1f2328; --fg:#e7e9ec; --muted:#98a1ab; --line:#2b3138; --line-2:#242930; --grid:#2d333b;
   --accent:#e0952f; --node:#1f2328; --node-line:#343b44; --edge:#6b7682; --sel:#6aa3e8; --sel-soft:rgba(106,163,232,.18);
   --ok:#4fbf7f; --warn:#e8a93a; --crit:#e46a6a; --ok-soft:#1b3326; --warn-soft:#3a2d12; --crit-soft:#3f1d1d;
-  --c-entry:#e0952f; --c-lb:#9aa8b6; --c-service:#6aa3e8; --c-cache:#ee6a5b; --c-db:#6fb0e0; --c-queue:#d8dce0;
+  --c-entry:#e0952f; --c-lb:#9aa8b6; --c-service:#6aa3e8; --c-cache:#ee6a5b; --c-db:#6fb0e0; --c-queue:#d8dce0; --pal-l:66%;
   --fk:#d2b074; --pk:#e0952f; --uq:#4fbf7f; --ix:#9aa8b6;
   --frame-solid-l:17%; --frame-head-l:22%;
   --syn-key:#7db4ee; --syn-str:#7fcf9c; --syn-num:#f0b36a; --syn-kw:#d39af0;
@@ -26,7 +26,7 @@
   --bg:#121417; --panel:#1a1d21; --panel-2:#1f2328; --fg:#e7e9ec; --muted:#98a1ab; --line:#2b3138; --line-2:#242930; --grid:#2d333b;
   --accent:#e0952f; --node:#1f2328; --node-line:#343b44; --edge:#6b7682; --sel:#6aa3e8; --sel-soft:rgba(106,163,232,.18);
   --ok:#4fbf7f; --warn:#e8a93a; --crit:#e46a6a; --ok-soft:#1b3326; --warn-soft:#3a2d12; --crit-soft:#3f1d1d;
-  --c-entry:#e0952f; --c-lb:#9aa8b6; --c-service:#6aa3e8; --c-cache:#ee6a5b; --c-db:#6fb0e0; --c-queue:#d8dce0;
+  --c-entry:#e0952f; --c-lb:#9aa8b6; --c-service:#6aa3e8; --c-cache:#ee6a5b; --c-db:#6fb0e0; --c-queue:#d8dce0; --pal-l:66%;
   --fk:#d2b074; --pk:#e0952f; --uq:#4fbf7f; --ix:#9aa8b6;
   --frame-solid-l:17%; --frame-head-l:22%;
   --syn-key:#7db4ee; --syn-str:#7fcf9c; --syn-num:#f0b36a; --syn-kw:#d39af0;
@@ -115,6 +115,7 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .node .glyph,.node .accent{stroke:var(--kc);fill:var(--kc)}
 .node .glyph{fill:none!important}
 .node .kind{fill:var(--kc)}
+.node.tinted .kind{fill:color-mix(in srgb,var(--kc) 80%,var(--fg))}
 .node.enter{animation:nodeIn 260ms var(--ease) both}
 @keyframes nodeIn{from{opacity:0;transform:translate(var(--nx),var(--ny)) scale(.9)}to{opacity:1;transform:translate(var(--nx),var(--ny)) scale(1)}}
 .node.exit{animation:nodeOut 180ms var(--ease) both}
@@ -128,9 +129,11 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .node.dashed .accent{display:none}
 .node image.nlogo{pointer-events:none}
 .node.logo-drop rect.body{stroke:var(--sel);stroke-width:2;stroke-dasharray:none;fill:var(--sel-soft)}
-.edge path.line{fill:none;stroke:var(--edge);stroke-width:1.5;transition:stroke var(--t) var(--ease),stroke-width var(--t) var(--ease)}
-.edge:hover path.line{stroke:var(--fg)}
-.edge.sel path.line{stroke:var(--sel);stroke-width:2.2}
+.edge path.line{fill:none;stroke:var(--ec,var(--edge));stroke-width:var(--ew,1.5px);stroke-dasharray:var(--ed,none);transition:stroke var(--t) var(--ease),stroke-width var(--t) var(--ease)}
+.edge.dotted path.line{stroke-linecap:round}
+.edge:not(.tinted):hover path.line{stroke:var(--fg)}
+.edge.tinted:hover path.line{stroke-width:calc(var(--ew,1.5px) + .6px)}
+.edge.sel path.line{stroke:var(--sel);stroke-width:calc(var(--ew,1.5px) + .7px)}
 .edge.crit path.line{stroke:var(--crit)}
 .edge path.hit{fill:none;stroke:transparent;stroke-width:16;cursor:pointer}
 .edge-label{pointer-events:none;transition:opacity var(--t) var(--ease)}
@@ -138,6 +141,11 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .edge-label text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
 .edge-label rect.lbl{fill:var(--panel);stroke:var(--line);stroke-width:1;rx:4;transition:stroke var(--t) var(--ease)}
 .edge-label.sel rect.lbl{stroke:var(--sel)}
+.edge-label rect.lbl.tinted{stroke:color-mix(in srgb,var(--ec) 55%,var(--line))}
+.edge-label text.t-label{font-family:var(--font);font-size:11.5px;font-weight:500;fill:var(--fg)}
+.edge-label text.t-ep{fill:var(--sel);font-weight:500}
+.edge-label .enote rect{fill:var(--note-bg);stroke:var(--note-line);stroke-width:1}
+.edge-label .enote text{font-family:var(--font);font-size:11px;fill:var(--fg);opacity:.85}
 .edge.enter path.line{animation:draw 360ms var(--ease) both}
 @keyframes draw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
 .edge.exit{animation:fadeOut 160ms var(--ease) both}
@@ -185,7 +193,6 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .frame .ftitle{font-size:12.5px;font-weight:600;fill:var(--fg)}
 .frame .fkind{font-size:10.5px;fill:var(--muted);letter-spacing:.04em}
 .frame .fmeta{font-family:var(--mono);font-size:10.5px;fill:var(--muted)}
-.edge.cross path.line{stroke-dasharray:7 4}
 .rail-group{display:flex;flex-direction:column;align-items:center;gap:2px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--line-2)}
 #railTypes{display:contents}
 .rail-sep{width:32px;height:1px;background:var(--line);margin:6px 0}
@@ -680,3 +687,12 @@ button.cl-tag.ref{border:none;background:color-mix(in srgb,var(--fk) 16%,transpa
 .ctx kbd{font:11.5px var(--mono);color:var(--muted);background:none;border:0}
 .ctx hr{border:0;border-top:1px solid var(--line);margin:4px 2px}
 #stage>svg:focus{outline:none}
+.style-sec{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;row-gap:10px}
+.style-sec .sec-h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.look-seg button{display:inline-flex;align-items:center;gap:5px}
+button.link{all:unset;cursor:pointer;font-size:12px;color:var(--sel);justify-self:start}
+button.link:hover{text-decoration:underline}
+.props .look-seg{display:inline-flex;flex-wrap:nowrap;white-space:nowrap;width:auto}
+.edge.sel.tinted path.line{stroke:var(--ec);filter:drop-shadow(0 0 2.5px var(--sel))}
+.edge.crit.tinted path.line{stroke:var(--crit)}
+.props .look-seg{border:none;border-radius:999px;background:var(--panel-2,#f0f1f3);padding:2px;gap:2px}

@@ -10,7 +10,7 @@
  * JSON Schema: schema/cistem.schema.json
  */
 import { isLogo } from '../lib/logo';
-import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
+import { adopt, isPaletteColor, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
 import { sanitizeSeq, type SeqDoc } from './seq';
 import { sanitizeCls, type ClassDoc } from './cls';
 import { itemNotes, noteToFile, sanitizeNotes, type CanvasNote, type NoteFile } from './notes';
@@ -141,6 +141,18 @@ export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] 
   return { doc, meta: cleanMeta(f.meta, 'Untitled system') };
 }
 
+/** Keep an edge's label and style only when they are values the editor writes. */
+function edgeStyle(e: any) {
+  if ('label' in e && (typeof e.label !== 'string' || !e.label.trim())) delete e.label;
+  else if (typeof e.label === 'string') e.label = e.label.slice(0, 200);
+  if ('showNotes' in e && e.showNotes !== true) delete e.showNotes;
+  if ('line' in e && !['solid', 'dashed', 'dotted'].includes(e.line)) delete e.line;
+  if ('color' in e && !isPaletteColor(e.color)) delete e.color;
+  if ('width' in e && e.width !== 'thin' && e.width !== 'thick') delete e.width;
+  if ('arrows' in e && e.arrows !== 'both' && e.arrows !== 'none') delete e.arrows;
+  return e;
+}
+
 /**
  * A system model from an untrusted file, made safe to draw and edit: objects where objects belong, plain
  * unique ids, kinds that are identifiers, string names, numeric positions, arrays where arrays belong, and
@@ -164,13 +176,14 @@ function cleanSystem(f: DiagramFile) {
     if ('container' in n) out.container = n.container === null ? null : id(n.container) || null;
     if ('logo' in n && !isLogo(n.logo)) delete out.logo;
     if ('border' in n && n.border !== 'dashed') delete out.border;
+    if ('color' in n && !isPaletteColor(n.color)) delete out.color;
     return out;
   }) as Node[];
   const edgeIds = new Set<string>();
   const edges = (Array.isArray(f.model?.edges) ? f.model.edges : []).filter(obj)
     .map((e: any) => ({ ...e, from: renamed.get(str(e.from)) ?? id(e.from), to: renamed.get(str(e.to)) ?? id(e.to) }))
     .filter((e: any) => nodeIds.has(e.from) && nodeIds.has(e.to))
-    .map(({ notes, ...e }: any) => ({ ...e, id: unique(edgeIds, e.id, 'e'), ...itemNotes(notes) }));
+    .map(({ notes, ...e }: any) => edgeStyle({ ...e, id: unique(edgeIds, e.id, 'e'), ...itemNotes(notes) }));
   const cIds = new Set<string>();
   const containers = (Array.isArray(f.model?.containers) ? f.model.containers : []).filter(obj).map(({ notes, ...c }: any) => ({ ...c, ...itemNotes(notes), id: unique(cIds, c.id, 'c'), name: str(c.name), kind: /^[\w-]+$/.test(str(c.kind)) ? str(c.kind) : 'cloud', parent: c.parent ? id(c.parent) : null }));
   const lIds = new Set<string>();

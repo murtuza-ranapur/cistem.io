@@ -153,6 +153,20 @@
           ],
           "description": "Card style: a dashed border (e.g. for something you don't run). Absent = solid."
         },
+        "color": {
+          "enum": [
+            "blue",
+            "violet",
+            "teal",
+            "green",
+            "amber",
+            "orange",
+            "red",
+            "pink",
+            "slate"
+          ],
+          "description": "Card colour instead of the type's own."
+        },
         "rps": {
           "type": "number",
           "minimum": 0,
@@ -279,6 +293,51 @@
         },
         "notes": {
           "$ref": "#/$defs/noteText"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Text shown on the line."
+        },
+        "showNotes": {
+          "type": "boolean",
+          "description": "Show the connection's notes on the line, under the label."
+        },
+        "line": {
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted"
+          ],
+          "description": "Line pattern; absent = solid (dashed when it crosses an environment)."
+        },
+        "color": {
+          "enum": [
+            "blue",
+            "violet",
+            "teal",
+            "green",
+            "amber",
+            "orange",
+            "red",
+            "pink",
+            "slate"
+          ],
+          "description": "Line colour; absent = grey."
+        },
+        "width": {
+          "enum": [
+            "thin",
+            "thick"
+          ],
+          "description": "Line width; absent = medium."
+        },
+        "arrows": {
+          "enum": [
+            "both",
+            "none"
+          ],
+          "description": "Arrowheads; absent = at the end."
         }
       }
     },

@@ -178,14 +178,40 @@ public class SystemTools {
         return result;
     }
 
-    @McpTool(name = "set_edge", description = "Change the calls-per-request on an edge.")
+    @McpTool(name = "set_edge", description = "Change a connection: calls per request, the label shown on the line (empty string removes it), whether its notes show on the line, and its style. Omit what you don't change.")
     public ObjectNode setEdge(@McpToolParam(description = "Diagram id") String diagramId,
                               @McpToolParam(description = "Edge id") String edgeId,
-                              @McpToolParam(description = "Calls per incoming request") double calls) {
+                              @McpToolParam(description = "Calls per incoming request", required = false) Double calls,
+                              @McpToolParam(description = "Text shown on the line; \"\" removes it", required = false) String label,
+                              @McpToolParam(description = "Show the connection's notes on the line under the label", required = false) Boolean showNotes,
+                              @McpToolParam(description = "Line: solid, dashed or dotted (\"default\" resets)", required = false) String line,
+                              @McpToolParam(description = "Colour: blue, violet, teal, green, amber, orange, red, pink, slate (\"default\" resets)", required = false) String color,
+                              @McpToolParam(description = "Width: thin, medium or thick", required = false) String width,
+                              @McpToolParam(description = "Arrows: end, both or none", required = false) String arrows) {
         return edit(diagramId, f -> {
-            for (JsonNode e : f.path("model").path("edges")) if (edgeId.equals(e.path("id").asText())) { ((ObjectNode) e).put("calls", calls); return; }
+            for (JsonNode n : f.path("model").path("edges")) {
+                if (!edgeId.equals(n.path("id").asText())) continue;
+                ObjectNode e = (ObjectNode) n;
+                if (calls != null) e.put("calls", calls);
+                if (label != null) { if (label.isBlank()) e.remove("label"); else e.put("label", label.length() > 200 ? label.substring(0, 200) : label); }
+                if (showNotes != null) { if (showNotes) e.put("showNotes", true); else e.remove("showNotes"); }
+                style(e, "line", line, Set.of("solid", "dashed", "dotted"), "default");
+                style(e, "color", color, Set.of("blue", "violet", "teal", "green", "amber", "orange", "red", "pink", "slate"), "default");
+                style(e, "width", width, Set.of("thin", "thick"), "medium");
+                style(e, "arrows", arrows, Set.of("both", "none"), "end");
+                return;
+            }
             throw new IllegalArgumentException("No such edge");
         });
+    }
+
+    /** Set `key` to `value` when it's one of `allowed`; `reset` (or "default") removes it. */
+    private static void style(ObjectNode e, String key, String value, Set<String> allowed, String reset) {
+        if (value == null) return;
+        String v = value.trim().toLowerCase();
+        if (v.equals(reset) || v.equals("default") || v.isEmpty()) e.remove(key);
+        else if (allowed.contains(v)) e.put(key, v);
+        else throw new IllegalArgumentException(key + " must be one of " + allowed + " or " + reset);
     }
 
     @McpTool(name = "disconnect", description = "Remove an edge.")
