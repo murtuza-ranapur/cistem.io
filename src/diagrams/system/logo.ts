@@ -1,4 +1,4 @@
-/** Putting logos on components: paste or drop an image onto one, or drop it on the canvas for a new External system. */
+/** Putting logos on components: paste or drop an image onto one, or onto the canvas for a new Application. */
 import { nameFromFile, toLogo } from '../../lib/logo';
 import { hint } from '../../store/ui';
 import * as history from '../../store/history';
@@ -17,14 +17,14 @@ export async function logoOnto(ids: string[], file: Blob) {
   catch (e) { hint((e as Error).message, 3000); }
 }
 
-/** A new External system wearing `file` (named after it), centred on `at` or in the middle of the view. */
-export async function externalFromLogo(file: File, at: Point | null) {
+/** A new service (type Application) wearing `file` and named after it, centred on `at` or in the middle of the view. */
+export async function appFromLogo(file: File, at: Point | null) {
   let logo: string;
   try { logo = await toLogo(file); } catch (e) { hint((e as Error).message, 3000); return; }
   const name = nameFromFile(file.name);
   history.transaction(() => {
-    const n = at ? addNode('external', at.x - typeDef('external').w / 2, at.y - NODE_H / 2) : addNode('external');
-    edit(d => { const x = d.nodes.find(m => m.id === n.id); if (x) { x.logo = logo; if (name) x.name = name; } });
+    const n = at ? addNode('service', at.x - typeDef('service').w / 2, at.y - NODE_H / 2) : addNode('service');
+    edit(d => { const x = d.nodes.find(m => m.id === n.id); if (x) { x.logo = logo; x.variant = 'Application'; if (name) x.name = name; } });
     return true;
   });
 }

@@ -20,7 +20,7 @@ function NodeViewImpl({ n, expanded, r, load, selected, dragging, target, animat
   const detail = expanded ? 'expanded' : undefined;
   const w = nodeWidthFor(n, detail), h = nodeHeight(n, detail);
   const util = r ? Math.min(1, Number.isFinite(r.util) ? r.util : 1) : 0;
-  const cls = ['node', `k-${n.kind}`, `b-${t.behaviour}`, selected && 'sel', expanded && 'expanded', load && r?.status === 'crit' && 'crit', entering && 'enter', dragging && 'dragging', target && 'target'].filter(Boolean).join(' ');
+  const cls = ['node', `k-${n.kind}`, `b-${t.behaviour}`, selected && 'sel', expanded && 'expanded', n.border === 'dashed' && 'dashed', load && r?.status === 'crit' && 'crit', entering && 'enter', dragging && 'dragging', target && 'target'].filter(Boolean).join(' ');
   return (
     <g className={cls} data-node={n.id} transform={`translate(${n.x} ${n.y})`}
       style={{ '--kc': kindColour(n.kind), '--nx': n.x + 'px', '--ny': n.y + 'px' } as React.CSSProperties}

@@ -82,9 +82,10 @@ function CapacityTab({ n }: { n: Node }) {
       <div className="props">
         <TextField path="name" label="name" wide value={n.name} required />
         <SelectField path="container" label="Environment" wide value={n.container ?? ''} empty="No environment" options={opts.map(o => o.value)} labelOf={label} />
-        <LogoField n={n} />
         {(load ? fields : other).map(field)}
         {isSource(n) && <Platforms n={n} />}
+        <LogoField n={n} />
+        <BorderField n={n} />
       </div>
       {load ? numbers : loadFields.length > 0 && (
         <details className="loadsec" id="loadSection">
@@ -93,6 +94,19 @@ function CapacityTab({ n }: { n: Node }) {
           <p className="note">These feed the load simulation. Turn it on with the gauge in the top bar (L) to see rps, capacity and utilisation.</p>
         </details>
       )}
+    </div>
+  );
+}
+
+/** Card style: a dashed border marks something you don't run (a third party, a partner…). */
+function BorderField({ n }: { n: Node }) {
+  const cur = n.border === 'dashed' ? 'dashed' : 'solid';
+  return (
+    <div className="wide look-row"><span className="look-l">Border</span>
+      <span className="seg look-seg">{([['solid', 'Solid'], ['dashed', 'Dashed']] as const).map(([v, l]) => (
+        <button type="button" key={v} data-nstyle={`border:${v}`} className={cur === v ? 'on' : ''} aria-pressed={cur === v}
+          onClick={() => setField('border', v === 'dashed' ? 'dashed' : undefined)}>{l}</button>
+      ))}</span>
     </div>
   );
 }

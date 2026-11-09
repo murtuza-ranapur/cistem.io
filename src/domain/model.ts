@@ -3,7 +3,7 @@ import TYPES_FILE from '../../shared/component-types.json';
 
 /** A component type's key in shared/component-types.json ("service", "db", "sqs"…). */
 export type Kind = string;
-export type Behaviour = 'source' | 'balancer' | 'limit' | 'scaled' | 'cache' | 'store' | 'async' | 'capped';
+export type Behaviour = 'source' | 'balancer' | 'limit' | 'scaled' | 'cache' | 'store' | 'async';
 /** What a node expands to show on the canvas, and its second panel tab. */
 export type DetailKind = 'endpoints' | 'tables' | 'topic' | 'message' | null;
 export interface FieldDef { key: string; label: string; type: 'number' | 'text' | 'select' | 'boolean'; options?: string[]; min?: number; max?: number; step?: number; wide?: boolean }

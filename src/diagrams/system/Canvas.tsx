@@ -12,7 +12,7 @@ import { toWorld, toScreen, pointerWorld, type Point } from '../../store/viewpor
 import { imageIn } from '../../lib/logo';
 import { isTyping } from '../../lib/browser';
 import { useLoadView } from '../../store/loadView';
-import { externalFromLogo, logoOnto } from './logo';
+import { appFromLogo, logoOnto } from './logo';
 import { hint, holdPanel, releasePanel } from '../../store/ui';
 import { Surface } from '../../ui/Surface';
 import { InlineEdit, useDoubleTap } from '../shared';
@@ -242,7 +242,7 @@ export function Canvas() {
       const image = imageIn(dt);
       if (image) {
         const id = nodeAt(ev)?.dataset.node;
-        if (id) void logoOnto([id], image); else void externalFromLogo(image, w);
+        if (id) void logoOnto([id], image); else void appFromLogo(image, w);
         return;
       }
       if (files(ev)) { hint('Drop an image to use it as a logo', 2200); return; }
@@ -250,13 +250,13 @@ export function Canvas() {
       const kind = dt?.getData('text/kind') as Kind | undefined;
       if (kind && TYPES[kind]) addNode(kind, w.x - typeDef(kind).w / 2, w.y - NODE_H / 2);
     };
-    // paste an image: onto the selected components, or as a new External system where the pointer is
+    // paste an image: onto the selected components, or as a new Application where the pointer is
     const paste = (ev: ClipboardEvent) => {
       if (ev.defaultPrevented || isTyping(ev.target) || isTyping(document.activeElement)) return;
       const image = imageIn(ev.clipboardData); if (!image) return;
       ev.preventDefault();
       const ids = selectedNodeIds();
-      if (ids.length) void logoOnto(ids, image); else void externalFromLogo(image, pointerWorld());
+      if (ids.length) void logoOnto(ids, image); else void appFromLogo(image, pointerWorld());
     };
     stage.addEventListener('dragover', over); stage.addEventListener('dragleave', leave); stage.addEventListener('drop', drop);
     document.addEventListener('paste', paste);

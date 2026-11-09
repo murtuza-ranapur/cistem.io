@@ -115,11 +115,11 @@ Components live in containers: a cloud, an account, a VPC, a region, a data cent
 
 Databases, services and Kafka nodes have a chevron (or `Space` with the node selected; `⇧Space` toggles all). Expanded, a Postgres node draws each table with its columns, types and `PK` / `FK` / `UQ` / `IX` tags, and foreign keys are drawn as dashed lines between rows (across databases too). A service lists its endpoints; a Kafka node lists topics with their Avro fields. Auto-organise uses the expanded sizes. Column `references` take `table.column` or `<node id>:table.column`.
 
-## Component types, external systems and logos
+## Service types, logos and styles
 
-A **Service** has a type — Microservice, Application, Monolith, Function, Worker or Batch job — shown on its card; every type has endpoints and the same capacity fields. An **External system** is something you call but don't run (Stripe, a card scheme, a partner API): it has a dashed border, and its optional rate limit means unlimited when left blank.
+A **Service** has a type — Microservice, Application, Monolith, Function, Worker or Batch job — shown on its card; every type has endpoints and the same capacity fields. A third party (Stripe, a card scheme, a partner API) is just a service too: give it their rate limit as its capacity.
 
-Any component can wear a **logo**: paste an image (`⌘V`) with components selected, drop an image file onto one, or pick one in the panel. Pasting or dropping an image on empty canvas makes a new External system named after the file. Logos are shrunk to 64 px and stored in the diagram (no uploads), so they work signed out and travel with exports.
+Any component can have a **dashed border** (panel → Border), e.g. to mark what you don't run, and a **logo**: paste an image (`⌘V`) with components selected, drop an image file onto one, or pick one in the panel. Pasting or dropping an image on empty canvas makes a new Application named after the file. Logos are shrunk to 64 px and stored in the diagram (no uploads), so they work signed out and travel with exports.
 
 ## Load view
 

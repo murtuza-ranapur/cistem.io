@@ -1430,17 +1430,15 @@ abstract class Entity { protected long version; }`;
     eq(await t.page.$('#totalRps'), null, 'the gauge button turns it off');
   });
 
-  await test('external system: dashed card, unlimited unless rate-limited', async t => {
-    await t.page.click('[data-add="external"]'); await t.page.waitForTimeout(300);
-    const ext = (await t.doc()).model.nodes.find(n => n.kind === 'external');
-    assert(ext, 'added');
-    const dash = await t.page.$eval(`[data-node="${ext.id}"] rect.body`, r => getComputedStyle(r).strokeDasharray);
-    assert(dash && dash !== 'none', 'dashed border: ' + dash);
-    // no rate limit: unlimited, so no capacity bar
-    eq(await t.page.$$eval(`[data-node="${ext.id}"] rect.fill`, e => e.length), 0, 'no bar while unlimited');
-    await t.page.fill('#sheetBody input[data-path="maxRps"]', '5'); await t.page.waitForTimeout(200);
-    eq((await t.node(ext.id)).maxRps, 5, 'rate limit stored');
-    eq(await t.page.$$eval(`[data-node="${ext.id}"] rect.fill`, e => e.length), 1, 'a bar once rate-limited');
+  await test('component style: a dashed border, from the panel', async t => {
+    const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
+    await t.clickNode(svc.id);
+    await t.page.click('[data-nstyle="border:dashed"]'); await t.page.waitForTimeout(200);
+    eq((await t.node(svc.id)).border, 'dashed');
+    const dash = await t.page.$eval(`[data-node="${svc.id}"] rect.body`, r => getComputedStyle(r).strokeDasharray);
+    assert(dash && dash !== 'none', 'dashed on the canvas: ' + dash);
+    await t.page.click('[data-nstyle="border:solid"]'); await t.page.waitForTimeout(200);
+    eq((await t.node(svc.id)).border, undefined, 'back to solid');
   });
 
   await test('service type: pick Application and the card says so', async t => {
@@ -1452,7 +1450,7 @@ abstract class Entity { protected long version; }`;
     assert((await t.page.textContent('#sheetBody .head .k')).includes('Application'), 'panel heading too');
   });
 
-  await test('logos: paste onto the selected component, remove in the panel, paste on empty canvas makes an External system', async t => {
+  await test('logos: paste onto the selected component, remove in the panel, paste on empty canvas makes an Application', async t => {
     const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
     await t.clickNode(svc.id);
     await pasteImage(t.page);
@@ -1467,8 +1465,8 @@ abstract class Entity { protected long version; }`;
     await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(200);
     const p = await t.emptyCanvasPoint(); await t.page.mouse.move(p.x, p.y);
     await pasteImage(t.page);
-    const ext = (await t.doc()).model.nodes.find(n => n.kind === 'external');
-    assert(ext && ext.logo, 'new External system with the logo'); eq(ext.name, 'Stripe', 'named after the file');
+    const app = (await t.doc()).model.nodes.find(n => n.name === 'Stripe');
+    assert(app && app.logo && app.kind === 'service', 'a new service with the logo, named after the file'); eq(app.variant, 'Application');
   });
 
   // ---- projects ----

@@ -163,6 +163,7 @@ function cleanSystem(f: DiagramFile) {
     if ('endpoints' in n) out.endpoints = (Array.isArray(n.endpoints) ? n.endpoints : []).filter(obj).map((e: any) => ({ ...e, method: str(e.method) || 'GET', path: str(e.path) }));
     if ('container' in n) out.container = n.container === null ? null : id(n.container) || null;
     if ('logo' in n && !isLogo(n.logo)) delete out.logo;
+    if ('border' in n && n.border !== 'dashed') delete out.border;
     return out;
   }) as Node[];
   const edgeIds = new Set<string>();

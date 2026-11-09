@@ -52,13 +52,6 @@
         "maxThroughput",
         "latency"
       ]
-    },
-    "capped": {
-      "about": "Optional capacity maxRps (0 or blank = unlimited); passes all of its load on to everything it connects to.",
-      "reads": [
-        "maxRps",
-        "latency"
-      ]
     }
   },
   "types": {
@@ -425,34 +418,6 @@
           "key": "fifo",
           "label": "FIFO",
           "type": "boolean"
-        }
-      ]
-    },
-    "external": {
-      "label": "External system",
-      "short": "External",
-      "icon": "ic-external",
-      "color": "#9d4edd",
-      "w": 200,
-      "group": "external",
-      "behaviour": "capped",
-      "detail": null,
-      "defaults": {
-        "name": "third-party",
-        "latency": 150
-      },
-      "fields": [
-        {
-          "key": "maxRps",
-          "label": "Rate limit (rps, blank = none)",
-          "type": "number",
-          "min": 0
-        },
-        {
-          "key": "latency",
-          "label": "Latency (ms)",
-          "type": "number",
-          "min": 0
         }
       ]
     }

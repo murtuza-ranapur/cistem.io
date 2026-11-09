@@ -146,6 +146,13 @@
           "maxLength": 60000,
           "description": "A small logo drawn instead of the type's icon, as a data: URL (PNG, JPEG or WebP)."
         },
+        "border": {
+          "type": "string",
+          "enum": [
+            "dashed"
+          ],
+          "description": "Card style: a dashed border (e.g. for something you don't run). Absent = solid."
+        },
         "rps": {
           "type": "number",
           "minimum": 0,
@@ -160,7 +167,7 @@
         "maxRps": {
           "type": "number",
           "minimum": 0,
-          "description": "balancer / limit: maximum requests per second. capped (external system): optional rate limit — 0 or absent means unlimited."
+          "description": "balancer / limit: maximum requests per second."
         },
         "instances": {
           "type": "number",

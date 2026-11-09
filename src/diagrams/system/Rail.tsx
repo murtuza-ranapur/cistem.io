@@ -4,7 +4,7 @@ import { Icon } from '../../ui/Icon';
 import { addContainer, addNode } from './actions';
 import { kindColour } from './geometry';
 
-const GROUPS: Record<string, string> = { traffic: 'Traffic', compute: 'Compute', data: 'Data', messaging: 'Messaging', external: 'External' };
+const GROUPS: Record<string, string> = { traffic: 'Traffic', compute: 'Compute', data: 'Data', messaging: 'Messaging' };
 
 /** Kinds by rail group, in the rail's order (also the 1–9 quick-add order). */
 const byGroup = () => {

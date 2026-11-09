@@ -117,18 +117,13 @@ console.log('document tests passed');
 // logos: a raster data: URL survives a round trip; anything else is dropped when a file is read
 {
   const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGP4z8DwHwqRWQwMAMJ4Bf8kVb3uAAAAAElFTkSuQmCC';
-  const good = makeNode('external', 0, 0, { name: 'ok', logo: png, variant: 'Partner' });
-  const bad = makeNode('external', 300, 0, { name: 'evil', logo: 'javascript:alert(1)' });
+  const good = makeNode('service', 0, 0, { name: 'ok', logo: png, variant: 'Application', border: 'dashed' });
+  const bad = makeNode('service', 300, 0, { name: 'evil', logo: 'javascript:alert(1)', border: 'wavy' });
   const svg = makeNode('service', 600, 0, { name: 'svg', logo: 'data:image/svg+xml;base64,PHN2Zy8+' });
   const f = toFile({ nodes: [good, bad, svg], edges: [], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'logos' });
   const back = fromFile(JSON.parse(JSON.stringify(f))).doc.nodes;
-  assert.equal(back[0].logo, png); assert.equal(back[0].variant, 'Partner');
-  assert.equal(back[1].logo, undefined, 'script URL dropped'); assert.equal(back[2].logo, undefined, 'SVG never stored');
+  assert.equal(back[0].logo, png); assert.equal(back[0].variant, 'Application'); assert.equal(back[0].border, 'dashed');
+  assert.equal(back[1].logo, undefined, 'script URL dropped'); assert.equal(back[1].border, undefined, 'unknown border dropped'); assert.equal(back[2].logo, undefined, 'SVG never stored');
   assert.ok(validate(toFile({ nodes: [good], edges: [], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'x' })), JSON.stringify(validate.errors));
-  // an external system with no rate limit is unlimited; with one, it saturates
-  const c = makeNode('entry', 0, 0, { rps: 1000 }), x = makeNode('external', 0, 0, {}), y = makeNode('external', 0, 0, { maxRps: 500 });
-  const r = compute({ nodes: [c, x, y], edges: [{ id: 'e1', from: c.id, to: x.id, calls: 1 }, { id: 'e2', from: c.id, to: y.id, calls: 1 }], containers: [], links: [], frames: {}, detail: {} } as any);
-  assert.equal(r.nodes[x.id].cap, Infinity); assert.equal(r.nodes[x.id].status, 'ok');
-  assert.equal(r.nodes[y.id].status, 'crit');
-  console.log('logos and external systems');
+  console.log('logos, types and borders');
 }
