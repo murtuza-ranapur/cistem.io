@@ -18,6 +18,7 @@ const clamp01 = (v: unknown) => Math.min(1, Math.max(0, num(v)));
 export function capacity(n: Node): number {
   switch (behaviourOf(n)) {
     case 'balancer': case 'limit': return num(n.maxRps);
+    case 'capped': return num(n.maxRps) || Infinity;   // blank = unlimited
     case 'scaled': return num(n.rpsPerInstance) * num(n.instances);
     case 'cache': return num(n.maxOps);
     case 'store': {

@@ -115,6 +115,16 @@ Components live in containers: a cloud, an account, a VPC, a region, a data cent
 
 Databases, services and Kafka nodes have a chevron (or `Space` with the node selected; `⇧Space` toggles all). Expanded, a Postgres node draws each table with its columns, types and `PK` / `FK` / `UQ` / `IX` tags, and foreign keys are drawn as dashed lines between rows (across databases too). A service lists its endpoints; a Kafka node lists topics with their Avro fields. Auto-organise uses the expanded sizes. Column `references` take `table.column` or `<node id>:table.column`.
 
+## Component types, external systems and logos
+
+A **Service** has a type — Microservice, Application, Monolith, Function, Worker or Batch job — shown on its card; every type has endpoints and the same capacity fields. An **External system** is something you call but don't run (Stripe, a card scheme, a partner API): it has a dashed border, and its optional rate limit means unlimited when left blank.
+
+Any component can wear a **logo**: paste an image (`⌘V`) with components selected, drop an image file onto one, or pick one in the panel. Pasting or dropping an image on empty canvas makes a new External system named after the file. Logos are shrunk to 64 px and stored in the diagram (no uploads), so they work signed out and travel with exports.
+
+## Load view
+
+The load model (rps on cards and connections, capacity bars, the verdict and the header total) is hidden by default, since most diagrams are architecture. Turn it on with the gauge button or `L`; the choice is remembered in your browser. With it off, the capacity fields sit in a collapsed *Load model* section of the panel and connection labels show the endpoint called.
+
 ## How the capacity model works
 
 - Every edge carries **calls per incoming request** (one API call = 2 cache lookups + 1 DB query, say).

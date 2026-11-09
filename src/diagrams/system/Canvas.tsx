@@ -8,7 +8,11 @@ import { ancestry, typeDef, TYPES, NODE_H, ICON, qty, type Doc, type Frame, type
 import { fmt, fmtCalls } from '../../lib/format';
 import { useEditor, editor, select, selectOne, toggleSelected, makePrimary, isSelected } from '../../store/editor';
 import * as history from '../../store/history';
-import { toWorld, toScreen, type Point } from '../../store/viewport';
+import { toWorld, toScreen, pointerWorld, type Point } from '../../store/viewport';
+import { imageIn } from '../../lib/logo';
+import { isTyping } from '../../lib/browser';
+import { useLoadView } from '../../store/loadView';
+import { externalFromLogo, logoOnto } from './logo';
 import { hint, holdPanel, releasePanel } from '../../store/ui';
 import { Surface } from '../../ui/Surface';
 import { InlineEdit, useDoubleTap } from '../shared';
@@ -52,6 +56,7 @@ export function Canvas() {
   const doc = useSysDoc();
   const selection = useEditor(s => s.selection);
   const results = resultsOf(doc);
+  const load = useLoadView(st => st.on);
   const [overlay, setOverlay] = useState<Overlay>({});
   const [renaming, setRenaming] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -218,20 +223,47 @@ export function Canvas() {
     gesture.current = null; setOverlay({});
   };
 
-  // ---------- drop a component or environment from the rail ----------
+  // ---------- drop a component or environment from the rail, or an image (a logo) from anywhere ----------
   useEffect(() => {
     const stage = svg.current?.parentElement; if (!stage) return;
-    const over = (ev: DragEvent) => { ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy'; stage.classList.add('dropping'); };
-    const leave = () => stage.classList.remove('dropping');
+    let lit: Element | null = null;
+    const light = (el: Element | null) => { if (el === lit) return; lit?.classList.remove('logo-drop'); lit = el; lit?.classList.add('logo-drop'); };
+    const nodeAt = (ev: DragEvent) => document.elementFromPoint(ev.clientX, ev.clientY)?.closest<SVGGElement>('[data-node]') ?? null;
+    const files = (ev: DragEvent) => !!ev.dataTransfer?.types.includes('Files');
+    const over = (ev: DragEvent) => {
+      ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+      stage.classList.add('dropping');
+      light(files(ev) ? nodeAt(ev) : null);
+    };
+    const leave = () => { stage.classList.remove('dropping'); light(null); };
     const drop = (ev: DragEvent) => {
       ev.preventDefault(); leave();
       const w = toWorld(ev.clientX, ev.clientY), dt = ev.dataTransfer;
+      const image = imageIn(dt);
+      if (image) {
+        const id = nodeAt(ev)?.dataset.node;
+        if (id) void logoOnto([id], image); else void externalFromLogo(image, w);
+        return;
+      }
+      if (files(ev)) { hint('Drop an image to use it as a logo', 2200); return; }
       if (dt?.getData('text/container')) { addContainer('cloud', w.x - 130, w.y - 70); return; }
       const kind = dt?.getData('text/kind') as Kind | undefined;
       if (kind && TYPES[kind]) addNode(kind, w.x - typeDef(kind).w / 2, w.y - NODE_H / 2);
     };
+    // paste an image: onto the selected components, or as a new External system where the pointer is
+    const paste = (ev: ClipboardEvent) => {
+      if (ev.defaultPrevented || isTyping(ev.target) || isTyping(document.activeElement)) return;
+      const image = imageIn(ev.clipboardData); if (!image) return;
+      ev.preventDefault();
+      const ids = selectedNodeIds();
+      if (ids.length) void logoOnto(ids, image); else void externalFromLogo(image, pointerWorld());
+    };
     stage.addEventListener('dragover', over); stage.addEventListener('dragleave', leave); stage.addEventListener('drop', drop);
-    return () => { stage.removeEventListener('dragover', over); stage.removeEventListener('dragleave', leave); stage.removeEventListener('drop', drop); };
+    document.addEventListener('paste', paste);
+    return () => {
+      stage.removeEventListener('dragover', over); stage.removeEventListener('dragleave', leave); stage.removeEventListener('drop', drop);
+      document.removeEventListener('paste', paste);
+    };
   }, []);
 
   // ---------- drawing ----------
@@ -254,16 +286,16 @@ export function Canvas() {
               selected={isSelected(selection, 'container', c.id)} target={overlay.targetFrame === c.id} />
           ))}
         </g>
-        <EdgeLines doc={doc} items={edges} selected={selectedEdge} animate={animate} />
+        <EdgeLines doc={doc} items={edges} selected={selectedEdge} animate={animate} load={load} />
         <g id="nodes">
           {nodes.map(n => (
-            <NodeView key={n.id + ':' + n.kind} n={n} expanded={doc.detail?.[n.id] === 'expanded'} r={results.nodes[n.id]}
+            <NodeView key={n.id + ':' + n.kind} n={n} expanded={doc.detail?.[n.id] === 'expanded'} r={results.nodes[n.id]} load={load}
               selected={isSelected(selection, 'node', n.id)} dragging={!!overlay.dragging?.ids.has(n.id)}
               target={overlay.connect?.target === n.id} animate={animate} />
           ))}
         </g>
         <g id="fks">{fks.map((d, i) => <path key={i} className="fk" d={d} markerEnd="url(#crow)" />)}</g>
-        <EdgeLabels doc={doc} items={edges} selected={selectedEdge} />
+        <EdgeLabels doc={doc} items={edges} selected={selectedEdge} load={load} />
         <g id="overlay">
           {overlay.connect && <path d={overlay.connect.d} />}
           {overlay.marquee && <rect className="marquee" x={overlay.marquee.x} y={overlay.marquee.y} width={overlay.marquee.w} height={overlay.marquee.h} />}
@@ -284,24 +316,34 @@ function edgeItems(doc: Doc): EdgeItem[] {
 }
 
 /** Connection curves (drawn under the nodes). */
-function EdgeLines({ doc, items, selected, animate }: { doc: Doc; items: EdgeItem[]; selected: string | null; animate: boolean }) {
+function EdgeLines({ doc, items, selected, animate, load }: { doc: Doc; items: EdgeItem[]; selected: string | null; animate: boolean; load: boolean }) {
   const results = resultsOf(doc);
   return <g id="edges">{items.map(({ e, geo }) => (
-    <EdgeLine key={e.id} id={e.id} geo={geo} selected={selected === e.id} crit={results.nodes[e.to]?.status === 'crit'} cross={!!results.crossings?.[e.id]} animate={animate} />
+    <EdgeLine key={e.id} id={e.id} geo={geo} selected={selected === e.id} crit={load && results.nodes[e.to]?.status === 'crit'} cross={!!results.crossings?.[e.id]} animate={animate} />
   ))}</g>;
 }
 
-/** Connection labels (over the nodes): calls per request and the rps carried. */
-function EdgeLabels({ doc, items, selected }: { doc: Doc; items: EdgeItem[]; selected: string | null }) {
+/**
+ * Connection labels (over the nodes): calls per request and the rps carried — or, without the load model,
+ * just the endpoint called (when one is picked).
+ */
+function EdgeLabels({ doc, items, selected, load }: { doc: Doc; items: EdgeItem[]; selected: string | null; load: boolean }) {
   const results = resultsOf(doc);
   return <g id="labels">{items.map(({ e, geo }) => {
     const cross = results.crossings?.[e.id] || 0, isSel = selected === e.id;
-    const text = `${fmtCalls(qty(e.calls))}× · ${fmt(results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '');
+    const text = load ? `${fmtCalls(qty(e.calls))}× · ${fmt(results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '') : endpointLabel(doc, e);
+    if (!text) return null;
     const tw = text.length * 6.1 + 12;
     // labels are decoration (the panel has the number): hide one that's cramped or would land on a node
     const hidden = !isSel && (geo.len < tw + 36 || overlapsNode(doc, { x: geo.mid.x - tw / 2, y: geo.mid.y - 9, w: tw, h: 18 }));
     return <EdgeLabel key={e.id} id={e.id} text={text} x={geo.mid.x} y={geo.mid.y} selected={isSel} hidden={hidden} />;
   })}</g>;
+}
+
+function endpointLabel(doc: Doc, e: Doc['edges'][number]): string {
+  if (e.endpoint == null) return '';
+  const ep = findNode(doc, e.to)?.endpoints?.[e.endpoint];
+  return ep ? `${ep.method} ${ep.path}` : '';
 }
 
 /** Rename a component in place (double-click, or Enter). An empty name keeps the old one. */

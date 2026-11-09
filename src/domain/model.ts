@@ -3,18 +3,22 @@ import TYPES_FILE from '../../shared/component-types.json';
 
 /** A component type's key in shared/component-types.json ("service", "db", "sqs"…). */
 export type Kind = string;
-export type Behaviour = 'source' | 'balancer' | 'limit' | 'scaled' | 'cache' | 'store' | 'async';
+export type Behaviour = 'source' | 'balancer' | 'limit' | 'scaled' | 'cache' | 'store' | 'async' | 'capped';
 /** What a node expands to show on the canvas, and its second panel tab. */
 export type DetailKind = 'endpoints' | 'tables' | 'topic' | 'message' | null;
 export interface FieldDef { key: string; label: string; type: 'number' | 'text' | 'select' | 'boolean'; options?: string[]; min?: number; max?: number; step?: number; wide?: boolean }
 export interface TypeDef { label: string; short: string; icon: string; color: string; w: number; group: string; behaviour: Behaviour; detail: DetailKind; defaults: Record<string, unknown>; fields: FieldDef[] }
 export const TYPES = (TYPES_FILE as unknown as { types: Record<string, TypeDef> }).types;
+/** Fields the load model reads (capacity, rps, latency…): hidden with the load view off. */
+export const LOAD_FIELDS = new Set(Object.values((TYPES_FILE as unknown as { behaviours: Record<string, { reads: string[] }> }).behaviours).flatMap(b => b.reads));
 /** A kind this build doesn't know (a newer file, a typo) still loads: drawn plainly, no capacity. */
 const UNKNOWN: TypeDef = { label: 'Component', short: '?', icon: 'ic-service', color: '#6b7280', w: 200, group: 'other', behaviour: 'limit', detail: null, defaults: {}, fields: [] };
 export const typeDef = (kind: Kind): TypeDef => TYPES[kind] ?? { ...UNKNOWN, label: kind };
 export const behaviourOf = (n: { kind: Kind }) => typeDef(n.kind).behaviour;
 export const detailOf = (n: { kind: Kind }) => typeDef(n.kind).detail;
 export const isSource = (n: { kind: Kind }) => behaviourOf(n) === 'source';
+/** What a component calls itself: its chosen type (a service can be an Application, a Worker…) or its kind's label. */
+export const kindLabel = (n: { kind: Kind; variant?: unknown }) => (typeof n.variant === 'string' && n.variant.trim() ? n.variant.trim() : typeDef(n.kind).label);
 export const isAsync = (n: { kind: Kind }) => behaviourOf(n) === 'async';
 /** Has a message schema (Kafka topic, SQS queue…). */
 export const hasSchemaDetail = (n: { kind: Kind }) => detailOf(n) === 'topic' || detailOf(n) === 'message';
@@ -36,6 +40,8 @@ export interface NodeData {
   id: string; kind: Kind; name: string; latency?: number; container?: string | null;
   /** Rich notes (markdown), see notes.ts. */
   notes?: string;
+  /** A small logo drawn instead of the type's icon: a data: URL (PNG, JPEG or WebP), see lib/logo.ts. */
+  logo?: string;
   rps?: number; platforms?: string[];
   maxRps?: number; instances?: number; rpsPerInstance?: number; maxOps?: number; hitRatio?: number; eviction?: string;
   maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number;

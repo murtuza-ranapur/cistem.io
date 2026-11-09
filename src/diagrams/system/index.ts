@@ -6,7 +6,8 @@ import type { DiagramModule } from '../types';
 import { Canvas, requestRename } from './Canvas';
 import { Rail, RAIL_ORDER } from './Rail';
 import { Panel } from './panel/Panel';
-import { ExpandAllButton, LoadButton } from './HeaderItems';
+import { SystemTools, LoadButton } from './HeaderItems';
+import { loadOn, toggleLoadView } from '../../store/loadView';
 import { addContainer, addNode, duplicateSelection, nudge, organise, removeSelection, selectAll, toggleAllDetail, toggleDetail } from './actions';
 import { copy, paste } from './clipboard';
 import { madeFrom } from './madeFrom';
@@ -23,6 +24,7 @@ function keydown(ev: KeyboardEvent): boolean {
   if (mod || ev.altKey) return false;
   const sel = editor().selection;
   if (key === 'o') { organise(); return true; }
+  if (key === 'l') { toggleLoadView(); return true; }
   if (key === 'e') { addContainer(); return true; }
   if (ev.key === ' ') { if (ev.shiftKey) toggleAllDetail(); else if (sel?.type === 'node') toggleDetail(sel.ids[0]); return true; }
   if (ev.key === 'Enter' && sel?.type === 'node') { requestRename(sel.ids[0]); return true; }
@@ -41,9 +43,10 @@ export const system: DiagramModule<'system'> = {
 
   Canvas, Rail, Panel,
   HeaderInfo: LoadButton,
-  Tools: ExpandAllButton,
+  Tools: SystemTools,
   panelFor: sel => sel?.type === 'node' || sel?.type === 'edge' || sel?.type === 'container',
   verdict(doc) {
+    if (!loadOn()) return null;
     const v = resultsOf(doc).verdict;
     return {
       status: v.status,

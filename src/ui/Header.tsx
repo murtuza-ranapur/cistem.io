@@ -1,4 +1,5 @@
 /** The top bar: title, save status, verdict and the toolbar. */
+import { useLoadView } from '../store/loadView';
 import { useEffect, useRef, useState } from 'react';
 import { useEditor, changeMeta, undo, redo } from '../store/editor';
 import { useHistory } from '../store/history';
@@ -111,7 +112,9 @@ function SyncButton() {
 
 function VerdictBadge() {
   const open = useEditor(s => s.open);
+  useLoadView(st => st.on);   // the system verdict follows the load switch
   const v = diagram(open.kind).verdict(open.doc as never);
+  if (!v) return null;
   return (
     <div className={'verdict ' + v.status + (v.className ? ' ' + v.className : '')} id="verdictWrap">
       <span className="dot" /><span id="verdict">{v.text}</span><span id="lat" className="lat">{v.detail ?? ''}</span>

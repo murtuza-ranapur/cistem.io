@@ -16,7 +16,7 @@ async function test(name, fn) {
   const t = new T(page);
   try {
     await page.goto(BASE); await page.waitForTimeout(300);
-    await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('cistem'); }); await page.reload(); await page.waitForTimeout(600);
+    await page.evaluate(() => { localStorage.clear(); localStorage.setItem('cistem.loadView', 'on'); indexedDB.deleteDatabase('cistem'); }); await page.reload(); await page.waitForTimeout(600);
     await page.click('#resetBtn'); await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
     await fn(t);
@@ -1394,6 +1394,81 @@ abstract class Entity { protected long version; }`;
     await t.page.setViewportSize({ width: 1440, height: 800 }); await t.page.waitForTimeout(200);
     const b = await t.box('#addNote');
     assert(b.y >= 0 && b.y + b.height <= 800, `note button at ${b.y}..${b.y + b.height}`);
+  });
+
+  // ---- load view, external systems, service types, logos ----
+  /** A tiny red PNG, as a File in the page. */
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEklEQVR4nGP4z8DwHwqRWQwMAMJ4Bf8kVb3uAAAAAElFTkSuQmCC';
+  async function pasteImage(page) {
+    await page.evaluate(b64 => {
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const dt = new DataTransfer(); dt.items.add(new File([bytes], 'stripe-logo.png', { type: 'image/png' }));
+      document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, PNG);
+    await page.waitForTimeout(400);
+  }
+
+  await test('load view: off by default, L shows rps, capacity and the verdict, and it is remembered', async t => {
+    await t.page.evaluate(() => localStorage.removeItem('cistem.loadView')); await t.page.reload(); await t.page.waitForTimeout(700);
+    eq(await t.page.$('#totalRps'), null, 'no load total');
+    eq(await t.page.$('#verdictWrap'), null, 'no verdict');
+    eq(await t.page.$$eval('#nodes .stat', e => e.length), 0, 'no rps on the cards');
+    eq(await t.page.$$eval('#nodes rect.fill', e => e.length), 0, 'no load bars');
+    eq(await t.page.$$eval('#labels .edge-label', e => e.filter(x => /rps/.test(x.textContent)).length), 0, 'no rps on connections');
+    const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
+    await t.clickNode(svc.id);
+    eq((await t.page.textContent('[data-tab="capacity"]')).trim(), 'Details');
+    eq(await t.page.$('#sheetBody .tab > .props input[data-path="instances"]'), null, 'capacity fields are tucked away');
+    assert(await t.page.$('#loadSection input[data-path="instances"]'), 'in the Load model section');
+    await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Escape');
+    await t.page.keyboard.press('l'); await t.page.waitForTimeout(250);
+    assert(await t.page.$('#totalRps'), 'load total back'); assert(await t.page.$('#verdictWrap'), 'verdict back');
+    assert(await t.page.$$eval('#nodes rect.fill', e => e.length) > 0, 'bars back');
+    await t.page.reload(); await t.page.waitForTimeout(700);
+    assert(await t.page.$('#totalRps'), 'remembered across a reload');
+    await t.page.click('#loadToggle'); await t.page.waitForTimeout(200);
+    eq(await t.page.$('#totalRps'), null, 'the gauge button turns it off');
+  });
+
+  await test('external system: dashed card, unlimited unless rate-limited', async t => {
+    await t.page.click('[data-add="external"]'); await t.page.waitForTimeout(300);
+    const ext = (await t.doc()).model.nodes.find(n => n.kind === 'external');
+    assert(ext, 'added');
+    const dash = await t.page.$eval(`[data-node="${ext.id}"] rect.body`, r => getComputedStyle(r).strokeDasharray);
+    assert(dash && dash !== 'none', 'dashed border: ' + dash);
+    // no rate limit: unlimited, so no capacity bar
+    eq(await t.page.$$eval(`[data-node="${ext.id}"] rect.fill`, e => e.length), 0, 'no bar while unlimited');
+    await t.page.fill('#sheetBody input[data-path="maxRps"]', '5'); await t.page.waitForTimeout(200);
+    eq((await t.node(ext.id)).maxRps, 5, 'rate limit stored');
+    eq(await t.page.$$eval(`[data-node="${ext.id}"] rect.fill`, e => e.length), 1, 'a bar once rate-limited');
+  });
+
+  await test('service type: pick Application and the card says so', async t => {
+    const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
+    await t.clickNode(svc.id);
+    await t.page.selectOption('#sheetBody select[data-path="variant"]', 'Application'); await t.page.waitForTimeout(200);
+    eq((await t.node(svc.id)).variant, 'Application');
+    eq((await t.page.textContent(`[data-node="${svc.id}"] .kind`)).trim(), 'Application');
+    assert((await t.page.textContent('#sheetBody .head .k')).includes('Application'), 'panel heading too');
+  });
+
+  await test('logos: paste onto the selected component, remove in the panel, paste on empty canvas makes an External system', async t => {
+    const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service');
+    await t.clickNode(svc.id);
+    await pasteImage(t.page);
+    const logo = (await t.node(svc.id)).logo;
+    assert(/^data:image\/png;base64,/.test(logo || ''), 'stored as a small data URL');
+    assert(await t.page.$(`[data-node="${svc.id}"] image.nlogo`), 'drawn on the card');
+    assert(await t.page.$('#logoField img'), 'shown in the panel');
+    await t.page.click('#logoRemove'); await t.page.waitForTimeout(200);
+    eq((await t.node(svc.id)).logo, undefined, 'removed');
+    await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(200);
+    assert((await t.node(svc.id)).logo, 'undo brings it back');
+    await t.page.keyboard.press('Escape'); await t.page.keyboard.press('Escape'); await t.page.waitForTimeout(200);
+    const p = await t.emptyCanvasPoint(); await t.page.mouse.move(p.x, p.y);
+    await pasteImage(t.page);
+    const ext = (await t.doc()).model.nodes.find(n => n.kind === 'external');
+    assert(ext && ext.logo, 'new External system with the logo'); eq(ext.name, 'Stripe', 'named after the file');
   });
 
   // ---- projects ----

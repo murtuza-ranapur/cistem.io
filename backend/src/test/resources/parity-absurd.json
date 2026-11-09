@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n32",
+     "id": "n34",
      "kind": "entry",
      "name": "c",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": "250"
     },
     {
-     "id": "n33",
+     "id": "n35",
      "kind": "entry",
      "name": "neg",
      "platforms": [
@@ -30,7 +30,7 @@
      "rps": -500
     },
     {
-     "id": "n34",
+     "id": "n36",
      "kind": "service",
      "name": "s",
      "rpsPerInstance": true,
@@ -39,7 +39,7 @@
      "endpoints": []
     },
     {
-     "id": "n35",
+     "id": "n37",
      "kind": "cache",
      "name": "r",
      "maxOps": "lots",
@@ -48,7 +48,7 @@
      "eviction": "allkeys-lru"
     },
     {
-     "id": "n36",
+     "id": "n38",
      "kind": "db",
      "name": "d",
      "maxQps": 5000,
@@ -61,26 +61,26 @@
    "edges": [
     {
      "id": "a",
-     "from": "n32",
-     "to": "n34",
+     "from": "n34",
+     "to": "n36",
      "calls": "3"
     },
     {
      "id": "b",
-     "from": "n33",
-     "to": "n34",
+     "from": "n35",
+     "to": "n36",
      "calls": -1
     },
     {
      "id": "x",
-     "from": "n34",
-     "to": "n35",
+     "from": "n36",
+     "to": "n37",
      "calls": 1
     },
     {
      "id": "y",
-     "from": "n35",
-     "to": "n36",
+     "from": "n37",
+     "to": "n38",
      "calls": "NaN"
     }
    ],
@@ -89,14 +89,6 @@
   },
   "layout": {
    "positions": {
-    "n32": {
-     "x": 0,
-     "y": 0
-    },
-    "n33": {
-     "x": 0,
-     "y": 0
-    },
     "n34": {
      "x": 0,
      "y": 0
@@ -108,6 +100,14 @@
     "n36": {
      "x": 0,
      "y": 0
+    },
+    "n37": {
+     "x": 0,
+     "y": 0
+    },
+    "n38": {
+     "x": 0,
+     "y": 0
     }
    },
    "frames": {}
@@ -115,7 +115,7 @@
  },
  "expected": {
   "nodes": {
-   "n32": {
+   "n34": {
     "load": 250,
     "cap": null,
     "util": 0,
@@ -123,7 +123,7 @@
     "lat": 0,
     "cum": 0
    },
-   "n33": {
+   "n35": {
     "load": 0,
     "cap": null,
     "util": 0,
@@ -131,7 +131,7 @@
     "lat": 0,
     "cum": 0
    },
-   "n34": {
+   "n36": {
     "load": 750,
     "cap": 0,
     "util": null,
@@ -139,7 +139,7 @@
     "lat": 0,
     "cum": 0
    },
-   "n35": {
+   "n37": {
     "load": 750,
     "cap": 0,
     "util": null,
@@ -147,7 +147,7 @@
     "lat": 1,
     "cum": 1
    },
-   "n36": {
+   "n38": {
     "load": 0,
     "cap": 5000,
     "util": 0,
@@ -170,28 +170,28 @@
   },
   "verdict": {
    "status": "crit",
-   "node": "n34",
+   "node": "n36",
    "lat": 1,
    "converged": true
   },
   "layout": {
-   "n32": {
+   "n34": {
     "x": 40,
     "y": 40
    },
-   "n33": {
+   "n35": {
     "x": 40,
     "y": 216
    },
-   "n34": {
+   "n36": {
     "x": 352,
     "y": 128
    },
-   "n35": {
+   "n37": {
     "x": 672,
     "y": 128
    },
-   "n36": {
+   "n38": {
     "x": 984,
     "y": 128
    }

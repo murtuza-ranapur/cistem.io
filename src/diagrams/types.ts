@@ -30,7 +30,7 @@ export interface DiagramModule<K extends DiagramKind = DiagramKind> {
   /** Whether the panel has something to show for this selection (auto mode opens only then). */
   panelFor(sel: Selection | null): boolean;
   /** The header's status line. */
-  verdict(doc: DocOf<K>): Verdict;
+  verdict(doc: DocOf<K>): Verdict | null;
 
   /** Everything drawn, for fit-to-view. */
   bounds(doc: DocOf<K>): Box | null;

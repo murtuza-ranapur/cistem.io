@@ -1,6 +1,6 @@
 /** A component on the canvas: its card (kind, name, summary, load bar), expanded detail and connection ports. */
 import { memo, useState } from 'react';
-import { ICON, NODE_H, qty, typeDef, isSource, detailOf, nodeWidthFor, nodeHeight, type Node } from '../../domain/model';
+import { ICON, NODE_H, qty, typeDef, kindLabel, isSource, detailOf, nodeWidthFor, nodeHeight, type Node } from '../../domain/model';
 import type { NodeResult } from '../../domain/engine';
 import { fmt, fmtMs, trunc } from '../../lib/format';
 import { kindColour, localPort, summary, SIDES } from './geometry';
@@ -8,34 +8,38 @@ import { NoteBadge } from '../../notes/NoteBadge';
 import { layoutDetail, type DetailItem, type Tag } from './detail';
 
 interface Props {
-  n: Node; expanded: boolean; r: NodeResult | undefined;
+  n: Node; expanded: boolean; r: NodeResult | undefined; load: boolean;
   selected: boolean; dragging: boolean; target: boolean; animate: boolean;
 }
 
 const TX = 12 + ICON + 9;
 
-function NodeViewImpl({ n, expanded, r, selected, dragging, target, animate }: Props) {
+function NodeViewImpl({ n, expanded, r, load, selected, dragging, target, animate }: Props) {
   const [entering, setEntering] = useState(animate);
   const t = typeDef(n.kind), source = isSource(n);
   const detail = expanded ? 'expanded' : undefined;
   const w = nodeWidthFor(n, detail), h = nodeHeight(n, detail);
   const util = r ? Math.min(1, Number.isFinite(r.util) ? r.util : 1) : 0;
-  const cls = ['node', `k-${n.kind}`, `b-${t.behaviour}`, selected && 'sel', expanded && 'expanded', r?.status === 'crit' && 'crit', entering && 'enter', dragging && 'dragging', target && 'target'].filter(Boolean).join(' ');
+  const cls = ['node', `k-${n.kind}`, `b-${t.behaviour}`, selected && 'sel', expanded && 'expanded', load && r?.status === 'crit' && 'crit', entering && 'enter', dragging && 'dragging', target && 'target'].filter(Boolean).join(' ');
   return (
     <g className={cls} data-node={n.id} transform={`translate(${n.x} ${n.y})`}
       style={{ '--kc': kindColour(n.kind), '--nx': n.x + 'px', '--ny': n.y + 'px' } as React.CSSProperties}
       onAnimationEnd={e => { if (e.target === e.currentTarget) setEntering(false); }}>
       <rect className="body" width={w} height={h} rx={9} />
       <rect className="accent" x={0} y={0} width={3} height={h} rx={1.5} />
-      <use href={'#' + t.icon} className="glyph" x={12} y={12} width={ICON} height={ICON} />
-      <text className="kind" x={TX} y={20}>{t.label}</text>
-      <text className="name" x={TX} y={37}>{trunc(n.name || '', (w - TX - 12) / 7.2)}</text>
-      <text className="sum" x={12} y={56}>{trunc(summary(n), (w - 24) / 6.3)}</text>
-      <text className="stat" x={12} y={71}>{source ? `${fmt(qty(n.rps))} rps peak` : r ? `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}` : ''}</text>
-      {!source && <>
-        <rect className="bar" x={12} y={78} width={w - 24} height={6} rx={3} />
-        <rect className={'fill ' + (r?.status ?? 'ok')} x={12} y={78} width={(w - 24) * util} height={6} rx={3} />
-        <text className="stat pct" x={w - 12} y={71} textAnchor="end">{r ? (Number.isFinite(r.util) ? Math.round(r.util * 100) + '%' : '∞') : ''}</text>
+      {n.logo ? <image className="nlogo" href={n.logo} x={10} y={10} width={ICON + 4} height={ICON + 4} preserveAspectRatio="xMidYMid meet" />
+        : <use href={'#' + t.icon} className="glyph" x={12} y={12} width={ICON} height={ICON} />}
+      {/* without the load model, the three text lines spread over the card */}
+      <text className="kind" x={TX} y={load ? 20 : 22}>{kindLabel(n)}</text>
+      <text className="name" x={TX} y={load ? 37 : 41}>{trunc(n.name || '', (w - TX - 12) / 7.2)}</text>
+      <text className="sum" x={12} y={load ? 56 : 68}>{trunc(summary(n), (w - 24) / 6.3)}</text>
+      {load && <>
+        <text className="stat" x={12} y={71}>{source ? `${fmt(qty(n.rps))} rps peak` : r ? (Number.isFinite(r.cap) ? `${fmt(r.load)} / ${fmt(r.cap)} rps · ${fmtMs(r.lat)}` : `${fmt(r.load)} rps · ${fmtMs(r.lat)}`) : ''}</text>
+        {!source && Number.isFinite(r?.cap ?? 0) && <>
+          <rect className="bar" x={12} y={78} width={w - 24} height={6} rx={3} />
+          <rect className={'fill ' + (r?.status ?? 'ok')} x={12} y={78} width={(w - 24) * util} height={6} rx={3} />
+          <text className="stat pct" x={w - 12} y={71} textAnchor="end">{r ? (Number.isFinite(r.util) ? Math.round(r.util * 100) + '%' : '∞') : ''}</text>
+        </>}
       </>}
       <g className="detail">{expanded && <Detail n={n} w={w} />}</g>
       {detailOf(n) && (
@@ -101,4 +105,4 @@ function Detail({ n, w }: { n: Node; w: number }) {
 const sameResult = (a?: NodeResult, b?: NodeResult) => a === b || (!!a && !!b && a.load === b.load && a.cap === b.cap && a.lat === b.lat && a.util === b.util && a.status === b.status);
 /** Re-render only when this node, its result or its state changed (a drag redraws just the moved nodes). */
 export const NodeView = memo(NodeViewImpl, (a, b) =>
-  a.n === b.n && a.expanded === b.expanded && a.selected === b.selected && a.dragging === b.dragging && a.target === b.target && sameResult(a.r, b.r));
+  a.n === b.n && a.load === b.load && a.expanded === b.expanded && a.selected === b.selected && a.dragging === b.dragging && a.target === b.target && sameResult(a.r, b.r));

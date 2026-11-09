@@ -1,5 +1,5 @@
 /** A component's panel: Capacity (its fields and live load numbers) and, for types with detail, its schema. */
-import { CONTAINER_KINDS, ancestry, detailOf, isSource, totalRps, typeDef, type Doc, type Node } from '../../../domain/model';
+import { CONTAINER_KINDS, LOAD_FIELDS, kindLabel, ancestry, detailOf, isSource, totalRps, typeDef, type Doc, type Node } from '../../../domain/model';
 import { fmt, fmtMs } from '../../../lib/format';
 import { select } from '../../../store/editor';
 import { activate, peek, tabs, useTabs } from '../../../store/tabs';
@@ -10,6 +10,8 @@ import { CheckField, NumberField, SelectField, TextField, setField } from './con
 import { usePanelUi, setPanelUi } from './ui';
 import { ItemNotes, NotesLabel } from '../../../notes/ItemNotes';
 import { SchemaTab } from './SchemaTab';
+import { useLoadView } from '../../../store/loadView';
+import { LogoField } from './LogoField';
 
 const SCHEMA_LABEL: Record<string, string> = { endpoints: 'Endpoints', tables: 'Tables', topic: 'Topic', message: 'Message' };
 
@@ -17,17 +19,18 @@ export function NodePanel({ n }: { n: Node }) {
   const tab = usePanelUi(s => s.tab);
   const kind = /^[\w-]+$/.test(n.kind) ? n.kind : 'service';
   const dk = detailOf(n);
+  const load = useLoadView(st => st.on);
   return (
     <>
       <div className="head">
-        <span className="k" style={{ color: `var(--c-${kind})` }}><KindIcon kind={kind} />{typeDef(kind).label}</span>
+        <span className="k" style={{ color: `var(--c-${kind})` }}><KindIcon kind={kind} />{kindLabel(n)}</span>
         <strong>{n.name}</strong><span className="spacer" />
         <button type="button" className="icon danger" data-action="delete-node" title="Delete (⌫)" aria-label="Delete" onClick={() => { deleteNodes([n.id]); select(null); }}>
           <Icon name="ic-trash" />
         </button>
       </div>
       <div className="tabs">
-        <button type="button" data-tab="capacity" className={tab === 'capacity' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'capacity' })}>Capacity</button>
+        <button type="button" data-tab="capacity" className={tab === 'capacity' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'capacity' })}>{load ? 'Capacity' : 'Details'}</button>
         {dk && <button type="button" data-tab="schema" className={tab === 'schema' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'schema' })}>{SCHEMA_LABEL[dk] ?? 'Detail'}</button>}
         <button type="button" data-tab="notes" className={tab === 'notes' ? 'on' : ''} onClick={() => setPanelUi({ tab: 'notes' })}><NotesLabel value={n.notes ?? ''} /></button>
       </div>
@@ -58,26 +61,38 @@ export function containerOptions(doc: Doc, exclude: string | null = null): { val
 
 function CapacityTab({ n }: { n: Node }) {
   const doc = useSysDoc();
+  const load = useLoadView(st => st.on);
   const opts = containerOptions(doc);
   const label = (v: string) => opts.find(o => o.value === v)?.label ?? v;
+  // the type's own fields, as declared in shared/component-types.json
+  const field = (f: ReturnType<typeof typeDef>['fields'][number]) => {
+    const v = (n as unknown as Record<string, unknown>)[f.key];
+    if (f.type === 'select') return <SelectField key={f.key} path={f.key} label={f.label} wide={f.wide} value={String(v ?? f.options?.[0] ?? '')} options={f.options ?? []} />;
+    if (f.type === 'boolean') return <CheckField key={f.key} path={f.key} label={f.label} wide={f.wide} value={!!v} />;
+    if (f.type === 'number') return <NumberField key={f.key} path={f.key} label={f.label} wide={f.wide} value={v} min={f.min} max={f.max} step={f.step} />;
+    return <TextField key={f.key} path={f.key} label={f.label} wide={f.wide} value={String(v ?? '')} />;
+  };
+  const fields = typeDef(n.kind).fields;
+  const loadFields = fields.filter(f => LOAD_FIELDS.has(f.key)), other = fields.filter(f => !LOAD_FIELDS.has(f.key));
+  const numbers = isSource(n)
+    ? <p className="note">Peak requests per second these clients send. The diagram is tested at the sum of all clients — {fmt(totalRps(doc))} rps — shown in the top bar.</p>
+    : <Stats doc={doc} id={n.id} />;
   return (
     <div className="tab">
       <div className="props">
         <TextField path="name" label="name" wide value={n.name} required />
         <SelectField path="container" label="Environment" wide value={n.container ?? ''} empty="No environment" options={opts.map(o => o.value)} labelOf={label} />
-        {/* the type's own fields, as declared in shared/component-types.json */}
-        {typeDef(n.kind).fields.map(f => {
-          const v = (n as unknown as Record<string, unknown>)[f.key];
-          if (f.type === 'select') return <SelectField key={f.key} path={f.key} label={f.label} wide={f.wide} value={String(v ?? f.options?.[0] ?? '')} options={f.options ?? []} />;
-          if (f.type === 'boolean') return <CheckField key={f.key} path={f.key} label={f.label} wide={f.wide} value={!!v} />;
-          if (f.type === 'number') return <NumberField key={f.key} path={f.key} label={f.label} wide={f.wide} value={v} min={f.min} max={f.max} step={f.step} />;
-          return <TextField key={f.key} path={f.key} label={f.label} wide={f.wide} value={String(v ?? '')} />;
-        })}
+        <LogoField n={n} />
+        {(load ? fields : other).map(field)}
         {isSource(n) && <Platforms n={n} />}
       </div>
-      {isSource(n)
-        ? <p className="note">Peak requests per second these clients send. The diagram is tested at the sum of all clients — {fmt(totalRps(doc))} rps — shown in the top bar.</p>
-        : <Stats doc={doc} id={n.id} />}
+      {load ? numbers : loadFields.length > 0 && (
+        <details className="loadsec" id="loadSection">
+          <summary>Load model <span className="muted">· hidden on the canvas</span></summary>
+          <div className="props">{loadFields.map(field)}</div>
+          <p className="note">These feed the load simulation. Turn it on with the gauge in the top bar (L) to see rps, capacity and utilisation.</p>
+        </details>
+      )}
     </div>
   );
 }

@@ -50,10 +50,14 @@ const write = (name: string, doc: any, title: string) => {
   const svc = makeNode('service', 0, 0, { name: 'orders', instances: 6, rpsPerInstance: 600, endpoints: [{ method: 'POST', path: '/orders', headers: [], req: '', res: '' }] });
   const mongo = makeNode('mongodb', 0, 0, { name: 'orders-db', maxQps: 4000, replicas: 2, readShare: 0.7 });
   const sqs = makeNode('sqs', 0, 0, { name: 'fulfilment', fifo: true, key: 'orderId', schema: '{"type":"record","name":"Fulfil","fields":[{"name":"orderId","type":"string"}]}' });
-  const worker = makeNode('service', 0, 0, { name: 'fulfilment-worker', instances: 2, rpsPerInstance: 300 });
-  const d3 = { nodes: [c, cdn, gw, svc, mongo, sqs, worker], containers: [], links: [], frames: {}, detail: { [svc.id]: 'expanded', [sqs.id]: 'expanded' } as Record<string, 'expanded'>, edges: [
+  const worker = makeNode('service', 0, 0, { name: 'fulfilment-worker', variant: 'Worker', instances: 2, rpsPerInstance: 300 });
+  // external systems: one unlimited (blank rate limit), one rate-limited below its load
+  const psp = makeNode('external', 0, 0, { name: 'payments', latency: 220 });
+  const tax = makeNode('external', 0, 0, { name: 'tax-api', maxRps: 1500, latency: 90 });
+  const d3 = { nodes: [c, cdn, gw, svc, mongo, sqs, worker, psp, tax], containers: [], links: [], frames: {}, detail: { [svc.id]: 'expanded', [sqs.id]: 'expanded' } as Record<string, 'expanded'>, edges: [
     { id: 'e1', from: c.id, to: cdn.id, calls: 1 }, { id: 'e2', from: cdn.id, to: gw.id, calls: 1 }, { id: 'e3', from: gw.id, to: svc.id, calls: 1 },
-    { id: 'e4', from: svc.id, to: mongo.id, calls: 2 }, { id: 'e5', from: svc.id, to: sqs.id, calls: 1 }, { id: 'e6', from: sqs.id, to: worker.id, calls: 1 } ] };
+    { id: 'e4', from: svc.id, to: mongo.id, calls: 2 }, { id: 'e5', from: svc.id, to: sqs.id, calls: 1 }, { id: 'e6', from: sqs.id, to: worker.id, calls: 1 },
+    { id: 'e7', from: svc.id, to: psp.id, calls: 1 }, { id: 'e8', from: svc.id, to: tax.id, calls: 1 } ] };
   write('parity-types.json', d3, 'Types fixture');
 }
 // 4. a v3 document and what it migrates to

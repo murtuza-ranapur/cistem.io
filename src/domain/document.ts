@@ -9,6 +9,7 @@
  *
  * JSON Schema: schema/cistem.schema.json
  */
+import { isLogo } from '../lib/logo';
 import { adopt, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
 import { sanitizeSeq, type SeqDoc } from './seq';
 import { sanitizeCls, type ClassDoc } from './cls';
@@ -161,6 +162,7 @@ function cleanSystem(f: DiagramFile) {
     if ('tables' in n) out.tables = (Array.isArray(n.tables) ? n.tables : []).filter(obj).map((t: any) => ({ ...t, name: str(t.name), columns: (Array.isArray(t.columns) ? t.columns : []).filter(obj).map((c: any) => ({ ...c, name: str(c.name), type: str(c.type) })) }));
     if ('endpoints' in n) out.endpoints = (Array.isArray(n.endpoints) ? n.endpoints : []).filter(obj).map((e: any) => ({ ...e, method: str(e.method) || 'GET', path: str(e.path) }));
     if ('container' in n) out.container = n.container === null ? null : id(n.container) || null;
+    if ('logo' in n && !isLogo(n.logo)) delete out.logo;
     return out;
   }) as Node[];
   const edgeIds = new Set<string>();

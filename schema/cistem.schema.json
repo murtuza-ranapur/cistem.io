@@ -136,6 +136,16 @@
           "type": "string",
           "description": "A component type key from shared/component-types.json (entry, lb, apigw, cdn, service, cache, db, mongodb, queue, sqs, …). The type's behaviour decides which fields matter."
         },
+        "variant": {
+          "type": "string",
+          "description": "What the component calls itself on the card, e.g. a service's type: Microservice, Application, Monolith, Function, Worker, Batch job."
+        },
+        "logo": {
+          "type": "string",
+          "pattern": "^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$",
+          "maxLength": 60000,
+          "description": "A small logo drawn instead of the type's icon, as a data: URL (PNG, JPEG or WebP)."
+        },
         "rps": {
           "type": "number",
           "minimum": 0,
@@ -150,7 +160,7 @@
         "maxRps": {
           "type": "number",
           "minimum": 0,
-          "description": "balancer / limit: maximum requests per second."
+          "description": "balancer / limit: maximum requests per second. capped (external system): optional rate limit — 0 or absent means unlimited."
         },
         "instances": {
           "type": "number",

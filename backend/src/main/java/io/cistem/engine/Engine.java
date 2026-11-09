@@ -73,6 +73,7 @@ public final class Engine {
     public static double capacity(JsonNode n) {
         return switch (Types.behaviour(n)) {   // by behaviour (shared/component-types.json), never by type name
             case "balancer", "limit" -> num(n, "maxRps");
+            case "capped" -> { double m = num(n, "maxRps"); yield m > 0 ? m : Double.POSITIVE_INFINITY; }   // blank = unlimited
             case "scaled" -> num(n, "rpsPerInstance") * num(n, "instances");
             case "cache" -> num(n, "maxOps");
             case "store" -> {

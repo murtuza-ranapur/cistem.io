@@ -30,9 +30,13 @@ public class GeneralTools {
         return diagrams.service().list(diagrams.owner(), Diagrams.optionalUuid(projectId, "project"));
     }
 
-    @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.dev file format: version, kind, meta, model, layout). For sequence diagrams get_sequence gives a readable text form.")
+    @McpTool(name = "get_diagram", description = "Get a diagram's full document (cistem.dev file format: version, kind, meta, model, layout). For sequence diagrams get_sequence gives a readable text form. Component logos (images) show as \"logo\": \"(image)\".")
     public JsonNode getDiagram(@McpToolParam(description = "Diagram id (UUID)") String diagramId) {
-        return diagrams.read(diagramId, null);
+        JsonNode doc = diagrams.read(diagramId, null).deepCopy();
+        // logos are small images as data: URLs — noise to a model, so just say one is there
+        for (JsonNode n : doc.path("model").path("nodes"))
+            if (n instanceof ObjectNode o && o.has("logo")) o.put("logo", "(image)");
+        return doc;
     }
 
     @McpTool(name = "delete_diagram", description = "Delete a diagram permanently.")

@@ -9,10 +9,12 @@ import { IconButton } from '../../ui/Icon';
 import { toggleAllDetail, useExpandAll } from './actions';
 import { focusInPanel } from './panel/ui';
 import { sysDoc, useSysDoc } from './state';
+import { toggleLoadView, useLoadView } from '../../store/loadView';
 
 /** Peak load: the sum of every client's rps. Each click selects the next client and focuses its rps. */
 export function LoadButton() {
   const doc = useSysDoc();
+  const on = useLoadView(st => st.on);
   const cursor = useRef(0);
   const go = () => {
     const clients = sysDoc().nodes.filter(isSource);
@@ -21,11 +23,23 @@ export function LoadButton() {
     revealSelection();
     focusInPanel('input[data-path="rps"]', 260);
   };
+  if (!on) return null;
   return (
     <button type="button" id="totalRps" className="total" title="Peak load: the sum of every client's rps. Click to go to the clients." onClick={go}>
       <span className="tlabel">Load</span><strong id="totalVal">{fmt(totalRps(doc))}</strong><span className="unit">rps</span>
     </button>
   );
+}
+
+/** Show or hide the load model (rps, capacity, utilisation, the verdict) — remembered in this browser. */
+export function LoadToggle() {
+  const on = useLoadView(st => st.on);
+  return <IconButton id="loadToggle" icon="ic-gauge" label={on ? 'Hide load' : 'Show load'} title={`${on ? 'Hide' : 'Show'} the load model: rps, capacity and utilisation (L)`}
+    className={on ? 'active' : ''} aria-pressed={on} onClick={toggleLoadView} />;
+}
+
+export function SystemTools() {
+  return <><LoadToggle /><ExpandAllButton /></>;
 }
 
 export function ExpandAllButton() {
