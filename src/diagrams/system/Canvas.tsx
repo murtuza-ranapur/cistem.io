@@ -270,7 +270,7 @@ export function Canvas() {
         </g>
       </Surface>
       {renaming && <Rename id={renaming} stage={() => svg.current?.parentElement?.getBoundingClientRect()} close={() => setRenaming(null)} />}
-      {!doc.nodes.length && <div id="emptyState"><strong>Blank canvas</strong><span>Drag a component in from the left, or load the example.</span></div>}
+      {!doc.nodes.length && !doc.containers.length && !doc.notes?.length && <div id="emptyState"><strong>Blank canvas</strong><span>Drag a component in from the left, or load the example.</span></div>}
     </>
   );
 }
