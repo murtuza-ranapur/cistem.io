@@ -2,7 +2,7 @@
  * What an expanded node shows under its header — tables with their columns, endpoints, or a topic's fields —
  * laid out in node-local coordinates. Pure: the node view draws it and the foreign-key lines aim at its rows.
  */
-import { NODE_H, EXP, detailOf, topicFields, foreignKeys, type Doc, type Node } from '../../domain/model';
+import { NODE_H, EXP, detailOf, topicFields, foreignKeys, pathCols, wrapPath, type Doc, type Node } from '../../domain/model';
 import { trunc } from '../../lib/format';
 import { nodeW } from './geometry';
 
@@ -10,7 +10,7 @@ export interface Tag { x: number; label: string; cls: string }
 export type DetailItem =
   | { t: 'table'; y: number; h: number; name: string; count: string }
   | { t: 'row'; y: number; tags: Tag[]; nameX: number; name: string; pk?: boolean; type: string; anchor?: string }
-  | { t: 'endpoint'; y: number; method: string; path: string; meta: string }
+  | { t: 'endpoint'; y: number; h: number; i: number; method: string; lines: string[]; path: string; meta: string }
   | { t: 'topic'; y: number; name: string; partitions: string };
 
 const tagW = (label: string) => label.length * 6 + 8;
@@ -42,11 +42,12 @@ export function layoutDetail(n: Node, w: number): DetailItem[] {
       y += EXP.tableHead + cols.length * EXP.row + EXP.tablePad + EXP.tableGap;
     }
   } else if (dk === 'endpoints') {
-    for (const ep of n.endpoints ?? []) {
+    (n.endpoints ?? []).forEach((ep, i) => {
       const hc = ep.headers?.length ?? 0;
-      items.push({ t: 'endpoint', y, method: ep.method, path: trunc(ep.path, (w - 74 - 40) / 6.4), meta: [hc ? `${hc}h` : '', ep.req ? 'req' : '', ep.res ? 'res' : ''].filter(Boolean).join(' ') });
-      y += EXP.endpointRow;
-    }
+      const lines = wrapPath(ep.path ?? '', pathCols(w)), h = EXP.endpointRow + (lines.length - 1) * EXP.endpointWrap;
+      items.push({ t: 'endpoint', y, h, i, method: ep.method, lines, path: ep.path ?? '', meta: [hc ? `${hc}h` : '', ep.req ? 'req' : '', ep.res ? 'res' : ''].filter(Boolean).join(' ') });
+      y += h;
+    });
   } else if (dk === 'topic' || dk === 'message') {
     const fields = topicFields(n);
     if (fields.length) {

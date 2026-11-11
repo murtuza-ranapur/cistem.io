@@ -47,12 +47,14 @@ const write = (name: string, doc: any, title: string) => {
   const c = makeNode('entry', 0, 0, { name: 'Shoppers', rps: 12000 });
   const cdn = makeNode('cdn', 0, 0, { name: 'edge-cdn', hitRatio: 0.75 });
   const gw = makeNode('apigw', 0, 0, { name: 'gateway', maxRps: 5000 });
-  const svc = makeNode('service', 0, 0, { name: 'orders', instances: 6, rpsPerInstance: 600, endpoints: [{ method: 'POST', path: '/orders', headers: [], req: '', res: '' }] });
+  const ep = (method: string, path: string) => ({ method, path, headers: [], req: '', res: '' });
+  // long paths wrap in the expanded card (heights must agree in Java); several endpoints called, each with its calls
+  const svc = makeNode('service', 0, 0, { name: 'orders', instances: 6, rpsPerInstance: 600, endpoints: [ep('POST', '/orders'), ep('GET', '/v1/orders/{orderId}/fulfilment-status/history'), ep('GET', '/v1/orders/{orderId}/a-really-long-segment-that-has-to-be-cut-somewhere-x')] });
   const mongo = makeNode('mongodb', 0, 0, { name: 'orders-db', maxQps: 4000, replicas: 2, readShare: 0.7 });
   const sqs = makeNode('sqs', 0, 0, { name: 'fulfilment', fifo: true, key: 'orderId', schema: '{"type":"record","name":"Fulfil","fields":[{"name":"orderId","type":"string"}]}' });
-  const worker = makeNode('service', 0, 0, { name: 'fulfilment-worker', variant: 'Worker', instances: 2, rpsPerInstance: 300 });
+  const worker = makeNode('service', 0, 0, { name: 'fulfilment-worker', variant: 'Worker', instances: 2, rpsPerInstance: 300, width: 412 });
   const d3 = { nodes: [c, cdn, gw, svc, mongo, sqs, worker], containers: [], links: [], frames: {}, detail: { [svc.id]: 'expanded', [sqs.id]: 'expanded' } as Record<string, 'expanded'>, edges: [
-    { id: 'e1', from: c.id, to: cdn.id, calls: 1 }, { id: 'e2', from: cdn.id, to: gw.id, calls: 1 }, { id: 'e3', from: gw.id, to: svc.id, calls: 1 },
+    { id: 'e1', from: c.id, to: cdn.id, calls: 1 }, { id: 'e2', from: cdn.id, to: gw.id, calls: 1 }, { id: 'e3', from: gw.id, to: svc.id, calls: 1, endpoints: [{ i: 0, calls: 1 }, { i: 1, calls: 4 }] },
     { id: 'e4', from: svc.id, to: mongo.id, calls: 2 }, { id: 'e5', from: svc.id, to: sqs.id, calls: 1 }, { id: 'e6', from: sqs.id, to: worker.id, calls: 1 } ] };
   write('parity-types.json', d3, 'Types fixture');
 }

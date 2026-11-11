@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
-import { exampleDoc, crossingLatency, TYPES, makeNode } from '../src/domain/model';
+import { exampleDoc, crossingLatency, TYPES, makeNode, edgeCalls, wrapPath, nodeHeight } from '../src/domain/model';
 import { compute } from '../src/domain/engine';
 import { toFile, fromFile, migrate, FORMAT_VERSION } from '../src/domain/document';
 
@@ -141,4 +141,29 @@ console.log('document tests passed');
   assert.equal(back.nodes[0].color, 'teal'); assert.equal(back.nodes[1].color, undefined);
   assert.ok(validate(toFile({ nodes: [a], edges: [], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'x' })), JSON.stringify(validate.errors));
   console.log('connection labels and styles, component colours');
+}
+
+// several endpoints per connection: an old single `endpoint` migrates; calls is the sum; bad entries dropped
+{
+  const ep = (method: string, path: string) => ({ method, path, headers: [], req: '', res: '' });
+  const a = makeNode('service', 0, 0, { name: 'a' }), b = makeNode('service', 300, 0, { name: 'b', endpoints: [ep('POST', '/x'), ep('GET', '/x/{id}')], width: 9999 });
+  const old = { id: 'e1', from: a.id, to: b.id, calls: 3, endpoint: 1 };
+  const many = { id: 'e2', from: b.id, to: a.id, calls: 99, endpoints: [{ i: 0, calls: 1 }, { i: 1, calls: 4 }, { i: 1, calls: 7 }, { i: -2, calls: 1 }, { i: 'x', calls: 1 }] };
+  const f = toFile({ nodes: [a, b], edges: [old, many], containers: [], links: [], frames: {}, detail: {} } as any, { title: 'eps' });
+  const back = fromFile(JSON.parse(JSON.stringify(f))).doc;
+  assert.deepEqual(back.edges[0].endpoints, [{ i: 1, calls: 3 }], 'old endpoint migrates with its calls');
+  assert.equal((back.edges[0] as any).endpoint, undefined);
+  assert.deepEqual(back.edges[1].endpoints, [{ i: 0, calls: 1 }, { i: 1, calls: 4 }], 'duplicates and bad indexes dropped');
+  assert.equal(back.edges[1].calls, 5, 'calls is the sum');
+  assert.equal(edgeCalls({ calls: 2, endpoints: [{ i: 0, calls: 1 }, { i: 1, calls: 4 }] }), 5);
+  assert.equal(edgeCalls({ calls: 2 }), 2);
+  assert.equal(back.nodes[1].width, 720, 'width clamped');
+  // wrapped endpoint paths: broken before a "/", long segments cut, at most 4 lines
+  assert.deepEqual(wrapPath('/v1/payment-uploads/{ticketId}/results', 20), ['/v1/payment-uploads', '/{ticketId}/results']);
+  assert.equal(wrapPath('/short', 20).length, 1);
+  assert.ok(wrapPath('/' + 'a'.repeat(200), 20).length === 4 && wrapPath('/' + 'a'.repeat(200), 20)[3].endsWith('…'));
+  const expanded = nodeHeight({ kind: 'service', name: 'b', endpoints: [ep('GET', '/v1/payment-uploads/{ticketId}/results/and/more/segments')] }, 'expanded');
+  const short = nodeHeight({ kind: 'service', name: 'b', endpoints: [ep('GET', '/x')] }, 'expanded');
+  assert.ok(expanded > short, 'a wrapped endpoint makes the card taller');
+  console.log('several endpoints per connection, wrapped endpoint paths, widths');
 }

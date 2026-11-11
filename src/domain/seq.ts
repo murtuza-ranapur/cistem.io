@@ -436,12 +436,13 @@ export function sequenceFromPath(sys: Doc, startId: string, asyncKinds: Set<stri
     d.participants.push({ id, name: n.name || n.kind, type: n.kind, ref: n.id });
     return (pid[nodeId] = id);
   };
-  const labelFor = (e: { to: string; endpoint?: number | null }) => {
+  /** One message per endpoint the connection calls (its first endpoint if it lists none). */
+  const labelsFor = (e: { to: string; endpoints?: { i: number }[] }) => {
     const n = byId.get(e.to)!;
-    const ep = n.endpoints?.[typeof e.endpoint === 'number' ? e.endpoint : 0];
-    if (ep) return `${ep.method} ${ep.path}`;
-    if (n.tables?.length) return 'query ' + n.tables[0].name;
-    return 'request';
+    const eps = (e.endpoints?.length ? e.endpoints.map(x => n.endpoints?.[x.i]) : [n.endpoints?.[0]]).filter(Boolean) as { method: string; path: string }[];
+    if (eps.length) return eps.map(ep => `${ep.method} ${ep.path}`);
+    if (n.tables?.length) return ['query ' + n.tables[0].name];
+    return ['request'];
   };
   const visiting = new Set<string>(); let budget = 120;
   const visit = (nodeId: string) => {
@@ -459,9 +460,11 @@ export function sequenceFromPath(sys: Doc, startId: string, asyncKinds: Set<stri
         }
         continue;
       }
-      d.rows.push({ t: 'msg', id: rowId(), from, to: callee, label: labelFor(e), style: 'sync' });
-      visit(e.to);
-      d.rows.push({ t: 'msg', id: rowId(), from: callee, to: from, label: 'response', style: 'reply' });
+      labelsFor(e).forEach((label, k) => {
+        d.rows.push({ t: 'msg', id: rowId(), from, to: callee, label, style: 'sync' });
+        if (k === 0) visit(e.to);   // what the callee does next is drawn once
+        d.rows.push({ t: 'msg', id: rowId(), from: callee, to: from, label: 'response', style: 'reply' });
+      });
     }
     visiting.delete(nodeId);
   };

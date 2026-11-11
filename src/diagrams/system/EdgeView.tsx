@@ -40,7 +40,7 @@ export const EdgeLine = memo(function EdgeLine({ id, geo, selected, crit, cross,
   && a.style.line === b.style.line && a.style.color === b.style.color && a.style.width === b.style.width && a.style.arrows === b.style.arrows);
 
 /** What a connection's label shows, top to bottom; any may be missing. `label` may hold several lines. */
-export interface LabelLines { label?: string; endpoint?: string; rps?: string; notes?: string[] }
+export interface LabelLines { label?: string; endpoints?: string[]; rps?: string; notes?: string[] }
 
 /** The label's own lines: the newlines typed, with long lines wrapped, at most 6 in all. */
 export const labelRows = (label: string | undefined): string[] =>
@@ -50,7 +50,7 @@ const SANS = 6.3, MONO = 6.05, ROW = 14, NOTE_ROW = 13.5;
 
 /** The label's size (for placing and hiding it): the chip, and the notes box under it. */
 export function labelBox(l: LabelLines) {
-  const rows = [...labelRows(l.label).map(t => t.length * SANS), l.endpoint && l.endpoint.length * MONO, l.rps && l.rps.length * MONO].filter((x): x is number => !!x);
+  const rows = [...labelRows(l.label).map(t => t.length * SANS), ...(l.endpoints ?? []).map(t => t.length * MONO), l.rps && l.rps.length * MONO].filter((x): x is number => !!x);
   const chipW = rows.length ? Math.max(...rows) + 14 : 0, chipH = rows.length ? rows.length * ROW + 5 : 0;
   const notesW = l.notes?.length ? Math.min(236, Math.max(...l.notes.map(s => s.length * 5.9)) + 18) : 0;
   const notesH = l.notes?.length ? l.notes.length * NOTE_ROW + 9 : 0;
@@ -79,7 +79,7 @@ export const EdgeLabel = memo(function EdgeLabel({ id, lines, x, y, selected, hi
   const b = labelBox(lines);
   const rows: [string, string, string?][] = [];
   labelRows(lines.label).forEach((t, i) => rows.push(['t-label', t, 'l' + i]));
-  if (lines.endpoint) rows.push(['t-ep', lines.endpoint]);
+  (lines.endpoints ?? []).forEach((t, i) => rows.push(['t-ep', t, 'e' + i]));
   if (lines.rps) rows.push(['t-rps', lines.rps]);
   const top = y - (b.chipH ? b.chipH / 2 : 0);
   const notesTop = b.chipH ? top + b.chipH + 4 : y - b.notesH / 2;

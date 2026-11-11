@@ -2,8 +2,8 @@
  * A connection's panel: its label, the endpoint it calls, whether its notes show on the line, its style, and —
  * with the load view on — calls per request and what it carries.
  */
-import { detailOf, typeDef, type Edge } from '../../../domain/model';
-import { fmt } from '../../../lib/format';
+import { detailOf, typeDef, edgeCalls, qty, type Edge } from '../../../domain/model';
+import { fmt, fmtCalls } from '../../../lib/format';
 import { select } from '../../../store/editor';
 import { useLoadView } from '../../../store/loadView';
 import { Icon } from '../../../ui/Icon';
@@ -11,7 +11,7 @@ import { deleteEdge } from '../actions';
 import { edit, findNode, resultsOf, useSysDoc } from '../state';
 import { NotesSection } from '../../../notes/ItemNotes';
 import { hasNotes } from '../../../domain/notes';
-import { CheckField, NumberField, SelectField, TextAreaField } from './controls';
+import { CheckField, NumberField, TextAreaField } from './controls';
 import { Seg, StyleRow, Swatches } from './StyleControls';
 
 const LineIcon = ({ dash, cap }: { dash?: string; cap?: boolean }) =>
@@ -21,6 +21,41 @@ const ArrowIcon = ({ start, end }: { start?: boolean; end?: boolean }) => (
     <path d="M3 5h20" />{end && <path d="M18 1.5L23 5l-5 3.5" />}{start && <path d="M8 1.5L3 5l5 3.5" />}
   </svg>
 );
+
+/** Tick each endpoint the connection calls; with the load view on, each gets its own calls per request. */
+function EndpointPicker({ e, eps, target, load, set }: { e: Edge; eps: { method: string; path: string }[]; target: string; load: boolean; set(f: (x: Edge) => void): void }) {
+  const picked = new Map((e.endpoints ?? []).map(x => [x.i, x.calls]));
+  const toggle = (i: number) => set(x => {
+    const list = (x.endpoints ?? []).filter(y => y.i !== i);
+    if (!picked.has(i)) list.push({ i, calls: list.length ? 1 : (qty(x.calls) || 1) });
+    list.sort((p, q) => p.i - q.i);
+    if (list.length) { x.endpoints = list; x.calls = edgeCalls(x); } else { delete x.endpoints; }
+  });
+  const setCalls = (i: number, v: string) => set(x => {
+    const y = x.endpoints?.find(z => z.i === i); if (!y) return;
+    y.calls = qty(v); x.calls = edgeCalls(x);
+  });
+  return (
+    <div className="wide ep-pick" id="endpointPicker">
+      <div className="ep-pick-h"><span>Endpoints called <span className="muted">· from {target}</span></span>{load && <span className="muted">calls / request</span>}</div>
+      {eps.map((ep, i) => {
+        const on = picked.has(i);
+        return (
+          <div key={i} className={'ep-pick-row' + (on ? ' on' : '')}>
+            <label>
+              <input type="checkbox" data-endpoint-pick={i} checked={on} onChange={() => toggle(i)} />
+              <span className={'method m-' + ep.method.toLowerCase()}>{ep.method}</span>
+              <span className="ep-path">{ep.path}</span>
+            </label>
+            {load && on && <input type="number" min={0} step="any" className="ep-calls" data-endpoint-calls={i} aria-label={`Calls per request to ${ep.method} ${ep.path}`}
+              value={picked.get(i) ?? 0} onChange={ev => setCalls(i, ev.target.value)} />}
+          </div>
+        );
+      })}
+      <p className="note">{e.endpoints?.length ? 'Tick every endpoint this component calls.' : 'None ticked: the endpoint isn’t specified.'}</p>
+    </div>
+  );
+}
 
 export function EdgePanel({ e }: { e: Edge }) {
   const doc = useSysDoc();
@@ -33,7 +68,11 @@ export function EdgePanel({ e }: { e: Edge }) {
   const styled = !!(e.line || e.color || e.width || e.arrows);
   // crossing an environment draws dashed unless a pattern is picked
   const lineDefault = resultsOf(doc).crossings?.[e.id] ? 'dashed' : 'solid';
-  const calls = <NumberField path="calls" label="Calls per incoming request" wide value={e.calls} min={0} />;
+  const listed = !!e.endpoints?.length;
+  // with endpoints ticked, calls are per endpoint and the connection's are their sum
+  const calls = listed
+    ? <div className="wide calls-total" id="callsTotal">Calls per incoming request <b>{fmtCalls(edgeCalls(e))}</b> <span className="muted">· the sum over its endpoints</span></div>
+    : <NumberField path="calls" label="Calls per incoming request" wide value={e.calls} min={0} />;
   const notes = (
     <>
       {behaviour === 'cache' && <p className="note">Only cache misses travel down this edge.</p>}
@@ -51,10 +90,7 @@ export function EdgePanel({ e }: { e: Edge }) {
       <div className="tab">
         <div className="props">
           <TextAreaField path="label" label="Label · shown on the line (Enter for a new line)" wide rows={1} value={e.label ?? ''} />
-          {eps.length > 0 && (
-            <SelectField path="endpoint" label={`Endpoint called · from ${b.name}`} wide int empty="Unspecified" value={e.endpoint == null ? '' : String(e.endpoint)}
-              options={eps.map((_, i) => String(i))} labelOf={i => `${eps[+i].method} ${eps[+i].path}`} />
-          )}
+          {eps.length > 0 && <EndpointPicker e={e} eps={eps} target={b.name} load={load} set={set} />}
           <CheckField path="showNotes" label={hasNotes(e.notes) ? 'Show notes on the line' : 'Show notes on the line (add some below)'} wide value={!!e.showNotes} />
           {load && calls}
         </div>

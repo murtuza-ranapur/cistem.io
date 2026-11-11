@@ -178,10 +178,11 @@ public class SystemTools {
         return result;
     }
 
-    @McpTool(name = "set_edge", description = "Change a connection: calls per request, the label shown on the line (empty string removes it), whether its notes show on the line, and its style. Omit what you don't change.")
+    @McpTool(name = "set_edge", description = "Change a connection: the target's endpoints it calls (each with its own calls per request), calls per request when it lists no endpoints, the label shown on the line (empty string removes it), whether its notes show on the line, and its style. Omit what you don't change.")
     public ObjectNode setEdge(@McpToolParam(description = "Diagram id") String diagramId,
                               @McpToolParam(description = "Edge id") String edgeId,
-                              @McpToolParam(description = "Calls per incoming request", required = false) Double calls,
+                              @McpToolParam(description = "Calls per incoming request (only for a connection that lists no endpoints)", required = false) Double calls,
+                              @McpToolParam(description = "Endpoints of the target this connection calls, each \"METHOD /path\" with optional calls per request as \" x4\" (default 1), e.g. [\"POST /v1/uploads\", \"GET /v1/uploads/{id} x4\"]; [] clears them", required = false) List<String> endpoints,
                               @McpToolParam(description = "Text shown on the line, newlines start new lines; \"\" removes it", required = false) String label,
                               @McpToolParam(description = "Show the connection's notes on the line under the label", required = false) Boolean showNotes,
                               @McpToolParam(description = "Line: solid, dashed or dotted (\"default\" resets)", required = false) String line,
@@ -192,7 +193,11 @@ public class SystemTools {
             for (JsonNode n : f.path("model").path("edges")) {
                 if (!edgeId.equals(n.path("id").asText())) continue;
                 ObjectNode e = (ObjectNode) n;
-                if (calls != null) e.put("calls", calls);
+                if (endpoints != null) setEndpoints(f, e, endpoints);
+                if (calls != null) {
+                    if (e.path("endpoints").isArray() && !e.path("endpoints").isEmpty()) throw new IllegalArgumentException("This connection lists endpoints: set calls per endpoint with endpoints, e.g. \"GET /v1/x x4\"");
+                    e.put("calls", calls);
+                }
                 if (label != null) { if (label.isBlank()) e.remove("label"); else e.put("label", label.length() > 500 ? label.substring(0, 500) : label); }
                 if (showNotes != null) { if (showNotes) e.put("showNotes", true); else e.remove("showNotes"); }
                 style(e, "line", line, Set.of("solid", "dashed", "dotted"), "default");
@@ -203,6 +208,33 @@ public class SystemTools {
             }
             throw new IllegalArgumentException("No such edge");
         });
+    }
+
+    /** Point the connection at these endpoints of its target ("METHOD /path [xN]"); calls becomes their sum. */
+    private static void setEndpoints(JsonNode file, ObjectNode e, List<String> wanted) {
+        if (wanted.isEmpty()) { e.remove("endpoints"); return; }
+        JsonNode target = null;
+        for (JsonNode n : file.path("model").path("nodes")) if (e.path("to").asText().equals(n.path("id").asText())) target = n;
+        JsonNode eps = target == null ? null : target.path("endpoints");
+        if (eps == null || !eps.isArray() || eps.isEmpty()) throw new IllegalArgumentException("The target has no endpoints; add them with set_properties first");
+        ArrayNode out = e.putArray("endpoints");
+        double sum = 0; Set<Integer> seen = new HashSet<>();
+        for (String w : wanted) {
+            var m = java.util.regex.Pattern.compile("^\\s*(\\S+)\\s+(\\S+?)(?:\\s+[x×*]\\s*([0-9.]+))?\\s*$").matcher(w);
+            if (!m.matches()) throw new IllegalArgumentException("Endpoint \"" + w + "\" should look like \"GET /v1/path\" or \"GET /v1/path x4\"");
+            String method = m.group(1).toUpperCase(), path = m.group(2);
+            double c = m.group(3) == null ? 1 : Double.parseDouble(m.group(3));
+            int found = -1;
+            for (int i = 0; i < eps.size(); i++) if (method.equals(eps.get(i).path("method").asText().toUpperCase()) && path.equals(eps.get(i).path("path").asText())) { found = i; break; }
+            if (found < 0) {
+                List<String> have = new ArrayList<>(); for (JsonNode x : eps) have.add(x.path("method").asText() + " " + x.path("path").asText());
+                throw new IllegalArgumentException("No endpoint " + method + " " + path + " on the target; it has " + have);
+            }
+            if (!seen.add(found)) continue;
+            out.addObject().put("i", found).put("calls", c);
+            sum += c;
+        }
+        e.put("calls", sum);
     }
 
     /** Set `key` to `value` when it's one of `allowed`; `reset` (or "default") removes it. */

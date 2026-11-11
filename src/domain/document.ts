@@ -10,7 +10,7 @@
  * JSON Schema: schema/cistem.schema.json
  */
 import { isLogo } from '../lib/logo';
-import { adopt, isPaletteColor, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
+import { adopt, isPaletteColor, customWidth, edgeCalls, qty, type Doc, type NodeData, type Node, type Edge, type Container, type Link, type Frame } from './model';
 import { sanitizeSeq, type SeqDoc } from './seq';
 import { sanitizeCls, type ClassDoc } from './cls';
 import { itemNotes, noteToFile, sanitizeNotes, type CanvasNote, type NoteFile } from './notes';
@@ -143,6 +143,14 @@ export function fromFile(input: unknown): { doc: Doc; meta: DiagramFile['meta'] 
 
 /** Keep an edge's label and style only when they are values the editor writes. */
 function edgeStyle(e: any) {
+  // a connection lists the endpoints it calls, each with its calls per request (files before this had one `endpoint`)
+  if (typeof e.endpoint === 'number' && !Array.isArray(e.endpoints)) e.endpoints = [{ i: e.endpoint, calls: qty(e.calls) || 1 }];
+  delete e.endpoint;
+  if ('endpoints' in e) {
+    const seen = new Set<number>();
+    const eps = Array.isArray(e.endpoints) ? e.endpoints.filter((x: any) => x && Number.isInteger(x.i) && x.i >= 0 && !seen.has(x.i) && seen.add(x.i)).map((x: any) => ({ i: x.i, calls: qty(x.calls) })) : [];
+    if (eps.length) { e.endpoints = eps; e.calls = edgeCalls(e); } else delete e.endpoints;
+  }
   if ('label' in e && (typeof e.label !== 'string' || !e.label.trim())) delete e.label;
   else if (typeof e.label === 'string') e.label = e.label.slice(0, 500);
   if ('showNotes' in e && e.showNotes !== true) delete e.showNotes;
@@ -177,6 +185,7 @@ function cleanSystem(f: DiagramFile) {
     if ('logo' in n && !isLogo(n.logo)) delete out.logo;
     if ('border' in n && n.border !== 'dashed') delete out.border;
     if ('color' in n && !isPaletteColor(n.color)) delete out.color;
+    if ('width' in n) { const w = customWidth(n); if (w) out.width = w; else delete out.width; }
     return out;
   }) as Node[];
   const edgeIds = new Set<string>();

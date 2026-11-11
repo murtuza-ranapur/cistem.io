@@ -121,6 +121,12 @@ A **Service** has a type — Microservice, Application, Monolith, Function, Work
 
 Any component can have a **dashed border** (panel → Border), e.g. to mark what you don't run, and a **logo**: paste an image (`⌘V`) with components selected, drop an image file onto one, or pick one in the panel. Pasting or dropping an image on empty canvas makes a new Application named after the file. Logos are shrunk to 64 px and stored in the diagram (no uploads), so they work signed out and travel with exports.
 
+## Endpoints
+
+A collapsed service says how many endpoints it has, by method (`3 endpoints · POST 1 · GET 2`); expanded, every endpoint is listed and long paths wrap at a `/`. Drag the handle on a selected card's right edge to make it wider (double-click the handle to reset); the width is saved with the diagram. Hover an endpoint row for its full path; click it to open the Endpoints tab.
+
+A connection can call **several** of its target's endpoints: tick them in the connection's panel. With the load view on, each gets its own calls per request (an upload and four status polls, say); the connection's calls are their sum, the line lists them (or says how many), and the expanded target highlights them and shows the rps each endpoint receives from all its callers. Files with the older single `endpoint` migrate on open.
+
 ## Copy as image
 
 The image button in the top bar (or `⌘⇧C`) copies the whole diagram, not just what's on screen, as a PNG at 2×: paste it straight into Confluence, a doc or a slide. Export / import also has **Download PNG** and **Download SVG**. The picture leaves out the grid, selection and app chrome, always uses the light theme, includes canvas notes, and embeds the app's fonts (IBM Plex, OFL, served from `/fonts`).

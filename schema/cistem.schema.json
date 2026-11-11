@@ -257,6 +257,12 @@
         },
         "notes": {
           "$ref": "#/$defs/noteText"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 160,
+          "maximum": 720,
+          "description": "Card width set by dragging its edge; absent = it follows the type and the name."
         }
       }
     },
@@ -282,14 +288,6 @@
           "type": "number",
           "minimum": 0,
           "description": "Downstream calls made per request arriving at `from`."
-        },
-        "endpoint": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "minimum": 0,
-          "description": "Index into the target service's endpoints, if known."
         },
         "notes": {
           "$ref": "#/$defs/noteText"
@@ -338,6 +336,27 @@
             "none"
           ],
           "description": "Arrowheads; absent = at the end."
+        },
+        "endpoints": {
+          "type": "array",
+          "description": "The target's endpoints this connection calls, by index into its endpoints, each with its own calls per request; `calls` is their sum. (Older files had a single `endpoint` index.)",
+          "items": {
+            "type": "object",
+            "required": [
+              "i",
+              "calls"
+            ],
+            "properties": {
+              "i": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "calls": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
         }
       }
     },

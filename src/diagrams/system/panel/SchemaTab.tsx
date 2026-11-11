@@ -1,5 +1,5 @@
 /** A component's schema tab: endpoints (with headers and bodies), tables, a topic or a message. */
-import { METHODS, detailOf, type Node } from '../../../domain/model';
+import { METHODS, detailOf, edgeCalls, type Node } from '../../../domain/model';
 import { parseAvro, COMMON_HEADERS, HEADER_VALUES } from '../../../domain/fields';
 import { AddButton, DataList, NumberField, RemoveButton, SelectField, TextField } from './controls';
 import { editItem } from './paths';
@@ -27,7 +27,10 @@ function Endpoints({ n }: { n: Node }) {
   // removing an endpoint renumbers the edges that call the ones after it
   const remove = (i: number) => editItem((it, d) => {
     it.endpoints.splice(i, 1);
-    for (const e of d.edges) if (e.to === it.id && e.endpoint != null) { if (e.endpoint === i) e.endpoint = null; else if (e.endpoint > i) e.endpoint--; }
+    for (const e of d.edges) if (e.to === it.id && e.endpoints?.length) {
+      e.endpoints = e.endpoints.filter(x => x.i !== i).map(x => (x.i > i ? { ...x, i: x.i - 1 } : x));
+      if (!e.endpoints.length) delete e.endpoints; else e.calls = edgeCalls(e);
+    }
   });
   return (
     <section className="list">

@@ -1468,7 +1468,7 @@ abstract class Entity { protected long version; }`;
     const svc = doc.model.nodes.find(n => n.kind === 'service' && (n.endpoints || []).length);
     const e = doc.model.edges.find(x => x.to === svc.id);
     await clickEdge(t.page, e.id);
-    await t.page.selectOption('#sheetBody select[data-path="endpoint"]', '0');
+    await t.page.check('#sheetBody [data-endpoint-pick="0"]');
     await t.page.fill('#sheetBody textarea[data-path="label"]', 'route payments\nvia the ALB'); await t.page.waitForTimeout(200);
     await t.page.click('#sheetBody [contenteditable]'); await t.page.keyboard.type('Sticky sessions off; health check every 5s.'); await t.page.waitForTimeout(400);
     await t.page.click('#sheetBody input[data-path="showNotes"]'); await t.page.waitForTimeout(250);
@@ -1492,6 +1492,60 @@ abstract class Entity { protected long version; }`;
     assert(/hsl\(42/.test(kc), 'card uses the colour: ' + kc);
     await t.page.click('[data-style="color:default"]'); await t.page.waitForTimeout(200);
     eq((await t.node(nodes[1].id)).color, undefined, 'default');
+  });
+
+  await test('endpoints: collapsed card counts them; expanded rows wrap long paths; a card can be resized and reset', async t => {
+    const svc = (await t.doc()).model.nodes.find(n => n.kind === 'service' && (n.endpoints || []).length);
+    await t.clickNode(svc.id);
+    await t.page.click('[data-tab="schema"]');
+    const add = async (m, p) => { await t.page.click('[data-action="add-endpoint"]'); await t.page.waitForTimeout(100);
+      const rows = await t.page.$$('#sheetBody input[data-path$=".path"]'); await rows[rows.length - 1].fill(p); };
+    await add('GET', '/v1/payment-uploads/{ticketId}/results/history');
+    await t.page.waitForTimeout(200);
+    const n = (await t.node(svc.id)).endpoints.length;
+    const sum = await t.page.textContent(`[data-node="${svc.id}"] .sum`);
+    if (n > 1) assert(/^\d+ endpoints · /.test(sum), 'a count, not a cut list: ' + sum);
+    // expand: the long path takes two lines
+    await t.page.click(`[data-toggle="${svc.id}"]`); await t.page.waitForTimeout(300);
+    const lines = await t.page.$$eval(`[data-node="${svc.id}"] .eprow:last-of-type text.path`, e => e.map(x => x.textContent));
+    assert(lines.length >= 2, 'wrapped: ' + JSON.stringify(lines));
+    assert(lines.join('').endsWith('/history'), 'nothing lost: ' + lines.join(''));
+    // resize by its handle, then double-click to reset
+    const h = await t.page.$(`[data-node="${svc.id}"] rect.resize`); assert(h, 'handle on the selected card');
+    const b = await h.boundingBox();
+    await t.page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await t.page.mouse.down();
+    await t.page.mouse.move(b.x + 160, b.y + b.height / 2, { steps: 6 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    const wide = (await t.node(svc.id)).width; assert(wide > 300 && wide % 8 === 0, 'wider, on the grid: ' + wide);
+    const lines2 = await t.page.$$eval(`[data-node="${svc.id}"] .eprow:last-of-type text.path`, e => e.length);
+    eq(lines2, 1, 'one line once wide enough');
+    const h2 = await (await t.page.$(`[data-node="${svc.id}"] rect.resize`)).boundingBox();
+    await t.page.mouse.click(h2.x + h2.width / 2, h2.y + h2.height / 2); await t.page.mouse.click(h2.x + h2.width / 2, h2.y + h2.height / 2);
+    await t.page.waitForTimeout(200);
+    eq((await t.node(svc.id)).width, undefined, 'double-click resets');
+  });
+
+  await test('one connection, several endpoints: tick them, calls per endpoint, rows highlighted, rps per endpoint', async t => {
+    const doc = await t.doc();
+    const svc = doc.model.nodes.find(n => n.kind === 'service' && (n.endpoints || []).length);
+    const e = doc.model.edges.find(x => x.to === svc.id);
+    // make sure the target has two endpoints
+    if (svc.endpoints.length < 2) {
+      await t.clickNode(svc.id); await t.page.click('[data-tab="schema"]'); await t.page.click('[data-action="add-endpoint"]'); await t.page.waitForTimeout(200);
+    }
+    if (!(await t.page.$(`[data-node="${svc.id}"].expanded`))) { await t.page.click(`[data-toggle="${svc.id}"]`); await t.page.waitForTimeout(300); }
+    await clickEdge(t.page, e.id);
+    for (const i of [0, 1]) if (!(await t.page.isChecked(`[data-endpoint-pick="${i}"]`))) await t.page.check(`[data-endpoint-pick="${i}"]`);
+    await t.page.fill('[data-endpoint-calls="1"]', '4'); await t.page.waitForTimeout(250);
+    const saved = (await t.doc()).model.edges.find(x => x.id === e.id);
+    eq(saved.endpoints.length, 2); eq(saved.endpoints[1].calls, 4);
+    eq(saved.calls, saved.endpoints[0].calls + 4, 'calls is the sum');
+    eq(await t.page.$$eval(`[data-node="${svc.id}"] .eprow.hot`, x => x.length), 2, 'both rows highlighted');
+    const rps = await t.page.$$eval(`[data-node="${svc.id}"] .eprow .ctype`, x => x.map(y => y.textContent));
+    assert(/rps/.test(rps[1]), 'rps per endpoint with the load view on: ' + JSON.stringify(rps));
+    const lab = await t.page.$$eval(`#labels [data-edge="${e.id}"] .t-ep`, x => x.map(y => y.textContent));
+    eq(lab.length, 2, 'both endpoints on the line: ' + JSON.stringify(lab));
+    await t.page.uncheck('[data-endpoint-pick="0"]'); await t.page.uncheck('[data-endpoint-pick="1"]'); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.edges.find(x => x.id === e.id).endpoints, undefined, 'none ticked: unspecified');
   });
 
   await test('service type: pick Application and the card says so', async t => {

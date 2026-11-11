@@ -44,6 +44,8 @@ export interface NodeData {
   logo?: string;
   /** Card style: a dashed border (e.g. for something you don't run), and a colour instead of the type's. */
   border?: 'dashed'; color?: ContainerColor;
+  /** Card width set by dragging its edge (else it follows the type and the name), see customWidth. */
+  width?: number;
   /** What it calls itself on the card (a service's type: Application, Worker…), see kindLabel. */
   variant?: string;
   rps?: number; platforms?: string[];
@@ -60,13 +62,19 @@ export interface Node extends NodeData { x: number; y: number }
 export type EntryNode = Node; export type ServiceNode = Node; export type DbNode = Node & { tables: Table[] }; export type QueueNode = Node & { schema: string };
 
 export interface Edge {
-  id: string; from: string; to: string; calls: number; endpoint?: number | null; notes?: string;
+  id: string; from: string; to: string; calls: number; notes?: string;
+  /** The target's endpoints this connection calls (by index into its endpoints), each with its own calls per request; `calls` is their sum when any are listed. */
+  endpoints?: EdgeEndpoint[];
   /** Text shown on the line (see EdgeLabel); `showNotes` puts the notes under it too. */
   label?: string; showNotes?: boolean;
   /** Style; absent = the default (solid — dashed when it crosses an environment —, grey, medium, arrow at the end). */
   line?: EdgeLine; color?: ContainerColor; width?: 'thin' | 'thick'; arrows?: 'both' | 'none';
 }
 export type EdgeLine = 'solid' | 'dashed' | 'dotted';
+export interface EdgeEndpoint { i: number; calls: number }
+/** Calls per incoming request along a connection: the sum over its endpoints when it lists any. */
+export const edgeCalls = (e: { calls?: unknown; endpoints?: EdgeEndpoint[] }) =>
+  Array.isArray(e.endpoints) && e.endpoints.length ? e.endpoints.reduce((a, x) => a + qty(x?.calls), 0) : qty(e.calls);
 
 /** A boundary that components live in: a cloud, an account, a VPC... Nested via `parent`. */
 export type ContainerKind = 'cloud' | 'account' | 'vpc' | 'region' | 'datacentre' | 'team';
@@ -131,20 +139,44 @@ export const NODE_H = 92;
 /** Sum of every client's peak rps: the load the whole diagram is tested at. */
 export const totalRps = (doc: { nodes: Node[] }) => doc.nodes.reduce((a, n) => a + (isSource(n) ? Number(n.rps) || 0 : 0), 0);
 /** Row heights for the expanded view. Deterministic so Java agrees. */
-export const EXP = { tableHead: 22, row: 16, tablePad: 8, tableGap: 10, endpointRow: 18, topicHead: 20, topicRow: 15, sectionPad: 10, max: 560 };
+export const EXP = { tableHead: 22, row: 16, tablePad: 8, tableGap: 10, endpointRow: 18, endpointWrap: 14, topicHead: 20, topicRow: 15, sectionPad: 10, max: 560 };
+
+/** Characters of an endpoint path that fit on one line of a card `w` wide (monospace, deterministic so Java agrees). */
+export const pathCols = (w: number) => Math.max(8, Math.floor((w - 114) / 6.4));
+/**
+ * An endpoint path in lines of at most `cols` characters, broken before a "/" where it can be (a segment
+ * longer than a line is cut), at most 4 lines — the last ends in "…" if there was more.
+ */
+export function wrapPath(path: string, cols: number): string[] {
+  const parts = (path.match(/\/?[^/]*/g) ?? []).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (let part of parts) {
+    if (line && (line + part).length > cols) { lines.push(line); line = ''; }
+    while (part.length > cols) { lines.push(part.slice(0, cols)); part = part.slice(cols); }
+    line += part;
+  }
+  if (line || !lines.length) lines.push(line);
+  if (lines.length > 4) { const keep = lines.slice(0, 4); keep[3] = keep[3].slice(0, Math.max(1, cols - 1)) + '…'; return keep; }
+  return lines;
+}
+/** An expanded endpoint row's height: one line, plus one per wrapped line. */
+export const endpointRowH = (path: string, w: number) => EXP.endpointRow + (wrapPath(path, pathCols(w)).length - 1) * EXP.endpointWrap;
 /** Expanded node height from its content; compact nodes are NODE_H. */
-export function nodeHeight(n: { kind: Kind; endpoints?: Endpoint[]; tables?: Table[]; schema?: string }, detail: Detail | undefined): number {
+export function nodeHeight(n: { kind: Kind; name?: string; width?: number; endpoints?: Endpoint[]; tables?: Table[]; schema?: string }, detail: Detail | undefined): number {
   if (detail !== 'expanded') return NODE_H;
   let extra = 0;
   const d = detailOf(n);
   if (d === 'tables') { const ts = n.tables ?? []; extra = ts.reduce((h, t) => h + EXP.tableHead + (t.columns?.length ?? 0) * EXP.row + EXP.tablePad, 0) + Math.max(0, ts.length - 1) * EXP.tableGap; }
-  else if (d === 'endpoints') extra = (n.endpoints?.length ?? 0) * EXP.endpointRow;
+  else if (d === 'endpoints') { const w = nodeWidthFor(n, detail); extra = (n.endpoints ?? []).reduce((h, e) => h + endpointRowH(e.path ?? '', w), 0); }
   else if (d === 'topic' || d === 'message') { const f = topicFields({ schema: n.schema ?? '' }).length; extra = f ? EXP.topicHead + f * EXP.topicRow : 0; }
   if (extra === 0) return NODE_H;
   return Math.min(EXP.max, NODE_H + EXP.sectionPad + extra + EXP.sectionPad);
 }
-/** Expanded nodes also widen so table rows fit. */
-export function nodeWidthFor(n: { kind: Kind; name?: string; tables?: Table[] }, detail: Detail | undefined): number {
+/** Expanded nodes also widen so table rows fit — unless the person set a width (dragging the card's edge). */
+export function nodeWidthFor(n: { kind: Kind; name?: string; width?: number; tables?: Table[] }, detail: Detail | undefined): number {
+  const set = customWidth(n);
+  if (set) return set;
   const w = nodeWidth(n);
   if (detail !== 'expanded') return w;
   if (detailOf(n) === 'tables') { const longest = (n.tables ?? []).reduce((m, t) => Math.max(m, ...(t.columns ?? []).map(c => c.name.length + c.type.length + 3 + (c.references ? 6 : 0))), 0); return Math.min(360, Math.max(w, 40 + longest * 6.4 + 60)); }
@@ -178,6 +210,11 @@ export function foreignKeys(doc: Doc): Array<{ from: { node: string; table: stri
   }
   return out;
 }
+/** Width limits for a card resized by hand. */
+export const WIDTH_MIN = 160, WIDTH_MAX = 720;
+/** The width someone dragged a card to, if any (a whole number within the limits). */
+export const customWidth = (n: { width?: unknown }) =>
+  typeof n.width === 'number' && Number.isFinite(n.width) ? Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, Math.round(n.width))) : 0;
 /** Node width follows the name so long names aren't clipped; deterministic (no font metrics) so Java agrees. */
 export function nodeWidth(n: { kind: Kind; name?: string }): number {
   const base = typeDef(n.kind).w;
@@ -290,7 +327,7 @@ export function exampleDoc(): Doc {
     links: [{ id: 'l1', from: edge.id, to: core.id, type: 'privatelink', latencyMs: 2 }],
     nodes: [clients, lb, api, cache, db, q, worker], edges: [
       { id: 'e1', from: clients.id, to: lb.id, calls: 1 },
-      { id: 'e2', from: lb.id, to: api.id, calls: 1, endpoint: 0 },
+      { id: 'e2', from: lb.id, to: api.id, calls: 1, endpoints: [{ i: 0, calls: 1 }] },
       { id: 'e3', from: api.id, to: cache.id, calls: 2 },
       { id: 'e4', from: cache.id, to: db.id, calls: 1 },
       { id: 'e5', from: api.id, to: db.id, calls: 1 },

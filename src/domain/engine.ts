@@ -1,4 +1,4 @@
-import { crossingLatency, behaviourOf, isSource, isAsync, qty, type Doc, type Node } from './model';
+import { crossingLatency, behaviourOf, isSource, isAsync, qty, edgeCalls, type Doc, type Node } from './model';
 
 export type Status = 'ok' | 'warn' | 'crit';
 export interface NodeResult { load: number; cap: number; util: number; status: Status; lat: number; cum: number }
@@ -69,7 +69,7 @@ export function compute(doc: Doc): Results {
     doc.edges.forEach(e => {
       const s = byId[e.from], t = byId[e.to];
       if (!s || !t) return;
-      const factor = outFactor(s, outs[s.id]) * num(e.calls);
+      const factor = outFactor(s, outs[s.id]) * edgeCalls(e);
       const srcTotal = total(s.id);
       for (const origin in bd[s.id]) {
         if (isAsync(t) && origin === t.id) continue;          // don't republish what we consumed from t
@@ -106,7 +106,7 @@ export function compute(doc: Doc): Results {
   doc.edges.forEach(e => {
     const s = byId[e.from], t = byId[e.to]; if (!s || !t) return;
     const eligible = Object.entries(bd[s.id]).filter(([o]) => !(isAsync(t) && o === t.id)).reduce((a, [, v]) => a + v, 0);
-    edges[e.id] = eligible * outFactor(s, outs[s.id]) * num(e.calls);
+    edges[e.id] = eligible * outFactor(s, outs[s.id]) * edgeCalls(e);
     crossings[e.id] = crossingLatency(doc, s.container, t.container);
   });
 

@@ -57,7 +57,7 @@ export function connect(from: string, to: string) {
   const doc = sysDoc();
   if (doc.edges.some(e => e.from === from && e.to === to)) { hint('Already connected', 1200); return; }
   const id = freshId(doc, 'e');
-  edit(d => { d.edges.push({ id, from, to, calls: 1, endpoint: null }); });
+  edit(d => { d.edges.push({ id, from, to, calls: 1 }); });
   selectOne('edge', id);
 }
 

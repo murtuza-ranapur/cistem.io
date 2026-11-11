@@ -206,7 +206,12 @@
      "from": "n2",
      "to": "n3",
      "calls": 1,
-     "endpoint": 0
+     "endpoints": [
+      {
+       "i": 0,
+       "calls": 1
+      }
+     ]
     },
     {
      "id": "e3",

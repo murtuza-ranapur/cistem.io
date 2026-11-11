@@ -699,3 +699,26 @@ button.link:hover{text-decoration:underline}
 .props textarea.textarea-field{padding:6px 8px;border:1px solid var(--node-line);border-radius:6px;background:var(--panel);color:var(--fg);font-family:var(--mono);font-size:12.5px;min-width:0;width:100%;resize:vertical;line-height:1.45;box-sizing:border-box}
 .props textarea.textarea-field:hover{border-color:var(--muted)}
 .props textarea.textarea-field:focus{outline:none;border-color:var(--sel);box-shadow:0 0 0 3px var(--sel-soft)}
+.node rect.resize{fill:var(--sel);stroke:var(--panel);stroke-width:1.5;cursor:ew-resize}
+.node.dragging rect.resize{display:none}
+.node .eprow rect.ephit{fill:transparent}
+.node .eprow:hover rect.ephit{fill:color-mix(in srgb,var(--kc) 8%,transparent)}
+.node .eprow.hot rect.ephit{fill:color-mix(in srgb,var(--sel) 13%,transparent)}
+.node .eprow .epdot{fill:var(--sel)}
+.ep-pick{display:flex;flex-direction:column;gap:2px}
+.ep-pick-h{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
+.ep-pick-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:7px}
+.ep-pick-row.on{background:color-mix(in srgb,var(--sel) 9%,transparent)}
+.ep-pick-row label{display:flex;align-items:baseline;gap:8px;flex:1;min-width:0;cursor:pointer;font-family:var(--mono);font-size:12px}
+.ep-pick-row input[type=checkbox]{align-self:center;margin:0}
+.ep-pick-row .method{font-weight:600;flex:none;width:44px}
+.ep-pick-row .method.m-get{color:var(--ok,#2f8f5b)}
+.ep-pick-row .method.m-post{color:var(--sel)}
+.ep-pick-row .ep-path{overflow-wrap:anywhere;color:var(--fg)}
+.ep-pick-row input.ep-calls{width:60px;flex:none;padding:4px 6px;border:1px solid var(--node-line);border-radius:6px;background:var(--panel);color:var(--fg);font-family:var(--mono);font-size:12px;text-align:right}
+.calls-total{font-size:12px;color:var(--muted)}
+.calls-total b{color:var(--fg);font-family:var(--mono)}
+.props .ep-pick-row label{display:flex;flex-direction:row;align-items:baseline;gap:8px;flex:1;min-width:0;margin:0;font-size:12px;color:var(--fg)}
+.props .ep-pick-row input[type=checkbox]{width:auto;flex:none;padding:0;margin:0;align-self:center}
+.props .ep-pick-row input.ep-calls{width:60px;flex:none}
+.props .ep-pick .note{margin:6px 0 0}

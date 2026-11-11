@@ -4,13 +4,14 @@
  * shift/alt-drag to select several, drag the background to pan, double-click to rename, drop from the rail.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ancestry, typeDef, TYPES, NODE_H, ICON, qty, paletteCss, CONTAINER_COLORS, type ContainerColor, type Doc, type Frame, type Kind } from '../../domain/model';
+import { ancestry, typeDef, TYPES, NODE_H, ICON, qty, paletteCss, WIDTH_MIN, WIDTH_MAX, edgeCalls, CONTAINER_COLORS, type ContainerColor, type Doc, type Frame, type Kind } from '../../domain/model';
 import { hasNotes, notePreview } from '../../domain/notes';
 import { fmt, fmtCalls } from '../../lib/format';
 import { useEditor, editor, select, selectOne, toggleSelected, makePrimary, isSelected } from '../../store/editor';
 import * as history from '../../store/history';
 import { toWorld, toScreen, pointerWorld, type Point } from '../../store/viewport';
 import { imageIn } from '../../lib/logo';
+import { setPanelUi } from './panel/ui';
 import { isTyping } from '../../lib/browser';
 import { useLoadView } from '../../store/loadView';
 import { appFromLogo, logoOnto } from './logo';
@@ -22,7 +23,7 @@ import { fkPaths } from './detail';
 import { addContainer, addNode, connect, toggleDetail } from './actions';
 import { edit, findNode, resultsOf, selectedNodeIds, sysDoc, useSysDoc } from './state';
 import { FrameView } from './FrameView';
-import { NodeView } from './NodeView';
+import { NodeView, type EndpointCalls } from './NodeView';
 import { EdgeLabel, EdgeLine, labelBox, wrap, type LabelLines } from './EdgeView';
 
 type Gesture =
@@ -30,7 +31,8 @@ type Gesture =
   | { t: 'frame'; id: string; nodeIds: string[]; start: Record<string, Point>; frameStart: Record<string, Frame>; origin: Point; moved: boolean; target: string | null }
   | { t: 'pan'; sx: number; sy: number; vx: number; vy: number; moved: boolean }
   | { t: 'connect'; from: string; side: Side; target: string | null }
-  | { t: 'marquee'; origin: Point; additive: boolean; base: string[] };
+  | { t: 'marquee'; origin: Point; additive: boolean; base: string[] }
+  | { t: 'resize'; id: string; startW: number; origin: Point; moved: boolean };
 
 /** What the gesture in progress shows (state, so the drawing follows it). */
 interface Overlay {
@@ -53,6 +55,7 @@ const DEFS = <>
 </>;
 
 /** Rename requests from outside the canvas (Enter on a selected component). */
+let lastGrip = { id: '', t: 0 };
 let renameRequest: ((id: string) => void) | null = null;
 export const requestRename = (id: string) => renameRequest?.(id);
 
@@ -61,6 +64,8 @@ export function Canvas() {
   const selection = useEditor(s => s.selection);
   const results = resultsOf(doc);
   const load = useLoadView(st => st.on);
+  const selectedEdgeId = selection?.type === 'edge' ? selection.ids[0] : null;
+  const epCalls = useMemo(() => endpointCalls(doc, results, selectedEdgeId, load), [doc, results, selectedEdgeId, load]);
   const [overlay, setOverlay] = useState<Overlay>({});
   const [renaming, setRenaming] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -77,12 +82,21 @@ export function Canvas() {
   const onPointerDown = (ev: React.PointerEvent<SVGSVGElement>) => {
     const target = ev.target as Element;
     const nodeEl = target.closest<SVGGElement>('[data-node]');
-    const onControl = !!target.closest('[data-handle],[data-toggle]');
+    const onControl = !!target.closest('[data-handle],[data-toggle],[data-resize]');
     if (doubleTap(nodeEl && !onControl ? nodeEl.dataset.node! : null, ev)) { setRenaming(nodeEl!.dataset.node!); return; }
     setRenaming(null);
     ev.currentTarget.setPointerCapture(ev.pointerId);
     const additive = ev.shiftKey || ev.metaKey || ev.ctrlKey, w = toWorld(ev.clientX, ev.clientY), d = sysDoc();
 
+    // the right-edge handle of a selected card: drag to resize, double-click to go back to the standard width
+    const grip = target.closest<SVGElement>('[data-resize]');
+    if (grip && nodeEl) {
+      const id = nodeEl.dataset.node!, now = Date.now(), n = findNode(d, id)!;
+      if (lastGrip.id === id && now - lastGrip.t < 350) { lastGrip = { id: '', t: 0 }; edit(dd => { const x = dd.nodes.find(m => m.id === id); if (x) delete x.width; }); return; }
+      lastGrip = { id, t: now };
+      gesture.current = { t: 'resize', id, startW: nodeW(d, n), origin: w, moved: false };
+      return;
+    }
     const toggle = target.closest<SVGGElement>('[data-toggle]');
     if (toggle) { toggleDetail(toggle.dataset.toggle!); return; }
     const handle = target.closest<SVGCircleElement>('[data-handle]');
@@ -96,6 +110,8 @@ export function Canvas() {
       if (additive) toggleSelected('node', id);
       else if (!isSelected(editor().selection, 'node', id)) selectOne('node', id);
       else makePrimary('node', id);
+      // a click on an endpoint row of an expanded service opens its Endpoints tab
+      if (target.closest('[data-endpoint]')) setPanelUi({ tab: 'schema' });
       const ids = selectedNodeIds();
       gesture.current = { t: 'node', ids, start: Object.fromEntries(ids.map(i => { const n = findNode(d, i)!; return [i, { x: n.x, y: n.y }]; })), origin: w, moved: false };
       holdPanel();
@@ -158,6 +174,13 @@ export function Canvas() {
         setOverlay({ targetFrame: g.target });
         break;
       }
+      case 'resize': {
+        const dx = w.x - g.origin.x;
+        if (!g.moved) { if (Math.abs(dx) * k <= 2) return; g.moved = true; history.begin(); }
+        const width = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, Math.round((g.startW + dx) / 8) * 8));
+        edit(d => { const x = d.nodes.find(m => m.id === g.id); if (x) x.width = width; });
+        break;
+      }
       case 'pan':
         if (Math.hypot(ev.clientX - g.sx, ev.clientY - g.sy) > 3) g.moved = true;
         useEditor.setState(s => ({ view: { ...s.view, x: g.vx + ev.clientX - g.sx, y: g.vy + ev.clientY - g.sy } }));
@@ -217,13 +240,14 @@ export function Canvas() {
         if (g.target) connect(g.from, g.target);
         break;
       case 'marquee': break;
+      case 'resize': if (g.moved) history.end(); break;
     }
     setOverlay({});
   };
 
   const onPinchStart = () => {
     const g = gesture.current;
-    if (g && (g.t === 'node' || g.t === 'frame') && g.moved) history.end();
+    if (g && (g.t === 'node' || g.t === 'frame' || g.t === 'resize') && g.moved) history.end();
     gesture.current = null; setOverlay({});
   };
 
@@ -295,7 +319,7 @@ export function Canvas() {
           {nodes.map(n => (
             <NodeView key={n.id + ':' + n.kind} n={n} expanded={doc.detail?.[n.id] === 'expanded'} r={results.nodes[n.id]} load={load}
               selected={isSelected(selection, 'node', n.id)} dragging={!!overlay.dragging?.ids.has(n.id)}
-              target={overlay.connect?.target === n.id} animate={animate} />
+              target={overlay.connect?.target === n.id} animate={animate} calls={epCalls[n.id]} />
           ))}
         </g>
         <g id="fks">{fks.map((d, i) => <path key={i} className="fk" d={d} markerEnd="url(#crow)" />)}</g>
@@ -336,14 +360,14 @@ function EdgeLabels({ doc, items, selected, load }: { doc: Doc; items: EdgeItem[
   const results = resultsOf(doc);
   return <g id="labels">{items.map(({ e, geo }) => {
     const cross = results.crossings?.[e.id] || 0, isSel = selected === e.id;
-    const label = e.label?.trim() || undefined, ep = endpointLabel(doc, e) || undefined;
+    const label = e.label?.trim() || undefined, eps = endpointLabels(doc, e);
     const lines: LabelLines = {
-      label: label ?? ep,
-      endpoint: label ? ep : undefined,
-      rps: load ? `${fmtCalls(qty(e.calls))}× · ${fmt(results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '') : undefined,
+      label,
+      endpoints: eps.length ? eps : undefined,
+      rps: load ? `${fmtCalls(edgeCalls(e))}× · ${fmt(results.edges[e.id] || 0)} rps` + (cross ? ` · +${cross}ms` : '') : undefined,
       notes: e.showNotes && hasNotes(e.notes) ? wrap(notePreview(e.notes, 400)) : undefined,
     };
-    if (!lines.label && !lines.rps && !lines.notes) return null;
+    if (!lines.label && !lines.endpoints && !lines.rps && !lines.notes) return null;
     const box = labelBox(lines);
     const written = !!label || !!lines.notes;
     // computed labels are decoration (the panel has the number): hide one that's cramped or would land on a node
@@ -352,10 +376,34 @@ function EdgeLabels({ doc, items, selected, load }: { doc: Doc; items: EdgeItem[
   })}</g>;
 }
 
-function endpointLabel(doc: Doc, e: Doc['edges'][number]): string {
-  if (e.endpoint == null) return '';
-  const ep = findNode(doc, e.to)?.endpoints?.[e.endpoint];
-  return ep ? `${ep.method} ${ep.path}` : '';
+/** The endpoints a connection calls, as label lines: each one when there are one or two, else how many. */
+function endpointLabels(doc: Doc, e: Doc['edges'][number]): string[] {
+  const all = findNode(doc, e.to)?.endpoints ?? [];
+  const eps = (e.endpoints ?? []).map(x => all[x.i]).filter(Boolean);
+  return eps.length > 2 ? [`${eps.length} endpoints`] : eps.map(ep => `${ep.method} ${ep.path}`);
+}
+
+/**
+ * For each expanded service: the endpoints the selected connection calls (highlighted), and with the load view
+ * on, the rps each endpoint receives from all its callers (a connection's rps split by its per-endpoint calls).
+ */
+function endpointCalls(doc: Doc, results: ReturnType<typeof resultsOf>, selectedEdge: string | null, load: boolean): Record<string, EndpointCalls> {
+  const out: Record<string, EndpointCalls> = {};
+  for (const n of doc.nodes) {
+    if (doc.detail?.[n.id] !== 'expanded' || !n.endpoints?.length) continue;
+    const sel = selectedEdge ? doc.edges.find(e => e.id === selectedEdge && e.to === n.id) : undefined;
+    let rps: number[] | null = null;
+    if (load) {
+      rps = n.endpoints.map(() => 0);
+      for (const e of doc.edges) {
+        if (e.to !== n.id || !e.endpoints?.length) continue;
+        const total = edgeCalls(e), carried = results.edges[e.id] || 0;
+        if (total > 0) for (const x of e.endpoints) if (x.i < rps.length) rps[x.i] += carried * qty(x.calls) / total;
+      }
+    }
+    out[n.id] = { hot: sel?.endpoints?.map(x => x.i) ?? [], rps };
+  }
+  return out;
 }
 
 /** Rename a component in place (double-click, or Enter). An empty name keeps the old one. */

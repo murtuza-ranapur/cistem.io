@@ -212,6 +212,25 @@ class McpOAuthFlowTest {
                 {"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(diagramId)));
         assertEquals(Integer.valueOf(io.cistem.engine.Migrate.VERSION), JsonPath.read(doc, "$.version"));
         assertNotNull(JsonPath.read(doc, "$.layout.frames." + aws + ".w"));
+        // a connection can call several of its target's endpoints, each with its own calls per request
+        mcp(access, session, """
+                {"jsonrpc":"2.0","id":60,"method":"tools/call","params":{"name":"set_properties","arguments":{"diagramId":"%s","componentId":"%s","properties":{"endpoints":[{"method":"POST","path":"/v1/a","headers":[],"req":"","res":""},{"method":"GET","path":"/v1/a/{id}","headers":[],"req":"","res":""}]}}}}""".formatted(diagramId, svcId));
+        List<String> toSvc = JsonPath.read(doc, "$.model.edges[?(@.to=='" + svcId + "')].id");
+        String setEps = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":61,"method":"tools/call","params":{"name":"set_edge","arguments":{"diagramId":"%s","edgeId":"%s","endpoints":["POST /v1/a","GET /v1/a/{id} x4"]}}}""".formatted(diagramId, toSvc.get(0))));
+        assertNotNull(setEps);
+        String doc2 = unwrap(mcp(access, session, """
+                {"jsonrpc":"2.0","id":62,"method":"tools/call","params":{"name":"get_diagram","arguments":{"diagramId":"%s"}}}""".formatted(diagramId)));
+        List<Number> calls = JsonPath.read(doc2, "$.model.edges[?(@.to=='" + svcId + "')].calls");
+        assertEquals(5, calls.get(0).intValue(), "calls is the sum over its endpoints");
+        List<Object> eps = JsonPath.read(doc2, "$.model.edges[?(@.to=='" + svcId + "')].endpoints[*].i");
+        assertEquals(2, eps.size(), doc2);
+        String wrong = mcp(access, session, """
+                {"jsonrpc":"2.0","id":63,"method":"tools/call","params":{"name":"set_edge","arguments":{"diagramId":"%s","edgeId":"%s","endpoints":["DELETE /nope"]}}}""".formatted(diagramId, toSvc.get(0)));
+        assertTrue(wrong.contains("No endpoint DELETE /nope"), wrong);
+        String callsOnly = mcp(access, session, """
+                {"jsonrpc":"2.0","id":64,"method":"tools/call","params":{"name":"set_edge","arguments":{"diagramId":"%s","edgeId":"%s","calls":2}}}""".formatted(diagramId, toSvc.get(0)));
+        assertTrue(callsOnly.contains("lists endpoints"), callsOnly);
 
         // sequence diagrams: created from text, linked to this system diagram, readable and replaceable as text
         String seqRes = unwrap(mcp(access, session, """

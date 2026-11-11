@@ -61,7 +61,14 @@ export function edgeGeometry(doc: Doc, a: Node, b: Node): EdgeGeometry {
 export function summary(n: Node): string {
   if (isSource(n)) return (n.platforms || []).map(p => ({ web: 'Web', app: 'App' } as Record<string, string>)[p] || p).join(' · ');
   switch (detailOf(n)) {
-    case 'endpoints': { const e = n.endpoints || []; return e.length ? e.slice(0, 2).map(x => `${x.method} ${x.path}`).join('  ') + (e.length > 2 ? `  +${e.length - 2}` : '') : ''; }
+    case 'endpoints': {
+      // how many, and by method — a list would be cut mid-path; expanding the card shows them all
+      const e = n.endpoints || [];
+      if (!e.length) return '';
+      if (e.length === 1) return `${e[0].method} ${e[0].path}`;
+      const by = new Map<string, number>(); for (const x of e) by.set(x.method, (by.get(x.method) ?? 0) + 1);
+      return `${e.length} endpoints · ` + [...by].map(([m, k]) => `${m} ${k}`).join(' · ');
+    }
     case 'tables': { const t = n.tables || []; return t.length ? t.slice(0, 3).map(x => x.name).join(', ') + (t.length > 3 ? ` +${t.length - 3}` : '') : ''; }
     case 'topic': return [n.cluster, `${n.partitions ?? '?'} partitions`, n.key ? `key ${n.key}` : ''].filter(Boolean).join(' · ');
     case 'message': return [n.fifo ? 'FIFO' : 'standard', n.key ? `group ${n.key}` : ''].filter(Boolean).join(' · ');

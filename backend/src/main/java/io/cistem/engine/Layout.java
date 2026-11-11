@@ -21,20 +21,48 @@ public final class Layout {
     private Layout() {}
 
     // ---- mirrors of model.ts nodeHeight / nodeWidthFor / topicFields (expanded view sizes) ----
-    static final int TABLE_HEAD = 22, ROW = 16, TABLE_PAD = 8, TABLE_GAP = 10, ENDPOINT_ROW = 18, TOPIC_HEAD = 20, TOPIC_ROW = 15, SECTION_PAD = 10, MAX_H = 560;
+    static final int TABLE_HEAD = 22, ROW = 16, TABLE_PAD = 8, TABLE_GAP = 10, ENDPOINT_ROW = 18, ENDPOINT_WRAP = 14, TOPIC_HEAD = 20, TOPIC_ROW = 15, SECTION_PAD = 10, MAX_H = 560;
+    static final int WIDTH_MIN = 160, WIDTH_MAX = 720;
+
+    /** Mirror of model.ts pathCols. */
+    static int pathCols(int w) { return Math.max(8, (int) Math.floor((w - 114) / 6.4)); }
+
+    /** Mirror of model.ts wrapPath: how many lines an endpoint path takes (at most 4). */
+    static int pathLines(String path, int cols) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        var m = java.util.regex.Pattern.compile("/?[^/]*").matcher(path);
+        while (m.find()) if (!m.group().isEmpty()) parts.add(m.group());
+        int lines = 0; String line = "";
+        for (String part : parts) {
+            if (!line.isEmpty() && (line + part).length() > cols) { lines++; line = ""; }
+            while (part.length() > cols) { lines++; part = part.substring(cols); }
+            line += part;
+        }
+        if (!line.isEmpty() || lines == 0) lines++;
+        return Math.min(4, lines);
+    }
+
+    /** Mirror of model.ts customWidth: the width the card was dragged to, or 0. */
+    static int customWidth(JsonNode n) {
+        JsonNode w = n.path("width");
+        if (!w.isNumber() || !Double.isFinite(w.asDouble())) return 0;
+        return (int) Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, Math.round(w.asDouble())));
+    }
 
     public static int nodeHeight(JsonNode n, boolean expanded) {
         if (!expanded) return NODE_H;
         String detail = Types.detail(n);   // what the type expands to show (shared/component-types.json)
         int extra = 0;
         if ("tables".equals(detail)) { JsonNode ts = n.path("tables"); for (JsonNode t : ts) extra += TABLE_HEAD + t.path("columns").size() * ROW + TABLE_PAD; extra += Math.max(0, ts.size() - 1) * TABLE_GAP; }
-        else if ("endpoints".equals(detail)) extra = n.path("endpoints").size() * ENDPOINT_ROW;
+        else if ("endpoints".equals(detail)) { int w = nodeWidthFor(n, true); for (JsonNode e : n.path("endpoints")) extra += ENDPOINT_ROW + (pathLines(e.path("path").asText(""), pathCols(w)) - 1) * ENDPOINT_WRAP; }
         else if ("topic".equals(detail) || "message".equals(detail)) { int f = topicFieldCount(n); extra = f > 0 ? TOPIC_HEAD + f * TOPIC_ROW : 0; }   // one topic per node (v4)
         if (extra == 0) return NODE_H;
         return Math.min(MAX_H, NODE_H + SECTION_PAD + extra + SECTION_PAD);
     }
 
     public static int nodeWidthFor(JsonNode n, boolean expanded) {
+        int set = customWidth(n);
+        if (set > 0) return set;
         int w = nodeWidth(n);
         if (!expanded) return w;
         String detail = Types.detail(n);

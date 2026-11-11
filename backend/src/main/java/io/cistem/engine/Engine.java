@@ -66,6 +66,12 @@ public final class Engine {
         else return 0;
         return Double.isFinite(x) && x > 0 ? x : 0;
     }
+    /** Mirror of model.ts edgeCalls: the sum over the endpoints a connection lists, else its calls. */
+    static double edgeCalls(JsonNode e) {
+        JsonNode eps = e.path("endpoints");
+        if (eps.isArray() && !eps.isEmpty()) { double s = 0; for (JsonNode x : eps) s += num(x, "calls"); return s; }
+        return num(e, "calls");
+    }
     static double clamp01(double v) { return Math.min(1, Math.max(0, v)); }
     static String kind(JsonNode n) { return n.path("kind").asText(""); }
 
@@ -132,7 +138,7 @@ public final class Engine {
                 String from = e.path("from").asText(), to = e.path("to").asText();
                 JsonNode s = byId.get(from), t = byId.get(to);
                 if (s == null || t == null) continue;
-                double factor = outFactor(s, outs.get(from)) * num(e, "calls");
+                double factor = outFactor(s, outs.get(from)) * edgeCalls(e);
                 boolean toQueue = Types.isAsync(t), fromQueue = Types.isAsync(s);
                 for (var o : bd.get(from).entrySet()) {
                     if (toQueue && o.getKey().equals(to)) continue;
@@ -168,7 +174,7 @@ public final class Engine {
             if (s == null || t == null) continue;
             boolean toQueue = Types.isAsync(t);
             double eligible = bd.get(from).entrySet().stream().filter(o -> !(toQueue && o.getKey().equals(to))).mapToDouble(Map.Entry::getValue).sum();
-            edgeLoad.put(e.path("id").asText(), eligible * outFactor(s, outs.get(from)) * num(e, "calls"));
+            edgeLoad.put(e.path("id").asText(), eligible * outFactor(s, outs.get(from)) * edgeCalls(e));
             crossings.put(e.path("id").asText(), crossingLatency(model, containerOf(s), containerOf(t)));
         }
         return new Results(results, edgeLoad, crossings, new Verdict(worst, worstNode, maxLat, converged));
