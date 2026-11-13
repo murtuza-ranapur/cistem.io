@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n25",
+     "id": "n33",
      "kind": "entry",
      "name": "Shoppers",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": 12000
     },
     {
-     "id": "n26",
+     "id": "n34",
      "kind": "cdn",
      "name": "edge-cdn",
      "maxOps": 1000000,
@@ -28,14 +28,14 @@
      "latency": 15
     },
     {
-     "id": "n27",
+     "id": "n35",
      "kind": "apigw",
      "name": "gateway",
      "maxRps": 5000,
      "latency": 8
     },
     {
-     "id": "n28",
+     "id": "n36",
      "kind": "service",
      "name": "orders",
      "rpsPerInstance": 600,
@@ -66,7 +66,7 @@
      ]
     },
     {
-     "id": "n29",
+     "id": "n37",
      "kind": "mongodb",
      "name": "orders-db",
      "maxQps": 4000,
@@ -75,7 +75,7 @@
      "latency": 5
     },
     {
-     "id": "n30",
+     "id": "n38",
      "kind": "sqs",
      "name": "fulfilment",
      "maxThroughput": 3000,
@@ -85,7 +85,7 @@
      "key": "orderId"
     },
     {
-     "id": "n31",
+     "id": "n39",
      "kind": "service",
      "name": "fulfilment-worker",
      "rpsPerInstance": 300,
@@ -99,20 +99,20 @@
    "edges": [
     {
      "id": "e1",
-     "from": "n25",
-     "to": "n26",
+     "from": "n33",
+     "to": "n34",
      "calls": 1
     },
     {
      "id": "e2",
-     "from": "n26",
-     "to": "n27",
+     "from": "n34",
+     "to": "n35",
      "calls": 1
     },
     {
      "id": "e3",
-     "from": "n27",
-     "to": "n28",
+     "from": "n35",
+     "to": "n36",
      "calls": 1,
      "endpoints": [
       {
@@ -127,20 +127,20 @@
     },
     {
      "id": "e4",
-     "from": "n28",
-     "to": "n29",
+     "from": "n36",
+     "to": "n37",
      "calls": 2
     },
     {
      "id": "e5",
-     "from": "n28",
-     "to": "n30",
+     "from": "n36",
+     "to": "n38",
      "calls": 1
     },
     {
      "id": "e6",
-     "from": "n30",
-     "to": "n31",
+     "from": "n38",
+     "to": "n39",
      "calls": 1
     }
    ],
@@ -149,99 +149,106 @@
   },
   "layout": {
    "positions": {
-    "n25": {
+    "n33": {
      "x": 0,
      "y": 0
     },
-    "n26": {
+    "n34": {
      "x": 0,
      "y": 0
     },
-    "n27": {
+    "n35": {
      "x": 0,
      "y": 0
     },
-    "n28": {
+    "n36": {
      "x": 0,
      "y": 0
     },
-    "n29": {
+    "n37": {
      "x": 0,
      "y": 0
     },
-    "n30": {
+    "n38": {
      "x": 0,
      "y": 0
     },
-    "n31": {
+    "n39": {
      "x": 0,
      "y": 0
     }
    },
    "frames": {},
    "detail": {
-    "n28": "expanded",
-    "n30": "expanded"
+    "n36": "expanded",
+    "n38": "expanded"
    }
   }
  },
  "expected": {
   "nodes": {
-   "n25": {
+   "n33": {
     "load": 12000,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
-    "cum": 0
+    "cum": 0,
+    "idle": 0
    },
-   "n26": {
+   "n34": {
     "load": 12000,
     "cap": 1000000,
     "util": 0.012,
     "status": "ok",
     "lat": 15.182186234817815,
-    "cum": 15.182186234817815
+    "cum": 15.182186234817815,
+    "idle": 0
    },
-   "n27": {
+   "n35": {
     "load": 3000,
     "cap": 5000,
     "util": 0.6,
     "status": "ok",
     "lat": 20,
-    "cum": 35.18218623481781
+    "cum": 35.18218623481781,
+    "idle": 0
    },
-   "n28": {
+   "n36": {
     "load": 15000,
     "cap": 3600,
     "util": 4.166666666666667,
     "status": "crit",
     "lat": 200,
-    "cum": 235.1821862348178
+    "cum": 235.1821862348178,
+    "idle": 0
    },
-   "n29": {
+   "n37": {
     "load": 30000,
     "cap": 7500,
     "util": 4,
     "status": "crit",
     "lat": 50,
-    "cum": 285.1821862348178
+    "cum": 285.1821862348178,
+    "idle": 0
    },
-   "n30": {
+   "n38": {
     "load": 15000,
     "cap": 3000,
     "util": 5,
     "status": "crit",
     "lat": 200,
-    "cum": 435.1821862348178
+    "cum": 435.1821862348178,
+    "idle": 0
    },
-   "n31": {
+   "n39": {
     "load": 15000,
     "cap": 600,
     "util": 25,
     "status": "crit",
     "lat": 200,
-    "cum": 635.1821862348178
+    "cum": 635.1821862348178,
+    "idle": 0
    }
   },
   "edges": {
@@ -262,36 +269,36 @@
   },
   "verdict": {
    "status": "crit",
-   "node": "n28",
+   "node": "n36",
    "lat": 635.1821862348178,
    "converged": true
   },
   "layout": {
-   "n25": {
+   "n33": {
     "x": 40,
     "y": 152
    },
-   "n26": {
+   "n34": {
     "x": 352,
     "y": 152
    },
-   "n27": {
+   "n35": {
     "x": 648,
     "y": 152
    },
-   "n28": {
+   "n36": {
     "x": 960,
     "y": 80
    },
-   "n29": {
+   "n37": {
     "x": 1360,
     "y": 40
    },
-   "n30": {
+   "n38": {
     "x": 1360,
     "y": 216
    },
-   "n31": {
+   "n39": {
     "x": 1760,
     "y": 152
    }

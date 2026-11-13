@@ -1,7 +1,9 @@
 import { crossingLatency, behaviourOf, isSource, isAsync, qty, edgeCalls, type Doc, type Node } from './model';
 
 export type Status = 'ok' | 'warn' | 'crit';
-export interface NodeResult { load: number; cap: number; util: number; status: Status; lat: number; cum: number }
+export interface NodeResult { load: number; cap: number; util: number; status: Status; lat: number; cum: number;
+  /** A consumer with more instances than the partitions it reads: how many sit idle. */
+  idle?: number }
 export interface Verdict { status: Status; node: Node | null; lat: number; converged: boolean }
 export interface Results { nodes: Record<string, NodeResult>; edges: Record<string, number>; crossings: Record<string, number>; verdict: Verdict }
 
@@ -15,10 +17,11 @@ const clamp01 = (v: unknown) => Math.min(1, Math.max(0, num(v)));
  * Sustainable requests/sec a node can take before it saturates — by behaviour, not type, so a new
  * component type in shared/component-types.json needs no engine change.
  */
-export function capacity(n: Node): number {
+export function capacity(n: Node, partitionsIn = 0): number {
   switch (behaviourOf(n)) {
     case 'balancer': case 'limit': return num(n.maxRps);
-    case 'scaled': return num(n.rpsPerInstance) * num(n.instances);
+    // a consumer group uses one instance per partition at most
+    case 'scaled': return num(n.rpsPerInstance) * (partitionsIn > 0 ? Math.min(num(n.instances), partitionsIn) : num(n.instances));
     case 'cache': return num(n.maxOps);
     case 'store': {
       // Reads spread across primary + replicas; writes hit the primary only.
@@ -26,7 +29,7 @@ export function capacity(n: Node): number {
       const perReq = Math.max((1 - rs) + rs / (1 + r), rs / (1 + r));
       return perReq > 0 ? q / perReq : Infinity;
     }
-    case 'async': return num(n.maxThroughput);
+    case 'async': return n.msgPerPartition !== undefined ? num(n.partitions) * num(n.msgPerPartition) : num(n.maxThroughput);
     default: return Infinity;   // source
   }
 }
@@ -40,12 +43,31 @@ export function outFactor(n: Node, outCount: number): number {
 }
 
 /** M/M/1-style inflation: base / (1 - util), capped at 10x once saturated. */
-export function effLatency(n: Node, load: number): number {
-  const base = num(n.latency), cap = capacity(n);
+export function effLatency(n: Node, load: number, cap = capacity(n)): number {
+  const base = num(n.latency);
   if (cap === Infinity || cap <= 0) return base;
   const u = load / cap;
   if (u >= 0.999) return base * 10;
   return Math.min(base * 10, base / (1 - u));
+}
+
+/** A partitioned topic: its consumers can't use more instances than it has partitions. */
+const partitioned = (n: Node) => isAsync(n) && n.msgPerPartition !== undefined && num(n.partitions) > 0;
+
+/**
+ * For a scaled component that only consumes partitioned topics (nothing calls it directly): the
+ * partitions it reads, summed over the topics. 0 means no cap — anything with direct traffic
+ * spreads that over every instance.
+ */
+export function partitionsIn(doc: Doc, byId: Record<string, Node> = Object.fromEntries(doc.nodes.map(n => [n.id, n]))): Record<string, number> {
+  const out: Record<string, number> = {};
+  doc.nodes.forEach(n => {
+    if (behaviourOf(n) !== 'scaled') { out[n.id] = 0; return; }
+    const from = doc.edges.filter(e => e.to === n.id).map(e => byId[e.from]).filter(Boolean);
+    const topics = new Set(from.filter(partitioned).map(s => s.id));
+    out[n.id] = from.length > 0 && from.every(partitioned) ? [...topics].reduce((a, id) => a + num(byId[id].partitions), 0) : 0;
+  });
+  return out;
 }
 
 export function compute(doc: Doc): Results {
@@ -53,6 +75,9 @@ export function compute(doc: Doc): Results {
   const outs: Record<string, number> = {};
   doc.nodes.forEach(n => (outs[n.id] = 0));
   doc.edges.forEach(e => { if (outs[e.from] !== undefined) outs[e.from]++; });
+  const pin = partitionsIn(doc, byId);
+  const caps: Record<string, number> = {};
+  doc.nodes.forEach(n => (caps[n.id] = capacity(n, pin[n.id])));
 
   // Load per node, broken down by origin: 'sync' (request-driven) or the id of the queue it was
   // consumed from. Load consumed from queue Q is never published back into Q, so a service can
@@ -77,7 +102,7 @@ export function compute(doc: Doc): Results {
         const tag = isAsync(s) ? s.id : origin;                 // consuming from a queue tags the load with it
         next[t.id][tag] = Math.min(MAX_LOAD, (next[t.id][tag] ?? 0) + amount);
       }
-      ncum[t.id] = Math.max(ncum[t.id], cum[s.id] + effLatency(s, srcTotal) + crossingLatency(doc, s.container, t.container));
+      ncum[t.id] = Math.max(ncum[t.id], cum[s.id] + effLatency(s, srcTotal, caps[s.id]) + crossingLatency(doc, s.container, t.container));
     });
     let delta = 0;
     doc.nodes.forEach(n => { delta += Math.abs(Object.values(next[n.id]).reduce((a, b) => a + b, 0) - total(n.id)); });
@@ -91,11 +116,12 @@ export function compute(doc: Doc): Results {
   const nodes: Record<string, NodeResult> = {};
   let worst: Status = 'ok', worstNode: Node | null = null, maxLat = 0;
   doc.nodes.forEach(n => {
-    const cap = capacity(n), L = load[n.id];
+    const cap = caps[n.id], L = load[n.id];
     const util = cap === Infinity ? 0 : cap > 0 ? L / cap : L > 0 ? Infinity : 0;
     const status: Status = util >= 1 ? 'crit' : util >= 0.7 ? 'warn' : 'ok';
-    const lat = effLatency(n, L);
+    const lat = effLatency(n, L, cap);
     nodes[n.id] = { load: L, cap, util, status, lat, cum: cum[n.id] + lat };
+    if (pin[n.id] > 0 && num(n.instances) > pin[n.id]) nodes[n.id].idle = num(n.instances) - pin[n.id];
     // end-to-end latency follows the traffic: components nothing reaches don't count
     if (!isSource(n) && L > 0 && cum[n.id] + lat > maxLat) maxLat = cum[n.id] + lat;
     if (status === 'crit' && worst !== 'crit') { worst = 'crit'; worstNode = n; }

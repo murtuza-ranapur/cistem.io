@@ -13,7 +13,8 @@ public final class Engine {
 
     public enum Status { ok, warn, crit }
 
-    public record NodeResult(double load, double cap, double util, Status status, double lat, double cum) {}
+    /** idle: a consumer's instances beyond the partitions it reads (0 when none). */
+    public record NodeResult(double load, double cap, double util, Status status, double lat, double cum, double idle) {}
     public record Verdict(Status status, String nodeId, double lat, boolean converged) {}
     public record Results(Map<String, NodeResult> nodes, Map<String, Double> edges, Map<String, Double> crossings, Verdict verdict) {}
 
@@ -76,17 +77,19 @@ public final class Engine {
     static String kind(JsonNode n) { return n.path("kind").asText(""); }
 
     /** Sustainable requests/sec a node can take before it saturates. */
-    public static double capacity(JsonNode n) {
+    public static double capacity(JsonNode n) { return capacity(n, 0); }
+    public static double capacity(JsonNode n, double partitionsIn) {
         return switch (Types.behaviour(n)) {   // by behaviour (shared/component-types.json), never by type name
             case "balancer", "limit" -> num(n, "maxRps");
-            case "scaled" -> num(n, "rpsPerInstance") * num(n, "instances");
+            // a consumer group uses one instance per partition at most
+            case "scaled" -> num(n, "rpsPerInstance") * (partitionsIn > 0 ? Math.min(num(n, "instances"), partitionsIn) : num(n, "instances"));
             case "cache" -> num(n, "maxOps");
             case "store" -> {
                 double q = num(n, "maxQps"), r = Math.max(0, num(n, "replicas")), rs = clamp01(num(n, "readShare"));
                 double perReq = Math.max((1 - rs) + rs / (1 + r), rs / (1 + r));
                 yield perReq > 0 ? q / perReq : Double.POSITIVE_INFINITY;
             }
-            case "async" -> num(n, "maxThroughput");
+            case "async" -> n.has("msgPerPartition") ? num(n, "partitions") * num(n, "msgPerPartition") : num(n, "maxThroughput");
             default -> Double.POSITIVE_INFINITY;
         };
     }
@@ -101,12 +104,31 @@ public final class Engine {
     }
 
     /** M/M/1-style inflation: base / (1 - util), capped at 10x once saturated. */
-    public static double effLatency(JsonNode n, double load) {
-        double base = num(n, "latency"), cap = capacity(n);
+    public static double effLatency(JsonNode n, double load) { return effLatency(n, load, capacity(n)); }
+    public static double effLatency(JsonNode n, double load, double cap) {
+        double base = num(n, "latency");
         if (Double.isInfinite(cap) || cap <= 0) return base;
         double u = load / cap;
         if (u >= 0.999) return base * 10;
         return Math.min(base * 10, base / (1 - u));
+    }
+
+    /** A partitioned topic: its consumers can't use more instances than it has partitions. */
+    static boolean partitioned(JsonNode n) { return Types.isAsync(n) && n.has("msgPerPartition") && num(n, "partitions") > 0; }
+
+    /** Mirror of engine.ts partitionsIn: partitions a pure consumer reads, summed over its topics; 0 = no cap. */
+    static Map<String, Double> partitionsIn(JsonNode model, Map<String, JsonNode> byId) {
+        Map<String, Double> out = new HashMap<>();
+        byId.forEach((id, n) -> {
+            if (!"scaled".equals(Types.behaviour(n))) { out.put(id, 0.0); return; }
+            java.util.List<JsonNode> from = new java.util.ArrayList<>();
+            for (JsonNode e : model.path("edges")) if (e.path("to").asText().equals(id) && byId.containsKey(e.path("from").asText())) from.add(byId.get(e.path("from").asText()));
+            boolean all = !from.isEmpty() && from.stream().allMatch(Engine::partitioned);
+            java.util.Set<String> seen = new java.util.HashSet<>(); double sum = 0;
+            if (all) for (JsonNode s : from) if (seen.add(s.path("id").asText())) sum += num(s, "partitions");
+            out.put(id, all ? sum : 0.0);
+        });
+        return out;
     }
 
     public static Results compute(JsonNode model) {
@@ -118,6 +140,8 @@ public final class Engine {
         Map<String, Integer> outs = new HashMap<>();
         byId.keySet().forEach(id -> outs.put(id, 0));
         for (JsonNode e : edges) outs.computeIfPresent(e.path("from").asText(), (k, v) -> v + 1);
+        Map<String, Double> pin = partitionsIn(model, byId), caps = new HashMap<>();
+        byId.forEach((id, n) -> caps.put(id, capacity(n, pin.get(id))));
 
         // Load per node broken down by origin: "sync" or the queue it was consumed from.
         // Load consumed from queue Q is never published back into Q (a service may consume its own topic).
@@ -145,7 +169,7 @@ public final class Engine {
                     String tag = fromQueue ? from : o.getKey();
                     next.get(to).merge(tag, Math.min(MAX_LOAD, o.getValue() * factor), (x, y) -> Math.min(MAX_LOAD, x + y));
                 }
-                ncum.merge(to, cum.get(from) + effLatency(s, total.apply(from)) + crossingLatency(model, containerOf(s), containerOf(t)), Math::max);
+                ncum.merge(to, cum.get(from) + effLatency(s, total.apply(from), caps.get(from)) + crossingLatency(model, containerOf(s), containerOf(t)), Math::max);
             }
             double delta = 0;
             for (String id : byId.keySet()) delta += Math.abs(next.get(id).values().stream().mapToDouble(Double::doubleValue).sum() - total.apply(id));
@@ -159,11 +183,12 @@ public final class Engine {
         Status worst = Status.ok; String worstNode = null; double maxLat = 0;
         for (var en : byId.entrySet()) {
             String id = en.getKey(); JsonNode n = en.getValue();
-            double cap = capacity(n), L = load.get(id);
+            double cap = caps.get(id), L = load.get(id);
             double util = Double.isInfinite(cap) ? 0 : cap > 0 ? L / cap : (L > 0 ? Double.POSITIVE_INFINITY : 0);
             Status status = util >= 1 ? Status.crit : util >= 0.7 ? Status.warn : Status.ok;
-            double lat = effLatency(n, L);
-            results.put(id, new NodeResult(L, cap, util, status, lat, cum.get(id) + lat));
+            double lat = effLatency(n, L, cap);
+            double idle = pin.get(id) > 0 && num(n, "instances") > pin.get(id) ? num(n, "instances") - pin.get(id) : 0;
+            results.put(id, new NodeResult(L, cap, util, status, lat, cum.get(id) + lat, idle));
             if (!Types.isSource(n) && L > 0 && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;   // only what traffic reaches
             if (status == Status.crit && worst != Status.crit) { worst = Status.crit; worstNode = id; }
             else if (status == Status.warn && worst == Status.ok) { worst = Status.warn; worstNode = id; }
@@ -203,6 +228,7 @@ public final class Engine {
             if (!Double.isInfinite(nr.cap())) { c.put("capacityRps", Math.round(nr.cap())); c.put("utilisationPct", Double.isInfinite(nr.util()) ? 9999 : Math.round(nr.util() * 100)); c.put("headroomRps", Math.round(Math.max(0, nr.cap() - nr.load()))); }
             c.put("status", nr.status().name());
             c.put("effectiveLatencyMs", Math.round(nr.lat() * 10) / 10.0);
+            if (nr.idle() > 0) c.put("idleInstances", Math.round(nr.idle()));
         }
         var cross = out.putArray("boundaryCrossings");
         for (JsonNode e : model.path("edges")) {

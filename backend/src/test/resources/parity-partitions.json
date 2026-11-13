@@ -1,0 +1,322 @@
+{
+ "file": {
+  "version": 4,
+  "kind": "system",
+  "meta": {
+   "title": "Partitions",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "nodes": [
+    {
+     "id": "n21",
+     "kind": "entry",
+     "name": "Clients",
+     "platforms": [
+      "web",
+      "app"
+     ],
+     "rps": 3000
+    },
+    {
+     "id": "n22",
+     "kind": "service",
+     "name": "api",
+     "rpsPerInstance": 1000,
+     "instances": 10,
+     "latency": 20,
+     "endpoints": []
+    },
+    {
+     "id": "n23",
+     "kind": "queue",
+     "name": "orders",
+     "msgPerPartition": 1000,
+     "latency": 5,
+     "partitions": 4,
+     "schema": ""
+    },
+    {
+     "id": "n24",
+     "kind": "queue",
+     "name": "refunds",
+     "msgPerPartition": 1000,
+     "latency": 5,
+     "partitions": 2,
+     "schema": ""
+    },
+    {
+     "id": "n25",
+     "kind": "service",
+     "name": "worker",
+     "rpsPerInstance": 600,
+     "instances": 8,
+     "latency": 20,
+     "endpoints": []
+    },
+    {
+     "id": "n26",
+     "kind": "service",
+     "name": "mixed",
+     "rpsPerInstance": 600,
+     "instances": 8,
+     "latency": 20,
+     "endpoints": []
+    },
+    {
+     "id": "n27",
+     "kind": "queue",
+     "name": "legacy",
+     "latency": 5,
+     "partitions": 3,
+     "schema": "",
+     "maxThroughput": 2500
+    },
+    {
+     "id": "n28",
+     "kind": "service",
+     "name": "legacy-worker",
+     "rpsPerInstance": 300,
+     "instances": 5,
+     "latency": 20,
+     "endpoints": []
+    }
+   ],
+   "edges": [
+    {
+     "id": "p1",
+     "from": "n21",
+     "to": "n22",
+     "calls": 1
+    },
+    {
+     "id": "p2",
+     "from": "n22",
+     "to": "n23",
+     "calls": 1
+    },
+    {
+     "id": "p3",
+     "from": "n22",
+     "to": "n24",
+     "calls": 0.5
+    },
+    {
+     "id": "p4",
+     "from": "n23",
+     "to": "n25",
+     "calls": 1
+    },
+    {
+     "id": "p5",
+     "from": "n24",
+     "to": "n25",
+     "calls": 1
+    },
+    {
+     "id": "p6",
+     "from": "n23",
+     "to": "n26",
+     "calls": 1
+    },
+    {
+     "id": "p7",
+     "from": "n22",
+     "to": "n26",
+     "calls": 0.1
+    },
+    {
+     "id": "p8",
+     "from": "n22",
+     "to": "n27",
+     "calls": 0.5
+    },
+    {
+     "id": "p9",
+     "from": "n27",
+     "to": "n28",
+     "calls": 1
+    }
+   ],
+   "containers": [],
+   "links": []
+  },
+  "layout": {
+   "positions": {
+    "n21": {
+     "x": 0,
+     "y": 0
+    },
+    "n22": {
+     "x": 0,
+     "y": 0
+    },
+    "n23": {
+     "x": 0,
+     "y": 0
+    },
+    "n24": {
+     "x": 0,
+     "y": 0
+    },
+    "n25": {
+     "x": 0,
+     "y": 0
+    },
+    "n26": {
+     "x": 0,
+     "y": 0
+    },
+    "n27": {
+     "x": 0,
+     "y": 0
+    },
+    "n28": {
+     "x": 0,
+     "y": 0
+    }
+   },
+   "frames": {}
+  }
+ },
+ "expected": {
+  "nodes": {
+   "n21": {
+    "load": 3000,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0,
+    "idle": 0
+   },
+   "n22": {
+    "load": 3000,
+    "cap": 10000,
+    "util": 0.3,
+    "status": "ok",
+    "lat": 28.571428571428573,
+    "cum": 28.571428571428573,
+    "idle": 0
+   },
+   "n23": {
+    "load": 3000,
+    "cap": 4000,
+    "util": 0.75,
+    "status": "warn",
+    "lat": 20,
+    "cum": 48.57142857142857,
+    "idle": 0
+   },
+   "n24": {
+    "load": 1500,
+    "cap": 2000,
+    "util": 0.75,
+    "status": "warn",
+    "lat": 20,
+    "cum": 48.57142857142857,
+    "idle": 0
+   },
+   "n25": {
+    "load": 4500,
+    "cap": 3600,
+    "util": 1.25,
+    "status": "crit",
+    "lat": 200,
+    "cum": 248.57142857142856,
+    "idle": 2
+   },
+   "n26": {
+    "load": 3300,
+    "cap": 4800,
+    "util": 0.6875,
+    "status": "ok",
+    "lat": 64,
+    "cum": 112.57142857142857,
+    "idle": 0
+   },
+   "n27": {
+    "load": 1500,
+    "cap": 2500,
+    "util": 0.6,
+    "status": "ok",
+    "lat": 12.5,
+    "cum": 41.07142857142857,
+    "idle": 0
+   },
+   "n28": {
+    "load": 1500,
+    "cap": 1500,
+    "util": 1,
+    "status": "crit",
+    "lat": 200,
+    "cum": 241.07142857142856,
+    "idle": 0
+   }
+  },
+  "edges": {
+   "p1": 3000,
+   "p2": 3000,
+   "p3": 1500,
+   "p4": 3000,
+   "p5": 1500,
+   "p6": 3000,
+   "p7": 300,
+   "p8": 1500,
+   "p9": 1500
+  },
+  "crossings": {
+   "p1": 0,
+   "p2": 0,
+   "p3": 0,
+   "p4": 0,
+   "p5": 0,
+   "p6": 0,
+   "p7": 0,
+   "p8": 0,
+   "p9": 0
+  },
+  "verdict": {
+   "status": "crit",
+   "node": "n25",
+   "lat": 248.57142857142856,
+   "converged": true
+  },
+  "layout": {
+   "n21": {
+    "x": 40,
+    "y": 216
+   },
+   "n22": {
+    "x": 352,
+    "y": 216
+   },
+   "n23": {
+    "x": 672,
+    "y": 40
+   },
+   "n24": {
+    "x": 672,
+    "y": 216
+   },
+   "n25": {
+    "x": 992,
+    "y": 216
+   },
+   "n26": {
+    "x": 992,
+    "y": 40
+   },
+   "n27": {
+    "x": 672,
+    "y": 384
+   },
+   "n28": {
+    "x": 992,
+    "y": 384
+   }
+  },
+  "frames": {}
+ }
+}

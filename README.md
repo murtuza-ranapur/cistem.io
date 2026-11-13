@@ -127,6 +127,10 @@ A collapsed service says how many endpoints it has, by method (`3 endpoints · P
 
 A connection can call **several** of its target's endpoints: tick them in the connection's panel. With the load view on, each gets its own calls per request (an upload and four status polls, say); the connection's calls are their sum, the line lists them (or says how many), and the expanded target highlights them and shows the rps each endpoint receives from all its callers. Files with the older single `endpoint` migrate on open.
 
+## Kafka partitions
+
+A topic's capacity is its partitions × **msg/s per partition**, so adding partitions scales it. A service that only consumes topics uses at most one instance per partition it reads (summed over its topics), as a consumer group does: extra instances sit idle, and its panel says so. Anything with direct traffic too spreads that over every instance, so it isn't capped. Topics saved with a single max msg/s keep their capacity, split over their partitions.
+
 ## Sequence diagrams
 
 Long message labels wrap (press Enter in a label to break it yourself; the code writes `\n`), and lifelines are spaced by the wrapped text, so one long label doesn't push the rest off-screen. Lifeline heads size to their name, taking two lines at a hyphen when it's long; drag a selected head's right edge to widen it (double-click the handle or **Fit the name** to reset). Hover a head for its ◀ ⠿ ▶ grip to reorder; the panel also has Move left/right and up/down.

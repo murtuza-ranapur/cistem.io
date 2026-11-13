@@ -4,7 +4,7 @@
  */
 import { parseCistem, printSeq } from '../src/domain/seq';
 import { writeFileSync } from 'node:fs';
-import { exampleDoc, makeNode } from '../src/domain/model';
+import { exampleDoc, makeNode, perPartition } from '../src/domain/model';
 import { compute } from '../src/domain/engine';
 import { layeredLayout } from '../src/domain/layout';
 import { toFile, v3to4 } from '../src/domain/document';
@@ -13,7 +13,7 @@ const res = '/home/claude/cistem.io/backend/src/test/resources/'.replace('/home/
 const expected = (doc: any) => {
   const r = compute(doc), l = layeredLayout(doc);
   return {
-    nodes: Object.fromEntries(Object.entries(r.nodes).map(([id, n]) => [id, { load: n.load, cap: n.cap === Infinity ? null : n.cap, util: isFinite(n.util) ? n.util : null, status: n.status, lat: n.lat, cum: n.cum }])),
+    nodes: Object.fromEntries(Object.entries(r.nodes).map(([id, n]) => [id, { load: n.load, cap: n.cap === Infinity ? null : n.cap, util: isFinite(n.util) ? n.util : null, status: n.status, lat: n.lat, cum: n.cum, idle: n.idle ?? 0 }])),
     edges: r.edges, crossings: r.crossings,
     verdict: { status: r.verdict.status, node: r.verdict.node?.id ?? null, lat: r.verdict.lat, converged: r.verdict.converged },
     layout: l.positions, frames: l.frames,
@@ -33,6 +33,27 @@ const write = (name: string, doc: any, title: string) => {
   const app = makeNode('entry', 20, 360, { name: 'App', rps: 2500 }) as any;
   doc.nodes.push(app); doc.edges.push({ id: 'e99', from: app.id, to: doc.edges[0].to, calls: 1 });
   write('parity.json', doc, 'Parity fixture');
+}
+// 1b. Kafka partitions: a topic's capacity is partitions × msg/s per partition; a pure consumer uses at most
+//     one instance per partition it reads (summed over its topics); direct traffic lifts the cap; a topic saved
+//     with a single max msg/s (not yet adopted) still reads that max
+{
+  const src = makeNode('entry', 0, 0, { name: 'Clients', rps: 3000 }) as any;
+  const api = makeNode('service', 0, 0, { name: 'api', instances: 10, rpsPerInstance: 1000 }) as any;
+  const t4 = makeNode('queue', 0, 0, { name: 'orders', partitions: 4, msgPerPartition: 1000 }) as any;
+  const t2 = makeNode('queue', 0, 0, { name: 'refunds', partitions: 2, msgPerPartition: 1000 }) as any;
+  const worker = makeNode('service', 0, 0, { name: 'worker', instances: 8, rpsPerInstance: 600 }) as any;   // reads 4 + 2 partitions: 6 of 8 used
+  const mixed = makeNode('service', 0, 0, { name: 'mixed', instances: 8, rpsPerInstance: 600 }) as any;     // reads orders, but the api calls it too: no cap
+  const legacy = makeNode('queue', 0, 0, { name: 'legacy', partitions: 3 }) as any; delete legacy.msgPerPartition; legacy.maxThroughput = 2500;
+  const lw = makeNode('service', 0, 0, { name: 'legacy-worker', instances: 5, rpsPerInstance: 300 }) as any;  // a legacy topic doesn't cap
+  const doc: any = { nodes: [src, api, t4, t2, worker, mixed, legacy, lw], containers: [], links: [], frames: {}, detail: {}, edges: [
+    { id: 'p1', from: src.id, to: api.id, calls: 1 }, { id: 'p2', from: api.id, to: t4.id, calls: 1 }, { id: 'p3', from: api.id, to: t2.id, calls: 0.5 },
+    { id: 'p4', from: t4.id, to: worker.id, calls: 1 }, { id: 'p5', from: t2.id, to: worker.id, calls: 1 },
+    { id: 'p6', from: t4.id, to: mixed.id, calls: 1 }, { id: 'p7', from: api.id, to: mixed.id, calls: 0.1 },
+    { id: 'p8', from: api.id, to: legacy.id, calls: 0.5 }, { id: 'p9', from: legacy.id, to: lw.id, calls: 1 } ] };
+  const r = compute(doc);
+  if (r.nodes[t4.id].cap !== 4000 || r.nodes[worker.id].cap !== 3600 || r.nodes[worker.id].idle !== 2 || r.nodes[mixed.id].cap !== 4800 || r.nodes[legacy.id].cap !== 2500 || r.nodes[lw.id].idle) throw new Error('partition model');
+  write('parity-partitions.json', doc, 'Partitions');
 }
 // 2. a service consuming its own Kafka topic
 {
@@ -72,7 +93,10 @@ const write = (name: string, doc: any, title: string) => {
       edges: [{ id: 'e1', from: 'n1', to: 'n3', calls: 1 }, { id: 'e3', from: 'n3', to: 'n4', calls: 1 }, { id: 'e4', from: 'n4', to: 'n5', calls: 1 }] },
     layout: { positions: { n1: { x: 0, y: 0 }, n3: { x: 300, y: 0 }, n4: { x: 600, y: 0 }, n5: { x: 900, y: 0 } }, frames: {} },
   };
-  writeFileSync(res + 'migrate-v3.json', JSON.stringify({ input: v3, expected: v3to4(JSON.parse(JSON.stringify(v3))) }, null, 1));
+  // the app then adopts the document, which splits a topic's max msg/s over its partitions (Migrate.toCurrent does both)
+  const migrated = v3to4(JSON.parse(JSON.stringify(v3)));
+  migrated.model.nodes.forEach(perPartition);
+  writeFileSync(res + 'migrate-v3.json', JSON.stringify({ input: v3, expected: migrated }, null, 1));
   console.log('migrate-v3.json');
 }
 // 5. sequence text: parse (ids aside) and print agree

@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n21",
+     "id": "n29",
      "kind": "entry",
      "name": "Merchants (batch upload)",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": 40
     },
     {
-     "id": "n22",
+     "id": "n30",
      "kind": "service",
      "name": "ecom-transaction-payments",
      "rpsPerInstance": 400,
@@ -29,16 +29,16 @@
      "endpoints": []
     },
     {
-     "id": "n23",
+     "id": "n31",
      "kind": "queue",
      "name": "payments.batch",
-     "maxThroughput": 20000,
+     "msgPerPartition": 3000,
      "latency": 5,
      "partitions": 6,
      "schema": ""
     },
     {
-     "id": "n24",
+     "id": "n32",
      "kind": "service",
      "name": "ecom-legacy-cards",
      "rpsPerInstance": 500,
@@ -50,26 +50,26 @@
    "edges": [
     {
      "id": "e1",
-     "from": "n21",
-     "to": "n22",
+     "from": "n29",
+     "to": "n30",
      "calls": 1
     },
     {
      "id": "e2",
-     "from": "n22",
-     "to": "n23",
+     "from": "n30",
+     "to": "n31",
      "calls": 40
     },
     {
      "id": "e3",
-     "from": "n23",
-     "to": "n22",
+     "from": "n31",
+     "to": "n30",
      "calls": 1
     },
     {
      "id": "e4",
-     "from": "n22",
-     "to": "n24",
+     "from": "n30",
+     "to": "n32",
      "calls": 1
     }
    ],
@@ -78,19 +78,19 @@
   },
   "layout": {
    "positions": {
-    "n21": {
+    "n29": {
      "x": 0,
      "y": 0
     },
-    "n22": {
+    "n30": {
      "x": 0,
      "y": 0
     },
-    "n23": {
+    "n31": {
      "x": 0,
      "y": 0
     },
-    "n24": {
+    "n32": {
      "x": 0,
      "y": 0
     }
@@ -100,37 +100,41 @@
  },
  "expected": {
   "nodes": {
-   "n21": {
+   "n29": {
     "load": 40,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
-    "cum": 0
+    "cum": 0,
+    "idle": 0
    },
-   "n22": {
+   "n30": {
     "load": 1640,
     "cap": 1600,
     "util": 1.025,
     "status": "crit",
     "lat": 200,
-    "cum": 456.3823857302118
+    "cum": 456.4884302689181,
+    "idle": 0
    },
-   "n23": {
+   "n31": {
     "load": 1600,
-    "cap": 20000,
-    "util": 0.08,
+    "cap": 18000,
+    "util": 0.08888888888888889,
     "status": "ok",
-    "lat": 5.434782608695652,
-    "cum": 261.3823857302118
+    "lat": 5.487804878048781,
+    "cum": 261.4884302689181,
+    "idle": 0
    },
-   "n24": {
+   "n32": {
     "load": 1640,
     "cap": 1500,
     "util": 1.0933333333333333,
     "status": "crit",
     "lat": 200,
-    "cum": 455.9476031215162
+    "cum": 456.0006253908693,
+    "idle": 0
    }
   },
   "edges": {
@@ -147,24 +151,24 @@
   },
   "verdict": {
    "status": "crit",
-   "node": "n22",
-   "lat": 456.3823857302118,
+   "node": "n30",
+   "lat": 456.4884302689181,
    "converged": true
   },
   "layout": {
-   "n21": {
+   "n29": {
     "x": 40,
     "y": 128
    },
-   "n22": {
+   "n30": {
     "x": 416,
     "y": 128
    },
-   "n23": {
+   "n31": {
     "x": 800,
     "y": 40
    },
-   "n24": {
+   "n32": {
     "x": 800,
     "y": 216
    }

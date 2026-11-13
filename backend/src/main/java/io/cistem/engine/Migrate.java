@@ -23,7 +23,20 @@ public final class Migrate {
         if (!layout.has("positions")) layout.putObject("positions");
         if (!layout.has("frames")) layout.putObject("frames");
         if (file.path("version").asInt(0) < 4) v3to4(file);
+        for (JsonNode n : model.path("nodes")) if (n instanceof ObjectNode o) perPartition(o);
         file.put("version", VERSION);
+    }
+
+    /**
+     * Mirror of model.ts perPartition: a partitioned topic saved with one max msg/s keeps its
+     * capacity, split evenly over its partitions.
+     */
+    static void perPartition(ObjectNode n) {
+        JsonNode defs = Types.of(n.path("kind").asText()).defaults();
+        if (!Types.isAsync(n) || n.has("msgPerPartition") || !n.has("maxThroughput") || defs == null || !defs.has("partitions")) return;
+        double p = Engine.num(n, "partitions"); if (p == 0) p = 1;
+        n.put("msgPerPartition", Engine.num(n, "maxThroughput") / p);
+        n.remove("maxThroughput");
     }
 
     /** Load moves onto each Clients node; a Kafka node becomes one topic (extra topics split into new nodes). */

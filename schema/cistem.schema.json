@@ -225,6 +225,11 @@
           "minimum": 0,
           "description": "async: messages per second."
         },
+        "msgPerPartition": {
+          "type": "number",
+          "minimum": 0,
+          "description": "async, partitioned (Kafka topic): messages per second each partition takes; capacity = partitions × msgPerPartition. A service fed only by partitioned topics uses at most one instance per partition."
+        },
         "endpoints": {
           "type": "array",
           "items": {

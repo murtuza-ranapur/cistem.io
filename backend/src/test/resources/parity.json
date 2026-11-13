@@ -165,7 +165,7 @@
      "id": "n6",
      "kind": "queue",
      "name": "payments.authorised",
-     "maxThroughput": 20000,
+     "msgPerPartition": 3000,
      "latency": 5,
      "partitions": 12,
      "schema": "{\n  \"type\": \"record\",\n  \"name\": \"PaymentAuthorised\",\n  \"namespace\": \"com.example.payments\",\n  \"fields\": [\n    {\"name\": \"paymentId\", \"type\": \"string\"},\n    {\"name\": \"amountMinor\", \"type\": \"long\"},\n    {\"name\": \"currency\", \"type\": \"string\"}\n  ]\n}",
@@ -330,7 +330,8 @@
     "util": 0,
     "status": "ok",
     "lat": 0,
-    "cum": 0
+    "cum": 0,
+    "idle": 0
    },
    "n2": {
     "load": 7000,
@@ -338,7 +339,8 @@
     "util": 0.14,
     "status": "ok",
     "lat": 1.1627906976744187,
-    "cum": 2.162790697674419
+    "cum": 2.162790697674419,
+    "idle": 0
    },
    "n3": {
     "load": 7000,
@@ -346,7 +348,8 @@
     "util": 1.1666666666666667,
     "status": "crit",
     "lat": 250,
-    "cum": 252.1627906976744
+    "cum": 252.1627906976744,
+    "idle": 0
    },
    "n4": {
     "load": 14000,
@@ -354,7 +357,8 @@
     "util": 0.14,
     "status": "ok",
     "lat": 1.1627906976744187,
-    "cum": 255.32558139534882
+    "cum": 255.32558139534882,
+    "idle": 0
    },
    "n5": {
     "load": 9100,
@@ -362,15 +366,17 @@
     "util": 0.9858333333333333,
     "status": "warn",
     "lat": 60,
-    "cum": 315.3255813953488
+    "cum": 315.3255813953488,
+    "idle": 0
    },
    "n6": {
     "load": 7000,
-    "cap": 20000,
-    "util": 0.35,
+    "cap": 36000,
+    "util": 0.19444444444444445,
     "status": "ok",
-    "lat": 7.692307692307692,
-    "cum": 261.8550983899821
+    "lat": 6.206896551724138,
+    "cum": 260.36968724939857,
+    "idle": 0
    },
    "n7": {
     "load": 7000,
@@ -378,7 +384,8 @@
     "util": 2.1875,
     "status": "crit",
     "lat": 400,
-    "cum": 661.8550983899821
+    "cum": 660.3696872493986,
+    "idle": 0
    },
    "n20": {
     "load": 2500,
@@ -386,7 +393,8 @@
     "util": 0,
     "status": "ok",
     "lat": 0,
-    "cum": 0
+    "cum": 0,
+    "idle": 0
    }
   },
   "edges": {
@@ -412,7 +420,7 @@
   "verdict": {
    "status": "crit",
    "node": "n3",
-   "lat": 661.8550983899821,
+   "lat": 660.3696872493986,
    "converged": true
   },
   "layout": {

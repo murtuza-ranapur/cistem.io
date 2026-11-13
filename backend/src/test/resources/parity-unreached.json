@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n37",
+     "id": "n45",
      "kind": "entry",
      "name": "c",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": 100
     },
     {
-     "id": "n38",
+     "id": "n46",
      "kind": "service",
      "name": "s",
      "rpsPerInstance": 800,
@@ -29,7 +29,7 @@
      "endpoints": []
     },
     {
-     "id": "n39",
+     "id": "n47",
      "kind": "service",
      "name": "lone",
      "rpsPerInstance": 800,
@@ -41,8 +41,8 @@
    "edges": [
     {
      "id": "a",
-     "from": "n37",
-     "to": "n38",
+     "from": "n45",
+     "to": "n46",
      "calls": 1
     }
    ],
@@ -51,15 +51,15 @@
   },
   "layout": {
    "positions": {
-    "n37": {
+    "n45": {
      "x": 0,
      "y": 0
     },
-    "n38": {
+    "n46": {
      "x": 0,
      "y": 0
     },
-    "n39": {
+    "n47": {
      "x": 0,
      "y": 0
     }
@@ -69,29 +69,32 @@
  },
  "expected": {
   "nodes": {
-   "n37": {
+   "n45": {
     "load": 100,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
-    "cum": 0
+    "cum": 0,
+    "idle": 0
    },
-   "n38": {
+   "n46": {
     "load": 100,
     "cap": 2400,
     "util": 0.041666666666666664,
     "status": "ok",
     "lat": 5.217391304347826,
-    "cum": 5.217391304347826
+    "cum": 5.217391304347826,
+    "idle": 0
    },
-   "n39": {
+   "n47": {
     "load": 0,
     "cap": 2400,
     "util": 0,
     "status": "ok",
     "lat": 900,
-    "cum": 900
+    "cum": 900,
+    "idle": 0
    }
   },
   "edges": {
@@ -107,15 +110,15 @@
    "converged": true
   },
   "layout": {
-   "n37": {
+   "n45": {
     "x": 40,
     "y": 128
    },
-   "n38": {
+   "n46": {
     "x": 352,
     "y": 40
    },
-   "n39": {
+   "n47": {
     "x": 352,
     "y": 216
    }

@@ -33,7 +33,7 @@ export interface Topic { name: string; partitions: number; schema: string; key?:
 /**
  * A component. Which fields matter depends on its type's behaviour (see shared/component-types.json):
  * source: rps · balancer/limit: maxRps · scaled: instances, rpsPerInstance · cache: maxOps, hitRatio ·
- * store: maxQps, replicas, readShare · async: maxThroughput — plus latency, and the type's detail
+ * store: maxQps, replicas, readShare · async: maxThroughput, or partitions × msgPerPartition — plus latency, and the type's detail
  * (endpoints, tables, or topic/message schema).
  */
 export interface NodeData {
@@ -50,7 +50,7 @@ export interface NodeData {
   variant?: string;
   rps?: number; platforms?: string[];
   maxRps?: number; instances?: number; rpsPerInstance?: number; maxOps?: number; hitRatio?: number; eviction?: string;
-  maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number;
+  maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number; msgPerPartition?: number;
   endpoints?: Endpoint[]; tables?: Table[];
   /** topic / message detail */
   partitions?: number; schema?: string; key?: string; cluster?: string; fifo?: boolean;
@@ -266,11 +266,24 @@ export function makeNode(kind: Kind, x: number, y: number, props: Record<string,
   return { id: nextId(), kind, x, y, ...clone(typeDef(kind).defaults), ...props } as Node;
 }
 
+/**
+ * A partitioned topic's capacity is partitions × msg/s per partition. One saved with a single
+ * max msg/s keeps its capacity: the max is split evenly over its partitions. (Engine.java's
+ * Migrate.perPartition mirrors this.)
+ */
+export function perPartition(n: Node): void {
+  if (!isAsync(n) || n.msgPerPartition !== undefined || n.maxThroughput === undefined || !('partitions' in typeDef(n.kind).defaults)) return;
+  const p = qty(n.partitions) || 1;
+  n.msgPerPartition = qty(n.maxThroughput) / p;
+  delete n.maxThroughput;
+}
+
 /** Fill in any fields a loaded document is missing (older saves, hand-edited JSON). */
 export function adopt(d: unknown): Doc {
   const doc = d as Doc;
   if (!doc || !Array.isArray(doc.nodes) || !Array.isArray(doc.edges)) throw new Error('not a cistem.dev document');
   doc.nodes.forEach(n => {
+    perPartition(n);
     const defs = typeDef(n.kind).defaults;
     Object.keys(defs).forEach(k => { if ((n as any)[k] === undefined) (n as any)[k] = clone(defs[k]); });
     if (n.container === undefined) n.container = null;

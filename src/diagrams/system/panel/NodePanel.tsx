@@ -1,5 +1,5 @@
 /** A component's panel: Capacity (its fields and live load numbers) and, for types with detail, its schema. */
-import { CONTAINER_KINDS, LOAD_FIELDS, kindLabel, ancestry, detailOf, isSource, totalRps, typeDef, type Doc, type Node } from '../../../domain/model';
+import { CONTAINER_KINDS, LOAD_FIELDS, kindLabel, ancestry, detailOf, isAsync, isSource, qty, totalRps, typeDef, type Doc, type Node } from '../../../domain/model';
 import { fmt, fmtMs } from '../../../lib/format';
 import { select } from '../../../store/editor';
 import { activate, peek, tabs, useTabs } from '../../../store/tabs';
@@ -133,6 +133,7 @@ function Platforms({ n }: { n: Node }) {
 /** Load / capacity / utilisation / latency tiles; they follow the fields as you type. */
 function Stats({ doc, id }: { doc: Doc; id: string }) {
   const r = resultsOf(doc).nodes[id]; if (!r) return null;
+  const n = doc.nodes.find(x => x.id === id);
   const pct = Number.isFinite(r.util) ? Math.round(r.util * 100) : 100;
   return (
     <>
@@ -143,6 +144,12 @@ function Stats({ doc, id }: { doc: Doc; id: string }) {
         <div className="stat-tile"><div className="l">Effective latency</div><div className="v">{r.lat >= 1e4 ? fmtMs(r.lat) : <>{r.lat.toFixed(1)} <small>ms</small></>}</div></div>
         <div className={'meter ' + r.status}><i style={{ width: Math.min(100, pct) + '%' }} /></div>
       </div>
+      {n && n.msgPerPartition !== undefined && isAsync(n) && (
+        <p className="note" id="partitionCap">Capacity is <b>{fmt(qty(n.partitions))} partitions × {fmt(qty(n.msgPerPartition))} msg/s</b>. Add partitions to scale the topic (Topic tab).</p>
+      )}
+      {r.idle ? (
+        <p className="note warn-note" id="idleConsumers"><b>{fmt(r.idle)} of {fmt(qty(n?.instances))} instances sit idle:</b> it reads {fmt(qty(n?.instances) - r.idle)} partition{qty(n?.instances) - r.idle === 1 ? '' : 's'}, and a consumer group uses one instance per partition. Add partitions to the topic to scale this consumer.</p>
+      ) : null}
       <p className="note headroom">Headroom {Number.isFinite(r.cap) ? fmt(Math.max(0, r.cap - r.load)) + ' rps' : 'unlimited'}. Latency inflates as utilisation climbs (M/M/1 approximation).</p>
     </>
   );

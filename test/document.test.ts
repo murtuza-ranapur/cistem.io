@@ -167,3 +167,31 @@ console.log('document tests passed');
   assert.ok(expanded > short, 'a wrapped endpoint makes the card taller');
   console.log('several endpoints per connection, wrapped endpoint paths, widths');
 }
+
+// ---- Kafka partitions count towards capacity ----
+import { adopt, perPartition } from '../src/domain/model';
+import { partitionsIn } from '../src/domain/engine';
+{
+  // a topic saved with one max msg/s keeps its capacity, split over its partitions
+  const legacy: any = { id: 'q', kind: 'queue', name: 't', maxThroughput: 20000, partitions: 8, latency: 5 };
+  perPartition(legacy);
+  assert.equal(legacy.msgPerPartition, 2500); assert.equal(legacy.maxThroughput, undefined);
+  const sqs: any = { id: 's', kind: 'sqs', name: 'q', maxThroughput: 3000 };
+  perPartition(sqs); assert.equal(sqs.maxThroughput, 3000, 'a queue without partitions keeps its max');
+  const d = adopt({ nodes: [{ id: 'a', kind: 'queue', name: 'x', x: 0, y: 0, maxThroughput: 12000, partitions: 6 }], edges: [] });
+  assert.equal((d.nodes[0] as any).msgPerPartition, 2000, 'adopted before defaults fill in');
+
+  // capacity scales with partitions; a pure consumer is capped at one instance per partition
+  const src = makeNode('entry', 0, 0, { rps: 1000 }), api = makeNode('service', 0, 0, { instances: 4, rpsPerInstance: 1000 });
+  const t = makeNode('queue', 0, 0, { partitions: 4, msgPerPartition: 500 }), w = makeNode('service', 0, 0, { instances: 6, rpsPerInstance: 300 });
+  const doc: any = { nodes: [src, api, t, w], containers: [], links: [], frames: {}, detail: {}, edges: [
+    { id: 'a', from: src.id, to: api.id, calls: 1 }, { id: 'b', from: api.id, to: t.id, calls: 1 }, { id: 'c', from: t.id, to: w.id, calls: 1 }] };
+  let r = compute(doc);
+  assert.equal(r.nodes[t.id].cap, 2000); assert.equal(r.nodes[w.id].cap, 1200); assert.equal(r.nodes[w.id].idle, 2);
+  (t as any).partitions = 8; r = compute(doc);
+  assert.equal(r.nodes[t.id].cap, 4000, 'more partitions, more capacity'); assert.equal(r.nodes[w.id].cap, 1800); assert.equal(r.nodes[w.id].idle, undefined);
+  // called directly as well: every instance serves that, so no cap
+  doc.edges.push({ id: 'd', from: api.id, to: w.id, calls: 1 });
+  assert.equal(partitionsIn(doc)[w.id], 0);
+  console.log('partitions ok');
+}

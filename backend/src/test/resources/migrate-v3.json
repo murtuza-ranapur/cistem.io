@@ -142,24 +142,24 @@
      "id": "n4",
      "kind": "queue",
      "name": "payments.authorised",
-     "maxThroughput": 20000,
      "latency": 5,
      "container": null,
      "partitions": 12,
      "schema": "{\"type\":\"record\",\"name\":\"A\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}",
      "key": "id",
-     "cluster": "events"
+     "cluster": "events",
+     "msgPerPartition": 1666.6666666666667
     },
     {
      "id": "n4t1",
      "kind": "queue",
      "name": "payments.refunded",
-     "maxThroughput": 20000,
      "latency": 5,
      "container": null,
      "partitions": 3,
      "schema": "",
-     "cluster": "events"
+     "cluster": "events",
+     "msgPerPartition": 6666.666666666667
     },
     {
      "id": "n5",

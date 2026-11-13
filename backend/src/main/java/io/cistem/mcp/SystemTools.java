@@ -106,7 +106,7 @@ public class SystemTools {
             fields; common ones: entry (Clients) | lb | apigw | cdn | service | cache (Redis) | db (Postgres) | mongodb | queue (one Kafka topic) | sqs.
             properties (optional JSON object) override defaults, e.g. entry: {"rps":2000}; service: {"instances":6,"rpsPerInstance":600,"latency":25};
             cache: {"maxOps":100000,"hitRatio":0.85}; db: {"maxQps":4000,"replicas":2,"readShare":0.85};
-            queue: {"partitions":12,"key":"paymentId","cluster":"msk-payments","schema":"<Avro JSON>","maxThroughput":20000} — name it with the topic name;
+            queue: {"partitions":12,"msgPerPartition":3000,"key":"paymentId","cluster":"msk-payments","schema":"<Avro JSON>"} (capacity = partitions × msgPerPartition; a service that only consumes topics uses at most one instance per partition) — name it with the topic name;
             lb: {"maxRps":50000}. Services may carry "endpoints", dbs "tables" (see the cistem://schema resource).
             Returns the new component id. Position is chosen automatically.""")
     public ObjectNode addComponent(@McpToolParam(description = "Diagram id") String diagramId,

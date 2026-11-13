@@ -752,3 +752,4 @@ button.link:hover{text-decoration:underline}
 .sq-move{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px}
 .sq-move .muted{margin-right:4px}
 .sq-logo-thumb{width:20px;height:20px;object-fit:contain;border-radius:4px;margin-right:4px;vertical-align:middle}
+.note.warn-note{color:var(--warn-ink,var(--text));background:color-mix(in srgb,var(--warn,#d9a03f) 14%,transparent);border-left:3px solid var(--warn,#d9a03f);padding:6px 8px;border-radius:4px}

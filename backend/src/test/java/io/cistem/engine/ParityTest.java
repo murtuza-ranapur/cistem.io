@@ -63,6 +63,7 @@ class ParityTest {
             assertEquals(e.path("status").asText(), got.status().name(), en.getKey() + " status");
             assertEquals(e.path("lat").asDouble(), got.lat(), 1e-6, en.getKey() + " lat");
             assertEquals(e.path("cum").asDouble(), got.cum(), 1e-6, en.getKey() + " cum");
+            assertEquals(e.path("idle").asDouble(0), got.idle(), 1e-9, en.getKey() + " idle");
         }
         for (var it = exp.path("edges").properties().iterator(); it.hasNext(); ) {
             var en = it.next();
@@ -89,6 +90,10 @@ class ParityTest {
         engineMatches(f);
         layoutMatches(f);
     }
+
+    /** Kafka partitions: topic capacity, consumers capped at one instance per partition, legacy topics. */
+    @Test
+    void partitionsMatchTypeScript() throws Exception { engineMatches(fixture("/parity-partitions.json")); }
 
     /** Negatives, numeric strings, text, booleans and NaN read the same (as 0 or the number) in both engines. */
     @Test
