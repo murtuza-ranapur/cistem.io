@@ -18,17 +18,24 @@
  *   # a comment                                  (whole lines starting with # or //)
  */
 import { itemNotes, type CanvasNote } from './notes';
-import type { Doc } from './model';
+import { CONTAINER_COLORS, type ContainerColor, type Doc } from './model';
+import { isLogo } from '../lib/logo';
 import type { Results } from './engine';
 
 export type MsgStyle = 'sync' | 'async' | 'reply';
 export type BlockKind = 'alt' | 'opt' | 'loop' | 'par';
 export const BLOCK_KINDS: BlockKind[] = ['alt', 'opt', 'loop', 'par'];
-export interface Participant { id: string; name: string; type?: string; ref?: string; notes?: string }
+export interface Participant {
+  id: string; name: string; type?: string; ref?: string; notes?: string;
+  /** Style (not in the code text: kept across code edits by id): colour, dashed border, logo, head width. */
+  color?: ContainerColor; border?: 'dashed'; logo?: string; width?: number;
+}
+export type NotePos = 'left' | 'right';
 export type Row =
-  | { t: 'msg'; id: string; from: string; to: string; label: string; style: MsgStyle }
-  | { t: 'note'; id: string; over: string[]; text: string }
-  | { t: 'open'; id: string; kind: BlockKind; guard: string }
+  | { t: 'msg'; id: string; from: string; to: string; label: string; style: MsgStyle; color?: ContainerColor; bold?: true }
+  /** A note over one or more lifelines, or (`pos`, with one lifeline) to its left or right. */
+  | { t: 'note'; id: string; over: string[]; text: string; pos?: NotePos }
+  | { t: 'open'; id: string; kind: BlockKind; guard: string; color?: ContainerColor }
   | { t: 'else'; id: string; guard: string }
   | { t: 'close'; id: string };
 /** The system diagram this sequence draws on: its cloud id when saved, else the tab it lives in. */
@@ -55,6 +62,10 @@ export function slugId(name: string, taken: Iterable<string>): string {
 
 // ---------- text ----------
 
+/** Line breaks in labels and notes are written \n in the code (one line per row). */
+const escapeText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+const unescapeText = (s: string) => s.replace(/\\(n|\\)/g, (_, c) => (c === 'n' ? '\n' : '\\'));
+
 export function printSeq(d: SeqDoc): string {
   const out: string[] = [];
   let plain: string[] = [];
@@ -72,8 +83,8 @@ export function printSeq(d: SeqDoc): string {
   for (const r of d.rows) {
     if (r.t === 'close' || r.t === 'else') depth = Math.max(0, depth - 1);
     const ind = '  '.repeat(depth);
-    if (r.t === 'msg') out.push(`${ind}${r.from} ${ARROW[r.style]} ${r.to}${r.label ? ': ' + r.label : ''}`);
-    else if (r.t === 'note') out.push(`${ind}note over ${r.over.join(', ')}${r.text ? ': ' + r.text.replace(/\n/g, ' ') : ''}`);
+    if (r.t === 'msg') out.push(`${ind}${r.from} ${ARROW[r.style]} ${r.to}${r.label ? ': ' + escapeText(r.label) : ''}`);
+    else if (r.t === 'note') out.push(`${ind}note ${r.pos && r.over.length === 1 ? r.pos + ' of' : 'over'} ${r.over.join(', ')}${r.text ? ': ' + escapeText(r.text) : ''}`);
     else if (r.t === 'open') { out.push(`${ind}${r.kind}${r.guard ? ' ' + r.guard : ''}`); kinds.push(r.kind); depth++; }
     else if (r.t === 'else') { out.push(`${ind}${kinds[kinds.length - 1] === 'par' ? 'and' : 'else'}${r.guard ? ' ' + r.guard : ''}`); depth++; }
     else { out.push(`${ind}end`); kinds.pop(); }
@@ -145,11 +156,12 @@ export function parseCistem(text: string): { doc: SeqDoc; errors: SeqError[] } {
       b.d.participants.push({ id, name: name ?? id, ...(type || actor ? { type: type ?? 'actor' } : {}), ...(ref ? { ref } : {}) });
       return;
     }
-    if ((m = /^note\s+(?:over|left of|right of)\s+([^:]+?)\s*(?::\s*(.*))?$/i.exec(l))) {
-      const over = splitList(m[1]);
+    if ((m = /^note\s+(over|left of|right of)\s+([^:]+?)\s*(?::\s*(.*))?$/i.exec(l))) {
+      const over = splitList(m[2]);
       for (const id of over) if (!ID_RE.test(id)) { b.errors.push({ line, message: `"${id}" isn't a participant name` }); return; }
       over.forEach(id => ensure(b, id));
-      b.d.rows.push({ t: 'note', id: rowId(), over, text: (m[2] ?? '').trim() });
+      const side = m[1].toLowerCase(), pos: NotePos | undefined = side === 'left of' ? 'left' : side === 'right of' ? 'right' : undefined;
+      b.d.rows.push({ t: 'note', id: rowId(), over: pos ? over.slice(0, 1) : over, text: unescapeText((m[3] ?? '').trim()), ...(pos ? { pos } : {}) });
       return;
     }
     if ((m = /^(alt|opt|loop|par)\b\s*(.*)$/i.exec(l))) { open(b, m[1].toLowerCase() as BlockKind, m[2], line); return; }
@@ -158,7 +170,7 @@ export function parseCistem(text: string): { doc: SeqDoc; errors: SeqError[] } {
     if ((m = /^(\S+?)\s*(->>|-->|->)\s*(\S+?)\s*(?::\s*(.*))?$/.exec(l))) {
       const [, from, arrow, to, label] = m;
       for (const id of [from, to]) if (!ID_RE.test(id)) { b.errors.push({ line, message: `"${id}" isn't a valid name: use letters, digits, - _ .` }); return; }
-      message(b, from, to, arrow === '->>' ? 'async' : arrow === '-->' ? 'reply' : 'sync', label ?? '');
+      message(b, from, to, arrow === '->>' ? 'async' : arrow === '-->' ? 'reply' : 'sync', unescapeText(label ?? ''));
       return;
     }
     b.errors.push({ line, message: 'Not understood. Try  a -> b: label,  note over a: text,  alt / else / end' });
@@ -251,7 +263,18 @@ export function parsePlantUml(text: string): { doc: SeqDoc; errors: SeqError[] }
  * editing the text doesn't lose what's selected in the drawing.
  */
 export function keepIds(prev: SeqDoc, next: SeqDoc): SeqDoc {
-  next.rows.forEach((r, i) => { const p = prev.rows[i]; if (p && p.t === r.t) r.id = p.id; });
+  next.rows.forEach((r, i) => {
+    const p = prev.rows[i]; if (!p || p.t !== r.t) return;
+    r.id = p.id;
+    // style isn't written in the code: a row in the same place keeps its own
+    if (r.t === 'msg' && p.t === 'msg') { if (p.color) r.color = p.color; if (p.bold) r.bold = p.bold; }
+    if (r.t === 'open' && p.t === 'open' && p.color) r.color = p.color;
+  });
+  // so are a lifeline's notes, style and width: carried over by id
+  for (const q of next.participants) {
+    const p = prev.participants.find(x => x.id === q.id); if (!p) continue;
+    for (const k of ['notes', 'color', 'border', 'logo', 'width'] as const) if (p[k] !== undefined && q[k] === undefined) (q as unknown as Record<string, unknown>)[k] = p[k];
+  }
   // carry links that the text doesn't spell out (uses) over
   if (prev.uses && !next.uses) next.uses = prev.uses;
   return next;
@@ -284,7 +307,46 @@ export const SEQ = { top: 24, headH: 46, firstRow: 98, colGap: 190, headW: 150, 
 /** Rough width of label text at 11.5px. Good enough for spacing; the drawing measures nothing. */
 export const textW = (s: string) => Math.ceil([...s].reduce((w, c) => w + (/[ il.,:;|!'1]/.test(c) ? 3.6 : /[mwMW@]/.test(c) ? 9.4 : /[A-Z0-9#%&]/.test(c) ? 7.6 : 6.4), 0));
 
-export interface ColGeo { id: string; x: number }
+/** Words wrapped into lines no wider than `width` (estimated with textW). */
+export function wrapText(s: string, width: number): string[] {
+  const out: string[] = []; let line = '';
+  for (const w of s.split(/\s+/)) {
+    const next = line ? line + ' ' + w : w;
+    if (textW(next) > width && line) { out.push(line); line = w; } else line = next;
+  }
+  if (line) out.push(line);
+  return out.length ? out : [''];
+}
+/** A message label's lines: its own line breaks, then wrapped so no line is wider than LABEL_W. */
+export const LABEL_W = 180, LINE_H = 14;
+export const labelLines = (s: string, width = LABEL_W): string[] => {
+  const out = s.split('\n').flatMap(p => wrapText(p, width));
+  return out.length ? out : [''];
+};
+/** A lifeline head's width and the name's lines: fits the name, wrapping onto a second line, or the width set by hand. */
+export const HEAD_MIN = 110, HEAD_MAX = 360;
+export function headOf(p: { name: string; width?: number }): { w: number; lines: string[] } {
+  const nw = (t: string) => textW(t) * 1.08;   // names are a little bigger and bolder than labels
+  const set = typeof p.width === 'number' && Number.isFinite(p.width) ? Math.min(HEAD_MAX, Math.max(HEAD_MIN, Math.round(p.width))) : 0;
+  const w = set || (nw(p.name) + 26 <= 200 ? Math.ceil(Math.max(SEQ.headW, nw(p.name) + 26)) : 0);
+  if (w) {
+    if (nw(p.name) + 20 <= w) return { w, lines: [p.name] };
+    return { w, lines: splitName(p.name, w - 20, nw) };
+  }
+  const lines = splitName(p.name, 200, nw);
+  return { w: Math.ceil(Math.min(220, Math.max(SEQ.headW, ...lines.map(l => nw(l) + 26)))), lines };
+}
+/** A name in at most two lines, broken after a hyphen, dot or underscore (else a space) nearest the middle; cut if still too long. */
+function splitName(name: string, width: number, nw: (t: string) => number): string[] {
+  const cut = (t: string) => { if (nw(t) <= width) return t; let x = t; while (x.length > 1 && nw(x + '…') > width) x = x.slice(0, -1); return x + '…'; };
+  const breaks: number[] = [];
+  for (let i = 1; i < name.length - 1; i++) if ('-_. '.includes(name[i])) breaks.push(name[i] === ' ' ? i : i + 1);
+  if (!breaks.length) return [cut(name)];
+  const mid = name.length / 2, at = breaks.reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a));
+  return [cut(name.slice(0, at).trimEnd()), cut(name.slice(at).trimStart())];
+}
+
+export interface ColGeo { id: string; x: number; w: number; lines: string[] }
 export interface RowGeo { id: string; i: number; y: number; h: number; /** y of the arrow / divider */ ay: number }
 export interface BlockGeo { id: string; kind: BlockKind; guard: string; x1: number; x2: number; y1: number; y2: number; elses: { id: string; y: number; guard: string }[]; depth: number }
 export interface ActGeo { pid: string; y1: number; y2: number; level: number }
@@ -294,34 +356,44 @@ export function layoutSeq(d: SeqDoc): SeqGeo {
   const n = d.participants.length;
   const idx: Record<string, number> = {}; d.participants.forEach((p, i) => (idx[p.id] = i));
   // gaps between neighbouring lifelines widen for the labels that must fit between them
+  const heads = d.participants.map(p => headOf(p));
   const gaps = new Array(Math.max(0, n - 1)).fill(SEQ.colGap);
-  d.participants.forEach((p, i) => { if (i < n - 1) gaps[i] = Math.max(gaps[i], (textW(p.name) + textW(d.participants[i + 1].name)) / 2 + 40); });
-  let selfRight = 0;
+  d.participants.forEach((_, i) => { if (i < n - 1) gaps[i] = Math.max(gaps[i], (heads[i].w + heads[i + 1].w) / 2 + 30); });
+  let selfRight = 0, x0 = SEQ.x0;
+  const widest = (lines: string[]) => Math.max(0, ...lines.map(textW));
   for (const r of d.rows) {
     if (r.t === 'msg') {
       const a = idx[r.from], b = idx[r.to]; if (a === undefined || b === undefined) continue;
-      const w = textW(r.label) + 44;
+      const w = widest(labelLines(r.label)) + 44;
       if (a === b) { if (a < n - 1) gaps[a] = Math.max(gaps[a], w + 20); else selfRight = Math.max(selfRight, w); continue; }
       const lo = Math.min(a, b), hi = Math.max(a, b), have = gaps.slice(lo, hi).reduce((s, g) => s + g, 0);
       if (have < w) { const extra = (w - have) / (hi - lo); for (let k = lo; k < hi; k++) gaps[k] += extra; }
     } else if (r.t === 'note' && r.over.length === 1) {
       const a = idx[r.over[0]]; if (a === undefined) continue;
-      const w = Math.min(260, textW(r.text) + 24);
-      if (a < n - 1) gaps[a] = Math.max(gaps[a], w / 2 + 70);
-      if (a > 0) gaps[a - 1] = Math.max(gaps[a - 1], w / 2 + 70);
+      const w = noteWidth(r.text);
+      if (r.pos === 'left') { if (a > 0) gaps[a - 1] = Math.max(gaps[a - 1], w + 44); else x0 = Math.max(x0, w + 40); }
+      else if (r.pos === 'right') { if (a < n - 1) gaps[a] = Math.max(gaps[a], w + 44); else selfRight = Math.max(selfRight, w + 20); }
+      else {
+        if (a < n - 1) gaps[a] = Math.max(gaps[a], w / 2 + 70);
+        if (a > 0) gaps[a - 1] = Math.max(gaps[a - 1], w / 2 + 70);
+      }
     }
   }
   const cols: ColGeo[] = []; const colX: Record<string, number> = {};
-  let x = SEQ.x0;
-  d.participants.forEach((p, i) => { cols.push({ id: p.id, x }); colX[p.id] = x; x += gaps[i] ?? 0; });
+  let x = x0;
+  d.participants.forEach((p, i) => { cols.push({ id: p.id, x, w: heads[i].w, lines: heads[i].lines }); colX[p.id] = x; x += gaps[i] ?? 0; });
 
   // rows, top to bottom
   const rows: RowGeo[] = [];
   let y = SEQ.firstRow;
   d.rows.forEach((r, i) => {
     let h: number, ay: number;
-    if (r.t === 'msg') { h = r.from === r.to ? SEQ.selfH : SEQ.msgH; ay = y + (r.from === r.to ? 24 : 30); }
-    else if (r.t === 'note') { const lines = Math.max(1, Math.ceil(textW(r.text) / 230)); h = 18 + lines * SEQ.noteLine + 8; ay = y + 8; }
+    if (r.t === 'msg') {
+      const extra = (labelLines(r.label).length - 1) * LINE_H;
+      if (r.from === r.to) { h = SEQ.selfH + Math.max(0, extra - LINE_H); ay = y + 24; }
+      else { h = SEQ.msgH + extra; ay = y + 30 + extra; }
+    }
+    else if (r.t === 'note') { const lines = noteLines(r.text).length; h = 18 + lines * SEQ.noteLine + 8; ay = y + 8; }
     else if (r.t === 'open') { h = SEQ.openH; ay = y + 8; }
     else if (r.t === 'else') { h = SEQ.elseH; ay = y + 10; }
     else { h = SEQ.closeH; ay = y + 8; }
@@ -353,14 +425,18 @@ export function layoutSeq(d: SeqDoc): SeqGeo {
       const parent = stack[stack.length - 1];
       if (parent) { parent.lo = Math.min(parent.lo, s.lo); parent.hi = Math.max(parent.hi, s.hi); parent.inner = Math.max(parent.inner, s.inner + 1); parent.selfR = Math.max(parent.selfR, s.selfR + 12); }
     }
-    else if (r.t === 'msg') touch([r.from, r.to], r.from === r.to ? textW(r.label) + 54 : 0);
+    else if (r.t === 'msg') touch([r.from, r.to], r.from === r.to ? Math.max(0, ...labelLines(r.label).map(textW)) + 54 : 0);
     else if (r.t === 'note') touch(r.over);
   });
 
   const acts = activations(d, rows);
-  const right = Math.max(...cols.map(c => c.x + SEQ.headW / 2), ...blocks.map(b => b.x2), (cols[n - 1]?.x ?? 0) + selfRight + 30, 0);
+  const right = Math.max(...cols.map(c => c.x + c.w / 2), ...blocks.map(b => b.x2), (cols[n - 1]?.x ?? 0) + selfRight + 30, 0);
   return { cols, rows, blocks, acts, width: right + 40, height, colX };
 }
+
+/** A note's lines (its own line breaks, wrapped at 230px) and width. */
+export const noteLines = (text: string) => labelLines(text || ' ', 230);
+export const noteWidth = (text: string) => Math.min(254, Math.max(...noteLines(text).map(textW)) + 24);
 
 /**
  * Activation bars: a call opens one on the callee; the callee's reply to that caller closes it (and
@@ -482,6 +558,8 @@ const str = (v: unknown) => (v === null || v === undefined ? '' : typeof v === '
  * A sequence from a file, the server or MCP, made safe to edit and draw: every enum is one the app knows,
  * ids are plain identifiers and unique, rows reference lifelines that exist, and blocks are balanced.
  */
+const colorOf = (v: unknown): { color?: ContainerColor } => typeof v === 'string' && Object.hasOwn(CONTAINER_COLORS, v) ? { color: v as ContainerColor } : {};
+
 export function sanitizeSeq(raw: unknown): SeqDoc {
   const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const participants: Participant[] = [], idMap = new Map<string, string>();
@@ -492,7 +570,9 @@ export function sanitizeSeq(raw: unknown): SeqDoc {
     if (!ID_RE.test(id) || participants.some(x => x.id === id)) id = slugId(str(o.name) || id || 'p', participants.map(x => x.id));
     if (!idMap.has(str(o.id))) idMap.set(str(o.id), id);
     const type = safeId(o.type).replace(/[.$]/g, '');
-    participants.push({ id, name: str(o.name) || id, ...(type ? { type } : {}), ...(o.ref ? { ref: safeId(o.ref) } : {}), ...itemNotes(o.notes) });
+    const width = typeof o.width === 'number' && Number.isFinite(o.width) ? Math.round(Math.min(HEAD_MAX, Math.max(HEAD_MIN, o.width))) : undefined;
+    participants.push({ id, name: str(o.name) || id, ...(type ? { type } : {}), ...(o.ref ? { ref: safeId(o.ref) } : {}), ...itemNotes(o.notes),
+      ...colorOf(o.color), ...(o.border === 'dashed' ? { border: 'dashed' as const } : {}), ...(isLogo(o.logo) ? { logo: o.logo } : {}), ...(width !== undefined ? { width } : {}) });
   }
   const has = (id: string) => participants.some(p => p.id === id);
   const ref = (v: unknown) => idMap.get(str(v)) ?? safeId(v);   // rows follow lifelines whose ids were cleaned
@@ -504,12 +584,13 @@ export function sanitizeSeq(raw: unknown): SeqDoc {
     if (o.t === 'msg') {
       const from = ref(o.from), to = ref(o.to);
       if (!has(from) || !has(to)) continue;
-      rows.push({ t: 'msg', id: freshId(o.id), from, to, label: str(o.label), style: STYLES.includes(o.style as MsgStyle) ? o.style as MsgStyle : 'sync' });
+      rows.push({ t: 'msg', id: freshId(o.id), from, to, label: str(o.label), style: STYLES.includes(o.style as MsgStyle) ? o.style as MsgStyle : 'sync', ...colorOf(o.color), ...(o.bold === true ? { bold: true as const } : {}) });
     } else if (o.t === 'note') {
       const over = (Array.isArray(o.over) ? o.over : []).map(ref).filter(has);
       if (!over.length) continue;
-      rows.push({ t: 'note', id: freshId(o.id), over, text: str(o.text) });
-    } else if (o.t === 'open') rows.push({ t: 'open', id: freshId(o.id), kind: BLOCK_KINDS.includes(o.kind as BlockKind) ? o.kind as BlockKind : 'opt', guard: str(o.guard) });
+      const pos = (o.pos === 'left' || o.pos === 'right') && over.length === 1 ? { pos: o.pos as NotePos } : {};
+      rows.push({ t: 'note', id: freshId(o.id), over, text: str(o.text), ...pos });
+    } else if (o.t === 'open') rows.push({ t: 'open', id: freshId(o.id), kind: BLOCK_KINDS.includes(o.kind as BlockKind) ? o.kind as BlockKind : 'opt', guard: str(o.guard), ...colorOf(o.color) });
     else if (o.t === 'else') rows.push({ t: 'else', id: freshId(o.id), guard: str(o.guard) });
     else if (o.t === 'close') rows.push({ t: 'close', id: freshId(o.id) });
   }

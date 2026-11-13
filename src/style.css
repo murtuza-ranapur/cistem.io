@@ -722,3 +722,33 @@ button.link:hover{text-decoration:underline}
 .props .ep-pick-row input[type=checkbox]{width:auto;flex:none;padding:0;margin:0;align-self:center}
 .props .ep-pick-row input.ep-calls{width:60px;flex:none}
 .props .ep-pick .note{margin:6px 0 0}
+/* sequence: two-line names, style, grips and handles */
+.sq-hname.two{font-size:11.5px}
+.sq-head.dashed rect{stroke-dasharray:6 3.5;stroke:color-mix(in srgb,var(--kc) 60%,var(--node-line))}
+.sq-head.dashed .sq-hbar{display:none}
+.sq-head.tinted .sq-htype{fill:color-mix(in srgb,var(--kc) 80%,var(--fg))}
+.sq-head .sq-hlogo{pointer-events:none}
+.sq-head .sq-nudge{opacity:0;transition:opacity var(--t) var(--ease)}
+.sq-head:hover .sq-nudge,.sq-head.on .sq-nudge{opacity:1}
+.sq-head.dragging .sq-nudge{opacity:0}
+.sq-nudge rect{fill:var(--panel);stroke:var(--node-line);cursor:pointer}
+.sq-nudge [data-nudge]:hover rect{stroke:var(--sel);fill:var(--sel-soft)}
+.sq-nudge text{font-size:9px;fill:var(--muted);pointer-events:none}
+.sq-nudge .sq-hgrip{font-size:13px;fill:var(--muted)}
+.sq-hresize,.sq-nedge{fill:var(--sel);stroke:var(--panel);stroke-width:1.5;cursor:ew-resize}
+.sq-msg .sq-grip{font-size:12px;fill:var(--muted);opacity:0;pointer-events:none;transition:opacity var(--t) var(--ease)}
+.sq-msg:hover .sq-grip,.sq-msg.on .sq-grip{opacity:1}
+.sq-msg.tinted .sq-line{stroke:var(--mc)}
+.sq-msg.tinted .sq-label{fill:color-mix(in srgb,var(--mc) 75%,var(--fg))}
+.sq-msg.tinted:hover .sq-line{stroke:var(--mc);stroke-width:2.2}
+.sq-msg.bold .sq-line{stroke-width:2.6}
+.sq-msg.bold .sq-label{font-weight:600}
+.sq-msg.on.tinted .sq-line{stroke:var(--mc);filter:drop-shadow(0 0 2px var(--sel))}
+.sq-block.tinted .sq-bbox{stroke:var(--bc);fill:color-mix(in srgb,var(--bc) 7%,transparent)}
+.sq-block.tinted .sq-btab{stroke:var(--bc);fill:color-mix(in srgb,var(--bc) 18%,var(--panel))}
+.sq-block.tinted .sq-bkind{fill:color-mix(in srgb,var(--bc) 80%,var(--fg))}
+.sq-sugg{display:flex;flex-wrap:wrap;gap:6px}
+.sq-sugg .chip{font-size:11.5px;padding:3px 8px;font-family:var(--mono,monospace)}
+.sq-move{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px}
+.sq-move .muted{margin-right:4px}
+.sq-logo-thumb{width:20px;height:20px;object-fit:contain;border-radius:4px;margin-right:4px;vertical-align:middle}

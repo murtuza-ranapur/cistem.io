@@ -80,3 +80,12 @@ assert.deepEqual(taskProgress(undefined), { done: 0, total: 0 });
 assert.equal(notePreview('## Title\n- [x] **done** ==hi==\n```\ncode\n```\n[link](http://x)'), 'Title done hi link');
 assert.equal(notePreview('a'.repeat(300), 10).length, 10);
 console.log('notes helpers ok');
+
+// ---- fit to view counts sticky notes, on every kind of diagram ----
+import { noteBoxes } from '../src/notes/boxes';
+{
+  const b = noteBoxes([{ id: 'n1', x: 900, y: -200, w: 220, color: 'yellow', text: 'far' }, { id: 'n2', x: 0, y: 0, w: 100, h: 40, color: 'blue', text: '' }]);
+  assert.deepEqual(b, [{ x: 900, y: -200, w: 220, h: 90 }, { x: 0, y: 0, w: 100, h: 40 }]);
+  assert.deepEqual(noteBoxes(undefined), []);
+  console.log('note boxes ok');
+}

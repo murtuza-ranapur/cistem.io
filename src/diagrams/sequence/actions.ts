@@ -218,3 +218,29 @@ export function seqTool(name: string) {
   if (r?.t === 'msg' && r.style !== name) change('sequence', d => { const m = d.rows.find(x => x.id === id); if (m?.t === 'msg') m.style = name; });
   else hint(`Drag from one lifeline to another to draw a${name === 'async' ? 'n async message' : name === 'reply' ? ' reply' : ' call'}`, 2000);
 }
+
+/** Markdown from a sticky as the plain text a note over lifelines holds. */
+export const plainText = (md: string) => md
+  .split('\n').map(l => l.replace(/^\s*(#{1,6}\s+|[-*]\s+\[[ xX]\]\s+|\[[ xX]\]\s+|[-*]\s+|\d+\.\s+|>\s?)/, '')
+    .replace(/\*\*|__|==|~~|`/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trimEnd())
+  .filter((l, i, a) => l || (i > 0 && i < a.length - 1)).join('\n').trim();
+
+/** A sticky joins the flow: a note over the lifeline nearest its middle, at the row nearest its top. */
+export function pinSticky(note: { id: string; x: number; y: number; w: number; text: string }): string | null {
+  const d = seq();
+  if (!d.participants.length) { hint('Add a participant first', 1600); return null; }
+  const g = geometry(d), mid = note.x + note.w / 2;
+  const col = g.cols.reduce((a, c) => Math.abs(c.x - mid) < Math.abs(a.x - mid) ? c : a, g.cols[0]);
+  // after the last row that starts above the sticky; rows inside a block keep it inside
+  let at = 0;
+  for (const r of g.rows) if (r.y + r.h / 2 <= note.y) at = r.i + 1;
+  const n: Row = { t: 'note', id: rowId(), over: [col.id], text: plainText(note.text) };
+  change('sequence', dd => {
+    dd.rows.splice(Math.min(at, dd.rows.length), 0, n);
+    const doc = dd as { notes?: { id: string }[] };
+    doc.notes = doc.notes?.filter(x => x.id !== note.id);
+    if (!doc.notes?.length) delete doc.notes;
+  });
+  selectOne('row', n.id);
+  return n.id;
+}

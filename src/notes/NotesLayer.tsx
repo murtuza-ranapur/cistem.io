@@ -13,6 +13,7 @@ import { NOTE_COLORS, type CanvasNote, type NoteColor } from '../domain/notes';
 import { NoteEditor, preloadNoteEditor } from './index';
 import { notesOf, useNoteUi, setNoteText, setNoteColor, placeNotes, resizeNote, finishEditing } from './actions';
 import { linkTargets, openItem } from './links';
+import { pinSticky } from '../diagrams/sequence/actions';
 
 export function NotesLayer() {
   const notes = useEditor(s => notesOf(s.open.doc));
@@ -113,7 +114,7 @@ const NoteBox = memo(function NoteBox({ note }: { note: CanvasNote }) {
     <div ref={el} className={'cnote' + (selected ? ' sel' : '') + (editing ? ' editing' : '')} data-note={note.id} data-color={note.color}
       style={{ left: note.x, top: note.y, width: note.w, ...(note.h ? { height: note.h } : {}) }}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
-      {selected && only && !drag.current?.moved && <ColourRow id={note.id} color={note.color} />}
+      {selected && only && !drag.current?.moved && <ColourRow note={note} />}
       <NoteEditor value={note.text} editable={editing} toolbar="floating" autoFocus={editing}
         placeholder="Type a note… ( / for blocks, @ to link )"
         onChange={md => setNoteText(note.id, md)} onFocus={onFocus} onBlur={onBlur}
@@ -124,13 +125,16 @@ const NoteBox = memo(function NoteBox({ note }: { note: CanvasNote }) {
 });
 
 const COLOUR_NAMES: Record<NoteColor, string> = { yellow: 'Yellow', blue: 'Blue', green: 'Green', pink: 'Pink', grey: 'Grey', none: 'No fill' };
-function ColourRow({ id, color }: { id: string; color: NoteColor }) {
+function ColourRow({ note }: { note: CanvasNote }) {
+  const { id, color } = note;
+  const seq = useEditor(s => s.open.kind === 'sequence');
   return (
     <div className="cnote-colours" role="group" aria-label="Note colour" onPointerDown={e => e.stopPropagation()}>
       {NOTE_COLORS.map(c => (
         <button type="button" key={c} data-note-color={c} aria-label={COLOUR_NAMES[c]} title={COLOUR_NAMES[c]} aria-pressed={c === color}
           className={c === color ? 'on' : ''} onClick={() => setNoteColor([id], c)} />
       ))}
+      {seq && <button type="button" className="cnote-pin" data-pin-sticky title="Make it a note over the nearest lifeline, part of the flow and the code" onClick={() => pinSticky(note)}>Pin to lifelines</button>}
     </div>
   );
 }

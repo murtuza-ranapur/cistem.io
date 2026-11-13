@@ -1,4 +1,5 @@
 /** The system diagram: components with capacity, connections, environments and load. */
+import { noteBoxes } from '../../notes/boxes';
 import { adopt, makeNode } from '../../domain/model';
 import { toFile } from '../../domain/document';
 import { hasMod } from '../../lib/browser';
@@ -55,7 +56,7 @@ export const system: DiagramModule<'system'> = {
     };
   },
 
-  bounds: doc => bounds(diagramBounds(doc)),
+  bounds: doc => bounds([...diagramBounds(doc), ...noteBoxes(doc.notes)]),
   selectionBox(doc, sel) {
     if (sel.type === 'node') { const n = doc.nodes.find(x => x.id === sel.ids[0]); return n ? nodeBox(doc, n) : null; }
     if (sel.type === 'container') { const f = computeFrames(doc)[sel.ids[0]]; return f ? { x: f.x, y: f.y, w: Math.min(f.w, 360), h: Math.min(f.h, 60) } : null; }

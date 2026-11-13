@@ -1,4 +1,5 @@
 /** The class diagram: types, their members, and how they relate. */
+import { noteBoxes } from '../../notes/boxes';
 import { blankCls, type ClassDoc } from '../../domain/cls';
 import { clsToFile } from '../../domain/document';
 import { primary } from '../../store/editor';
@@ -40,7 +41,13 @@ export const classes: DiagramModule<'class'> = {
   // the panel always has something: a class, a relation, or the diagram's generators and Code tab
   panelFor: sel => !!sel,
   verdict: (d: ClassDoc) => ({ status: 'none', text: `${plural(d.classes.length, 'class', 'classes')} · ${plural(d.relations.length, 'relation', 'relations')}` }),
-  bounds: classBounds,
+  bounds: d => {
+    // sticky notes count too, so fit-to-view never cuts one off
+    const boxes = [classBounds(d), ...noteBoxes(d.notes)].filter((b): b is NonNullable<typeof b> => !!b);
+    if (!boxes.length) return null;
+    const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y));
+    return { x, y, w: Math.max(...boxes.map(b => b.x + b.w)) - x, h: Math.max(...boxes.map(b => b.y + b.h)) - y };
+  },
   // class boxes are text-heavy: don't blow them up past 120%
   fit: animated => fitTo(classBounds(docOf('class')), { animated, maxK: 1.2, pad: 60 }),
   selectionBox: (d, sel) => { const c = sel.type === 'class' ? findClass(d, sel.ids[0]) : undefined; return c ? rectOf(d, c) : null; },

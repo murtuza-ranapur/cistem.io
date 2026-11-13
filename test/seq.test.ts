@@ -155,3 +155,50 @@ import { sanitizeSeq } from '../src/domain/seq';
   assert.equal((p2.doc.rows[0] as any).label, 'Order #42 // see https://x.io');
   console.log('seq hostile ok');
 }
+
+// ---- long text, lifeline heads, note positions, style ----
+import { labelLines, headOf, HEAD_MIN, HEAD_MAX, LABEL_W, textW } from '../src/domain/seq';
+{
+  const long = 'POST /v1/payment-uploads with the CSV file of recurring payments for this billing cycle';
+  const ls = labelLines(long);
+  assert.ok(ls.length >= 3, 'a long label wraps');
+  assert.ok(ls.every(l => textW(l) <= LABEL_W + 40), 'each line fits');
+  assert.deepEqual(labelLines('one\ntwo'), ['one', 'two'], 'line breaks are kept');
+  const h = headOf({ name: 'ecom-transaction-payments' });
+  assert.equal(h.lines.length, 2, 'a long name takes two lines');
+  assert.ok(h.lines[0].endsWith('-'), 'broken at a hyphen: ' + h.lines.join('|'));
+  assert.ok(h.w >= HEAD_MIN && h.w <= HEAD_MAX);
+  assert.deepEqual(headOf({ name: 'api' }).lines, ['api']);
+  assert.equal(headOf({ name: 'api', width: 240 }).w, 240, 'a set width wins');
+  // wide labels don't push lifelines apart beyond the wrapped width
+  const g = layoutSeq(parseSeq(`a -> b: ${long}\n`).doc);
+  assert.ok(g.cols[1].x - g.cols[0].x < 300, 'gap from the wrapped label, not the whole line');
+  console.log('seq wrap ok');
+}
+{
+  const t = 'participant a, b\n\na -> b: first\\nsecond\nnote left of a: why we validate first\\nthis\nnote right of b: r\nnote over a, b: both\n';
+  const p = parseSeq(t);
+  assert.deepEqual(p.errors, []);
+  const [m, l, r, o] = p.doc.rows as any[];
+  assert.equal(m.label, 'first\nsecond');
+  assert.deepEqual([l.pos, l.over, l.text], ["left", ["a"], "why we validate first\nthis"]);
+  assert.deepEqual([r.pos, r.over], ['right', ['b']]);
+  assert.equal(o.pos, undefined);
+  assert.equal(printSeq(p.doc), t, 'positions and line breaks round-trip');
+  const g = layoutSeq(p.doc);
+  assert.ok(g.cols[0].x > SEQ_X0_MIN(), 'room on the left for a note left of the first lifeline');
+  // style stays when the code is edited, and survives a file round trip
+  const styled = parseSeq(t).doc;
+  (styled.rows[0] as any).color = 'pink'; (styled.rows[0] as any).bold = true;
+  Object.assign(styled.participants[0], { color: 'green', border: 'dashed', width: 200 });
+  const next = keepIds(styled, parseSeq(t.replace('first', 'one')).doc);
+  assert.equal((next.rows[0] as any).color, 'pink'); assert.equal((next.rows[0] as any).bold, true);
+  assert.deepEqual([next.participants[0].color, next.participants[0].border, next.participants[0].width], ['green', 'dashed', 200]);
+  const back = sanitizeSeq(JSON.parse(JSON.stringify({ ...styled, participants: [...styled.participants, { id: 'x', name: 'x', color: 'chartreuse', width: 9999, logo: 'javascript:1' }] })));
+  assert.equal((back.rows[0] as any).color, 'pink'); assert.equal((back.rows[1] as any).pos, 'left');
+  assert.equal(back.participants[0].border, 'dashed');
+  const x = back.participants.find(q => q.id === 'x')!;
+  assert.equal(x.color, undefined, 'unknown colour dropped'); assert.equal(x.width, HEAD_MAX, 'width clamped'); assert.equal(x.logo, undefined, 'bad logo dropped');
+  console.log('seq notes + style ok');
+}
+function SEQ_X0_MIN() { return layoutSeq(parseSeq('participant a, b\n').doc).cols[0].x; }

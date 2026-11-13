@@ -82,6 +82,7 @@ const write = (name: string, doc: any, title: string) => {
     '# a comment line\n// another\nactor user\nuser->api:GET /x?a=1#frag // keep\nnote over api: Order #42 // see https://x.io\napi-->user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done',
     'a -> b: ok\nelse\nloop forever\na -> b\nwat is this\nparticipant a\nparticipant 9x\nb -> c:   spaced label  ',
     'participant p-1 "Name \\"q\\"" queue\np-1 -> p-1: self\nopt\nend',
+    'a -> b: first line\\nsecond line\nnote left of a, b: kept to one\\nwith a break\nnote right of b: path C:\\\\tmp\nnote over a, b: both',
   ];
   const out = cases.map(text => {
     const p = parseCistem(text);

@@ -32,7 +32,7 @@ public final class Seq {
     private static final Pattern ID = Pattern.compile("^[A-Za-z_$][\\w.$-]*$");
     private static final Pattern PARTICIPANT = Pattern.compile("^(participant|actor)\\s+(.+)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern PART_FULL = Pattern.compile("^([A-Za-z_$][\\w.$-]*)(?:\\s+\"([^\"]*)\")?(?:\\s+([A-Za-z][\\w-]*))?(?:\\s+@([\\w.$-]+))?\\s*$");
-    private static final Pattern NOTE = Pattern.compile("^note\\s+(?:over|left of|right of)\\s+([^:]+?)\\s*(?::\\s*(.*))?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern NOTE = Pattern.compile("^note\\s+(over|left of|right of)\\s+([^:]+?)\\s*(?::\\s*(.*))?$", Pattern.CASE_INSENSITIVE);
     private static final Pattern OPEN = Pattern.compile("^(alt|opt|loop|par)\\b\\s*(.*)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern BRANCH = Pattern.compile("^(else|and)\\b\\s*(.*)$", Pattern.CASE_INSENSITIVE);
     private static final Pattern END = Pattern.compile("^end$", Pattern.CASE_INSENSITIVE);
@@ -71,14 +71,17 @@ public final class Seq {
                 continue;
             }
             if ((m = NOTE.matcher(l)).matches()) {
-                List<String> over = splitList(m.group(1));
+                String side = m.group(1).toLowerCase(Locale.ROOT);
+                String pos = side.equals("left of") ? "left" : side.equals("right of") ? "right" : null;
+                List<String> over = splitList(m.group(2));
                 boolean ok = true;
                 for (String id : over) if (!ID.matcher(id).matches()) { errors.add(new Error(line, "\"" + id + "\" isn't a participant name")); ok = false; break; }
                 if (!ok) continue;
                 over.forEach(id -> ensure(parts, id, id, null));
                 ObjectNode r = rows.addObject(); r.put("t", "note").put("id", "r" + (++seq[0]));
-                ArrayNode o = r.putArray("over"); over.forEach(o::add);
-                r.put("text", m.group(2) == null ? "" : m.group(2).trim());
+                ArrayNode o = r.putArray("over"); (pos != null ? over.subList(0, 1) : over).forEach(o::add);
+                r.put("text", m.group(3) == null ? "" : unescape(m.group(3).trim()));
+                if (pos != null) r.put("pos", pos);
                 continue;
             }
             if ((m = OPEN.matcher(l)).matches()) {
@@ -110,7 +113,7 @@ public final class Seq {
                 }
                 ensure(parts, from, from, null); ensure(parts, to, to, null);
                 rows.addObject().put("t", "msg").put("id", "r" + (++seq[0])).put("from", from).put("to", to)
-                        .put("label", m.group(4) == null ? "" : m.group(4).trim())
+                        .put("label", m.group(4) == null ? "" : unescape(m.group(4)).trim())
                         .put("style", arrow.equals("->>") ? "async" : arrow.equals("-->") ? "reply" : "sync");
                 continue;
             }
@@ -153,12 +156,13 @@ public final class Seq {
                     String style = r.path("style").asText("sync");
                     String arrow = style.equals("async") ? "->>" : style.equals("reply") ? "-->" : "->";
                     String label = r.path("label").asText("");
-                    out.add(ind + r.path("from").asText() + " " + arrow + " " + r.path("to").asText() + (label.isEmpty() ? "" : ": " + label));
+                    out.add(ind + r.path("from").asText() + " " + arrow + " " + r.path("to").asText() + (label.isEmpty() ? "" : ": " + escape(label)));
                 }
                 case "note" -> {
                     List<String> over = new ArrayList<>(); r.path("over").forEach(o -> over.add(o.asText()));
-                    String text = r.path("text").asText("").replace("\n", " ");
-                    out.add(ind + "note over " + String.join(", ", over) + (text.isEmpty() ? "" : ": " + text));
+                    String text = r.path("text").asText(""), pos = r.path("pos").asText("");
+                    String where = (pos.equals("left") || pos.equals("right")) && over.size() == 1 ? pos + " of" : "over";
+                    out.add(ind + "note " + where + " " + String.join(", ", over) + (text.isEmpty() ? "" : ": " + escape(text)));
                 }
                 case "open" -> {
                     String g = r.path("guard").asText("");
@@ -185,12 +189,34 @@ public final class Seq {
         for (int i = 0; i < b.size(); i++) {
             JsonNode p = i < a.size() ? a.get(i) : null;
             ObjectNode r = (ObjectNode) b.get(i);
-            if (p != null && p.path("t").asText().equals(r.path("t").asText())) r.put("id", p.path("id").asText());
-            else fresh.add(r);
+            if (p != null && p.path("t").asText().equals(r.path("t").asText())) {
+                r.put("id", p.path("id").asText());
+                // style isn't written in the code: a row in the same place keeps its own
+                for (String k : List.of("color", "bold")) if (p.has(k) && !r.has(k) && !r.path("t").asText().equals("note")) r.set(k, p.get(k).deepCopy());
+            } else fresh.add(r);
+        }
+        // a lifeline's notes, style and width are carried over by id
+        for (JsonNode q : next.path("participants")) {
+            for (JsonNode p : prev.path("participants")) {
+                if (!p.path("id").asText().equals(q.path("id").asText())) continue;
+                for (String k : List.of("notes", "color", "border", "logo", "width")) if (p.has(k) && !q.has(k)) ((ObjectNode) q).set(k, p.get(k).deepCopy());
+            }
         }
         int k = 0;
         for (ObjectNode r : fresh) { String id; do id = "r" + (++k); while (taken.contains(id)); taken.add(id); r.put("id", id); }
         if (prev.has("uses") && !next.has("uses")) next.set("uses", prev.get("uses").deepCopy());
+    }
+
+    /** Line breaks in labels and notes are written \\n in the code (one line per row). */
+    static String escape(String s) { return s.replace("\\", "\\\\").replace("\n", "\\n"); }
+    static String unescape(String s) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && i + 1 < s.length() && (s.charAt(i + 1) == 'n' || s.charAt(i + 1) == '\\')) { b.append(s.charAt(++i) == 'n' ? '\n' : '\\'); }
+            else b.append(c);
+        }
+        return b.toString();
     }
 
     private static List<String> splitList(String s) {

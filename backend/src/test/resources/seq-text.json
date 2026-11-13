@@ -174,11 +174,12 @@
     "over": [
      "api"
     ],
-    "text": "done"
+    "text": "done",
+    "pos": "left"
    }
   ],
   "errors": [],
-  "printed": "participant user actor\nparticipant api, a, b\n\nuser -> api: GET /x?a=1#frag // keep\nnote over api: Order #42 // see https://x.io\napi --> user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote over api: done\n"
+  "printed": "participant user actor\nparticipant api, a, b\n\nuser -> api: GET /x?a=1#frag // keep\nnote over api: Order #42 // see https://x.io\napi --> user\npar\n  api ->> a: one\nand second\n  api ->> b: two\nend\nnote left of api: done\n"
  },
  {
   "text": "a -> b: ok\nelse\nloop forever\na -> b\nwat is this\nparticipant a\nparticipant 9x\nb -> c:   spaced label  ",
@@ -283,5 +284,53 @@
    }
   ],
   "printed": "participant p-1\n\np-1 -> p-1: self\nopt\nend\n"
+ },
+ {
+  "text": "a -> b: first line\\nsecond line\nnote left of a, b: kept to one\\nwith a break\nnote right of b: path C:\\\\tmp\nnote over a, b: both",
+  "participants": [
+   {
+    "id": "a",
+    "name": "a"
+   },
+   {
+    "id": "b",
+    "name": "b"
+   }
+  ],
+  "rows": [
+   {
+    "t": "msg",
+    "from": "a",
+    "to": "b",
+    "label": "first line\nsecond line",
+    "style": "sync"
+   },
+   {
+    "t": "note",
+    "over": [
+     "a"
+    ],
+    "text": "kept to one\nwith a break",
+    "pos": "left"
+   },
+   {
+    "t": "note",
+    "over": [
+     "b"
+    ],
+    "text": "path C:\\tmp",
+    "pos": "right"
+   },
+   {
+    "t": "note",
+    "over": [
+     "a",
+     "b"
+    ],
+    "text": "both"
+   }
+  ],
+  "errors": [],
+  "printed": "participant a, b\n\na -> b: first line\\nsecond line\nnote left of a: kept to one\\nwith a break\nnote right of b: path C:\\\\tmp\nnote over a, b: both\n"
  }
 ]

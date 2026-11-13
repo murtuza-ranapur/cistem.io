@@ -1,6 +1,7 @@
 /** Where things are on the drawing. Everything is derived from the model by layoutSeq; nothing is placed by hand. */
-import { layoutSeq, textW, type SeqDoc, type SeqGeo } from '../../domain/seq';
+import { layoutSeq, type SeqDoc, type SeqGeo } from '../../domain/seq';
 import type { Box } from '../../store/viewport';
+import { noteBoxes } from '../../notes/boxes';
 
 const cache = new WeakMap<SeqDoc, SeqGeo>();
 /** The layout of a document (documents are immutable, so it's computed once per version). */
@@ -39,18 +40,12 @@ export function edgeX(g: SeqGeo, pid: string, y: number, toward: number): number
   const lv = levelAt(g, pid, y), c = (g.colX[pid] ?? 0) + Math.max(0, lv - 1) * 6;
   return lv ? (toward > c ? c + 5 : c - 5) : c;
 }
-/** Words wrapped into lines no wider than `width`. */
-export function wrapText(s: string, width: number): string[] {
-  const out: string[] = []; let line = '';
-  for (const w of s.split(/\s+/)) {
-    const next = line ? line + ' ' + w : w;
-    if (textW(next) > width && line) { out.push(line); line = w; } else line = next;
-  }
-  if (line) out.push(line);
-  return out.length ? out : [''];
-}
+export { wrapText } from '../../domain/seq';
 /** Everything drawn (at least a modest page, so a near-empty sequence doesn't zoom in). */
 export function seqBounds(d: SeqDoc): Box {
   const g = geometry(d);
-  return { x: 0, y: 0, w: Math.max(g.width, 400), h: Math.max(g.height, 300) };
+  let x1 = 0, y1 = 0, x2 = Math.max(g.width, 400), y2 = Math.max(g.height, 300);
+  // sticky notes count too, so fit-to-view never cuts one off
+  for (const b of noteBoxes(d.notes)) { x1 = Math.min(x1, b.x); y1 = Math.min(y1, b.y); x2 = Math.max(x2, b.x + b.w); y2 = Math.max(y2, b.y + b.h); }
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
 }

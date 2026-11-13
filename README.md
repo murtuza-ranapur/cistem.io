@@ -127,6 +127,14 @@ A collapsed service says how many endpoints it has, by method (`3 endpoints · P
 
 A connection can call **several** of its target's endpoints: tick them in the connection's panel. With the load view on, each gets its own calls per request (an upload and four status polls, say); the connection's calls are their sum, the line lists them (or says how many), and the expanded target highlights them and shows the rps each endpoint receives from all its callers. Files with the older single `endpoint` migrate on open.
 
+## Sequence diagrams
+
+Long message labels wrap (press Enter in a label to break it yourself; the code writes `\n`), and lifelines are spaced by the wrapped text, so one long label doesn't push the rest off-screen. Lifeline heads size to their name, taking two lines at a hyphen when it's long; drag a selected head's right edge to widen it (double-click the handle or **Fit the name** to reset). Hover a head for its ◀ ⠿ ▶ grip to reorder; the panel also has Move left/right and up/down.
+
+Lifelines take a colour, a dashed border and a logo; messages a colour and bold; blocks a colour. Style isn't written in the code, and survives editing it.
+
+Two kinds of note: **Note over** (the sequence tool, `N`) is part of the flow and the code — over one or more lifelines, or `note left of` / `note right of` one. Drag it up or down to move it in the flow, sideways onto other lifelines, and drag its edges to span more or fewer. **Sticky** (the yellow rail button) is free on the canvas. Convert either way: **Make it a sticky** in a note's panel, **Pin to lifelines** on a selected sticky. Fit to view (`⌘0`) includes stickies on every kind of diagram.
+
 ## Copy as image
 
 The image button in the top bar (or `⌘⇧C`) copies the whole diagram, not just what's on screen, as a PNG at 2×: paste it straight into Confluence, a doc or a slide. Export / import also has **Download PNG** and **Download SVG**. The picture leaves out the grid, selection and app chrome, always uses the light theme, includes canvas notes, and embeds the app's fonts (IBM Plex, OFL, served from `/fonts`).

@@ -36,9 +36,9 @@ public class SequenceTools {
               web -> api: POST /orders                     call
               api --> web: 201 Created                     reply
               api ->> events: order.created                async message
-              note over api, db: text
+              note over api, db: text                      also note left of api: …, note right of api: …
               alt condition / else other / end            also opt, loop, par (par branches use `and`)
-            Ids are letters, digits, - _ . with no spaces. Link a lifeline to a component (@id) of the system diagram
+            Write a line break in a label or note as \\n. Ids are letters, digits, - _ . with no spaces. Link a lifeline to a component (@id) of the system diagram
             the sequence uses to get end-to-end timings in the editor.""";
 
     @McpTool(name = "create_sequence", description = """

@@ -595,6 +595,89 @@ class T {
     eq(await t.page.$$eval('.sq-msg', e => e.length), 2);
   });
 
+  const pasteSeq = (t, text) => t.page.evaluate(x => { const dt = new DataTransfer(); dt.setData('text/plain', x); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, text);
+  const seqText = 'participant merchant-portal\nparticipant ecom-transaction-payments\nparticipant processor\nmerchant-portal -> ecom-transaction-payments: POST /v1/payment-uploads with the CSV file of recurring payments for this billing cycle\nnote over ecom-transaction-payments, processor: validated row by row\necom-transaction-payments ->> processor: queued\n';
+
+  await test('sequence: long labels wrap, long names take two lines, heads nudge and resize', async t => {
+    await newSeq(t); await t.page.mouse.click(600, 400); await pasteSeq(t, seqText); await t.page.waitForTimeout(500); await t.page.keyboard.press('Escape');
+    assert(await t.page.$$eval('.sq-msg:first-of-type .sq-label tspan, .sq-msg .sq-label tspan', e => e.length) >= 3, 'the long label wraps onto lines');
+    const h = await heads(t);
+    assert(h['processor'].x - h['ecom-transaction-payments'].x < 320, 'lifelines stay close');
+    eq(await t.page.$$eval('[data-head="ecom-transaction-payments"] .sq-hname', e => e.length), 2, 'a long name takes two lines');
+    // nudge from the head, and from the panel
+    await t.page.hover('[data-head="processor"]'); await t.page.click('[data-head="processor"] [data-nudge="l"]'); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.participants.map(p => p.id).join(','), 'merchant-portal,processor,ecom-transaction-payments', 'nudged left');
+    await t.page.click('[data-head="processor"] .sq-hname'); await t.page.waitForTimeout(250);
+    await t.page.click('[data-sq="move-right"]'); await t.page.waitForTimeout(200);
+    eq((await t.doc()).model.participants.map(p => p.id).join(','), 'merchant-portal,ecom-transaction-payments,processor', 'moved back from the panel');
+    // drag the right edge wider; the panel can fit it back
+    await t.page.click('[data-head="merchant-portal"] .sq-hname'); await t.page.waitForTimeout(250);
+    const r = await t.box('[data-head-resize]');
+    await t.page.mouse.move(r.x + r.width / 2, r.y + r.height / 2); await t.page.mouse.down(); await t.page.mouse.move(r.x + 60, r.y + r.height / 2, { steps: 5 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    assert((await t.doc()).model.participants[0].width > 150, 'wider');
+    await t.page.click('[data-sq="fit-width"]'); await t.page.waitForTimeout(150);
+    eq((await t.doc()).model.participants[0].width, undefined, 'fits its name again');
+  });
+
+  await test('sequence: lifelines, messages and blocks take a colour; style survives editing the code and a reload', async t => {
+    await newSeq(t); await t.page.mouse.click(600, 400); await pasteSeq(t, seqText); await t.page.waitForTimeout(500); await t.page.keyboard.press('Escape');
+    await t.page.click('[data-head="processor"] .sq-hname'); await t.page.waitForTimeout(250);
+    await t.page.click('[data-style="color:green"]'); await t.page.click('[data-style="border:dashed"]'); await t.page.waitForTimeout(150);
+    assert(await t.page.$('[data-head="processor"].dashed.tinted'), 'drawn dashed and tinted');
+    await t.page.click('.sq-msg:has-text("queued") .sq-label'); await t.page.waitForTimeout(250);
+    await t.page.click('[data-style="color:pink"]'); await t.page.click('[data-style="weight:bold"]'); await t.page.waitForTimeout(150);
+    assert(await t.page.$('.sq-msg.bold.tinted'), 'bold pink message');
+    // edit the code: the message keeps its style
+    await t.page.click('[data-sqtab="code"]'); await t.page.waitForSelector('.sq-cm .cm-content');
+    await t.page.click('.sq-cm .cm-content'); await t.page.keyboard.press('Control+End'); await t.page.keyboard.type('processor --> ecom-transaction-payments: done'); await t.page.waitForTimeout(600);
+    let m = (await t.doc()).model;
+    eq(m.rows.find(r => r.label === 'queued').color, 'pink', 'colour kept'); eq(m.rows.find(r => r.label === 'queued').bold, true);
+    await t.page.reload(); await t.page.waitForTimeout(800);
+    m = (await t.doc()).model;
+    eq(m.participants.find(p => p.id === 'processor').border, 'dashed', 'kept after a reload');
+    eq(m.rows.find(r => r.label === 'queued').color, 'pink');
+  });
+
+  await test('sequence: notes go left of, right of or over lifelines, move sideways, and turn into stickies and back', async t => {
+    await newSeq(t); await t.page.mouse.click(600, 400); await pasteSeq(t, seqText); await t.page.waitForTimeout(500); await t.page.keyboard.press('Escape');
+    const note = () => t.doc().then(d => d.model.rows.find(r => r.t === 'note'));
+    const nb = await t.box('.sq-note path');
+    await t.page.mouse.click(nb.x + 20, nb.y + nb.height / 2); await t.page.waitForTimeout(250);
+    await t.page.click('[data-style="notepos:left"]'); await t.page.waitForTimeout(150);
+    let n = await note(); eq([n.pos, n.over.join(',')].join(' '), 'left ecom-transaction-payments', 'left of one lifeline');
+    await t.page.click('[data-sqtab="code"]'); await t.page.waitForSelector('.sq-cm .cm-content');
+    assert((await t.page.textContent('.sq-cm .cm-content')).includes('note left of ecom-transaction-payments: validated'), 'written in the code');
+    await t.page.click('[data-sqtab="item"]');
+    await t.page.click('[data-style="notepos:over"]'); await t.page.waitForTimeout(150);
+    // drag it sideways onto the next lifeline
+    const h = await heads(t), b = await t.box('.sq-note path');
+    await t.page.mouse.move(b.x + 10, b.y + b.height / 2); await t.page.mouse.down();
+    await t.page.mouse.move(b.x + 10 + (h.processor.x - h['ecom-transaction-payments'].x), b.y + b.height / 2, { steps: 8 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    n = await note(); eq(n.over.join(','), 'processor', 'moved to the next lifeline');
+    // drag its left edge to span two
+    const e = await t.box('[data-note-edge="l"]');
+    await t.page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await t.page.mouse.down(); await t.page.mouse.move(h['ecom-transaction-payments'].x, e.y + e.height / 2, { steps: 8 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    n = await note(); eq(n.over.join(','), 'ecom-transaction-payments,processor', 'spans two');
+    // into a sticky, then pinned back
+    await t.page.click('[data-sq="to-sticky"]'); await t.page.waitForTimeout(300);
+    let d = await t.doc();
+    eq(d.model.rows.some(r => r.t === 'note'), false, 'left the flow'); eq(d.model.notes.length, 1, 'now a sticky'); eq(d.model.notes[0].text, 'validated row by row');
+    await t.page.keyboard.press('Escape'); await t.page.mouse.click(700, 820); await t.page.waitForTimeout(150);
+    const c = await t.box('.cnote'); await t.page.mouse.click(c.x + c.width / 2, c.y + 8); await t.page.waitForTimeout(200);
+    await t.page.click('[data-pin-sticky]'); await t.page.waitForTimeout(250);
+    d = await t.doc();
+    eq(d.model.notes, undefined, 'no stickies left'); eq(d.model.rows.filter(r => r.t === 'note').map(r => r.text).join(), 'validated row by row', 'back in the flow');
+  });
+
+  await test('regression: fit to view includes stickies on a sequence', async t => {
+    await newSeq(t); await t.page.mouse.click(600, 400); await pasteSeq(t, seqText); await t.page.waitForTimeout(500); await t.page.keyboard.press('Escape');
+    await t.page.click('#addNote'); await t.page.keyboard.type('far below'); await t.page.mouse.click(700, 820); await t.page.waitForTimeout(150);
+    const c = await t.box('.cnote'); await t.page.mouse.move(c.x + c.width / 2, c.y + 6); await t.page.mouse.down(); await t.page.mouse.move(c.x + c.width / 2 + 500, c.y + 900, { steps: 8 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    await t.page.keyboard.press('Control+0'); await t.page.waitForTimeout(500);
+    const n = await t.box('.cnote'), vp = t.page.viewportSize();
+    assert(n.y + n.height <= vp.height && n.x + n.width <= vp.width && n.y >= 0, 'sticky in view after fit: ' + JSON.stringify(n));
+  });
+
   // ---- class diagrams ----
   const newCls = async t => { await t.page.click('#newTabBtn'); await t.page.click('[data-new="class"]'); await t.page.waitForTimeout(350); };
   const pasteOnCanvas = (t, text) => t.page.evaluate(x => { const dt = new DataTransfer(); dt.setData('text/plain', x); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, text);

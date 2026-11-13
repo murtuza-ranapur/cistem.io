@@ -159,3 +159,5 @@
 #rail > .rail-hint { order: 1; }
 #rail { overflow-y: auto; scrollbar-width: none; }
 #rail::-webkit-scrollbar { display: none; }
+.cnote-colours button.cnote-pin { width: auto; height: auto; border-radius: 6px; background: none; border: 0; padding: 0 2px 0 8px; margin-left: 2px; border-left: 1px solid var(--line); font: 500 11.5px/16px var(--font, inherit); color: var(--accent, var(--sel)); white-space: nowrap; }
+.cnote-colours button.cnote-pin:hover { text-decoration: underline; }
