@@ -50,7 +50,7 @@ export interface NodeData {
   variant?: string;
   rps?: number; platforms?: string[];
   maxRps?: number; instances?: number; rpsPerInstance?: number; maxOps?: number; hitRatio?: number; eviction?: string;
-  maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number; msgPerPartition?: number;
+  maxQps?: number; replicas?: number; readShare?: number; maxThroughput?: number; msgPerPartition?: number; retentionHours?: number;
   endpoints?: Endpoint[]; tables?: Table[];
   /** topic / message detail */
   partitions?: number; schema?: string; key?: string; cluster?: string; fifo?: boolean;

@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n45",
+     "id": "n52",
      "kind": "entry",
      "name": "c",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": 100
     },
     {
-     "id": "n46",
+     "id": "n53",
      "kind": "service",
      "name": "s",
      "rpsPerInstance": 800,
@@ -29,7 +29,7 @@
      "endpoints": []
     },
     {
-     "id": "n47",
+     "id": "n54",
      "kind": "service",
      "name": "lone",
      "rpsPerInstance": 800,
@@ -41,8 +41,8 @@
    "edges": [
     {
      "id": "a",
-     "from": "n45",
-     "to": "n46",
+     "from": "n52",
+     "to": "n53",
      "calls": 1
     }
    ],
@@ -51,15 +51,15 @@
   },
   "layout": {
    "positions": {
-    "n45": {
+    "n52": {
      "x": 0,
      "y": 0
     },
-    "n46": {
+    "n53": {
      "x": 0,
      "y": 0
     },
-    "n47": {
+    "n54": {
      "x": 0,
      "y": 0
     }
@@ -69,32 +69,44 @@
  },
  "expected": {
   "nodes": {
-   "n45": {
+   "n52": {
     "load": 100,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n46": {
+   "n53": {
     "load": 100,
     "cap": 2400,
     "util": 0.041666666666666664,
     "status": "ok",
     "lat": 5.217391304347826,
     "cum": 5.217391304347826,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n47": {
+   "n54": {
     "load": 0,
     "cap": 2400,
     "util": 0,
     "status": "ok",
     "lat": 900,
     "cum": 900,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    }
   },
   "edges": {
@@ -107,18 +119,19 @@
    "status": "ok",
    "node": null,
    "lat": 5.217391304347826,
+   "asyncLat": 0,
    "converged": true
   },
   "layout": {
-   "n45": {
+   "n52": {
     "x": 40,
     "y": 128
    },
-   "n46": {
+   "n53": {
     "x": 352,
     "y": 40
    },
-   "n47": {
+   "n54": {
     "x": 352,
     "y": 216
    }

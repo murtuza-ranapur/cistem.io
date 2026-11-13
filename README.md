@@ -131,6 +131,8 @@ A connection can call **several** of its target's endpoints: tick them in the co
 
 A topic's capacity is its partitions × **msg/s per partition**, so adding partitions scales it. A service that only consumes topics uses at most one instance per partition it reads (summed over its topics), as a consumer group does: extra instances sit idle, and its panel says so. Anything with direct traffic too spreads that over every instance, so it isn't capped. Topics saved with a single max msg/s keep their capacity, split over their partitions.
 
+Consumers pull. A service fed only by topics or queues never takes more than its capacity: what it can't keep up with waits in the topic as **lag**, so it shows amber ("falls behind", with `lag ↑` on its card), not red. Its panel gives how fast the backlog grows and, from the topic's **retention**, when unread messages would start expiring if the rate lasts. It passes on only what it gets through, and its time counts after the publish, not towards the request: the header shows the request's end-to-end latency, with the async path in its tooltip.
+
 ## Sequence diagrams
 
 Long message labels wrap (press Enter in a label to break it yourself; the code writes `\n`), and lifelines are spaced by the wrapped text, so one long label doesn't push the rest off-screen. Lifeline heads size to their name, taking two lines at a hyphen when it's long; drag a selected head's right edge to widen it (double-click the handle or **Fit the name** to reset). Hover a head for its ◀ ⠿ ▶ grip to reorder; the panel also has Move left/right and up/down.

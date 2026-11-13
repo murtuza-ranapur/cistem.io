@@ -13,9 +13,9 @@ const res = '/home/claude/cistem.io/backend/src/test/resources/'.replace('/home/
 const expected = (doc: any) => {
   const r = compute(doc), l = layeredLayout(doc);
   return {
-    nodes: Object.fromEntries(Object.entries(r.nodes).map(([id, n]) => [id, { load: n.load, cap: n.cap === Infinity ? null : n.cap, util: isFinite(n.util) ? n.util : null, status: n.status, lat: n.lat, cum: n.cum, idle: n.idle ?? 0 }])),
+    nodes: Object.fromEntries(Object.entries(r.nodes).map(([id, n]) => [id, { load: n.load, cap: n.cap === Infinity ? null : n.cap, util: isFinite(n.util) ? n.util : null, status: n.status, lat: n.lat, cum: n.cum, idle: n.idle ?? 0, pull: !!n.pull, lag: n.lag ?? 0, lossAfter: n.lossAfter ?? -1, async: !!n.async }])),
     edges: r.edges, crossings: r.crossings,
-    verdict: { status: r.verdict.status, node: r.verdict.node?.id ?? null, lat: r.verdict.lat, converged: r.verdict.converged },
+    verdict: { status: r.verdict.status, node: r.verdict.node?.id ?? null, lat: r.verdict.lat, asyncLat: r.verdict.asyncLat, converged: r.verdict.converged },
     layout: l.positions, frames: l.frames,
   };
 };
@@ -54,6 +54,26 @@ const write = (name: string, doc: any, title: string) => {
   const r = compute(doc);
   if (r.nodes[t4.id].cap !== 4000 || r.nodes[worker.id].cap !== 3600 || r.nodes[worker.id].idle !== 2 || r.nodes[mixed.id].cap !== 4800 || r.nodes[legacy.id].cap !== 2500 || r.nodes[lw.id].idle) throw new Error('partition model');
   write('parity-partitions.json', doc, 'Partitions');
+}
+// 1c. pull consumers: a slow one falls behind (lag, amber, its backlog's expiry from retention) and passes on only
+//     what it gets through; latency after a publish is counted apart from the request's; a node reached both ways
+//     keeps the request's clock; a chain of topics carries the clock on
+{
+  const src = makeNode('entry', 0, 0, { name: 'Clients', rps: 2000 }) as any;
+  const api = makeNode('service', 0, 0, { name: 'api', instances: 4, rpsPerInstance: 1000, latency: 30 }) as any;
+  const db = makeNode('db', 0, 0, { name: 'db' }) as any;
+  const t = makeNode('queue', 0, 0, { name: 'events', partitions: 6, msgPerPartition: 1000, retentionHours: 24, latency: 5 }) as any;
+  const w = makeNode('service', 0, 0, { name: 'worker', instances: 2, rpsPerInstance: 500, latency: 80 }) as any;   // 2000 in, 1000 through
+  const t2 = makeNode('sqs', 0, 0, { name: 'notify', maxThroughput: 5000, retentionHours: 96, latency: 20 }) as any;
+  const w2 = makeNode('service', 0, 0, { name: 'notifier', instances: 2, rpsPerInstance: 1000, latency: 15 }) as any;
+  const doc: any = { nodes: [src, api, db, t, w, t2, w2], containers: [], links: [], frames: {}, detail: {}, edges: [
+    { id: 'a1', from: src.id, to: api.id, calls: 1 }, { id: 'a2', from: api.id, to: db.id, calls: 1 }, { id: 'a3', from: api.id, to: t.id, calls: 1 },
+    { id: 'a4', from: t.id, to: w.id, calls: 1 }, { id: 'a5', from: w.id, to: db.id, calls: 2 }, { id: 'a6', from: w.id, to: t2.id, calls: 1 },
+    { id: 'a7', from: t2.id, to: w2.id, calls: 1 } ] };
+  const r = compute(doc);
+  const W = r.nodes[w.id];
+  if (!W.pull || W.status !== 'warn' || W.lag !== 1000 || Math.abs(W.lossAfter! - 48) > 1e-9 || r.nodes[db.id].load !== 4000 || r.nodes[w2.id].load !== 1000 || !W.async || r.nodes[db.id].async || !r.nodes[w2.id].async || r.verdict.asyncLat <= W.lat || r.verdict.lat > 200) throw new Error('async model ' + JSON.stringify([W, r.nodes[db.id], r.verdict]));
+  write('parity-async.json', doc, 'Async');
 }
 // 2. a service consuming its own Kafka topic
 {

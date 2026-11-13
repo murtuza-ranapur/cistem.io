@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n33",
+     "id": "n40",
      "kind": "entry",
      "name": "Shoppers",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": 12000
     },
     {
-     "id": "n34",
+     "id": "n41",
      "kind": "cdn",
      "name": "edge-cdn",
      "maxOps": 1000000,
@@ -28,14 +28,14 @@
      "latency": 15
     },
     {
-     "id": "n35",
+     "id": "n42",
      "kind": "apigw",
      "name": "gateway",
      "maxRps": 5000,
      "latency": 8
     },
     {
-     "id": "n36",
+     "id": "n43",
      "kind": "service",
      "name": "orders",
      "rpsPerInstance": 600,
@@ -66,7 +66,7 @@
      ]
     },
     {
-     "id": "n37",
+     "id": "n44",
      "kind": "mongodb",
      "name": "orders-db",
      "maxQps": 4000,
@@ -75,17 +75,18 @@
      "latency": 5
     },
     {
-     "id": "n38",
+     "id": "n45",
      "kind": "sqs",
      "name": "fulfilment",
      "maxThroughput": 3000,
      "latency": 20,
+     "retentionHours": 96,
      "schema": "{\"type\":\"record\",\"name\":\"Fulfil\",\"fields\":[{\"name\":\"orderId\",\"type\":\"string\"}]}",
      "fifo": true,
      "key": "orderId"
     },
     {
-     "id": "n39",
+     "id": "n46",
      "kind": "service",
      "name": "fulfilment-worker",
      "rpsPerInstance": 300,
@@ -99,20 +100,20 @@
    "edges": [
     {
      "id": "e1",
-     "from": "n33",
-     "to": "n34",
+     "from": "n40",
+     "to": "n41",
      "calls": 1
     },
     {
      "id": "e2",
-     "from": "n34",
-     "to": "n35",
+     "from": "n41",
+     "to": "n42",
      "calls": 1
     },
     {
      "id": "e3",
-     "from": "n35",
-     "to": "n36",
+     "from": "n42",
+     "to": "n43",
      "calls": 1,
      "endpoints": [
       {
@@ -127,20 +128,20 @@
     },
     {
      "id": "e4",
-     "from": "n36",
-     "to": "n37",
+     "from": "n43",
+     "to": "n44",
      "calls": 2
     },
     {
      "id": "e5",
-     "from": "n36",
-     "to": "n38",
+     "from": "n43",
+     "to": "n45",
      "calls": 1
     },
     {
      "id": "e6",
-     "from": "n38",
-     "to": "n39",
+     "from": "n45",
+     "to": "n46",
      "calls": 1
     }
    ],
@@ -149,106 +150,134 @@
   },
   "layout": {
    "positions": {
-    "n33": {
+    "n40": {
      "x": 0,
      "y": 0
     },
-    "n34": {
+    "n41": {
      "x": 0,
      "y": 0
     },
-    "n35": {
+    "n42": {
      "x": 0,
      "y": 0
     },
-    "n36": {
+    "n43": {
      "x": 0,
      "y": 0
     },
-    "n37": {
+    "n44": {
      "x": 0,
      "y": 0
     },
-    "n38": {
+    "n45": {
      "x": 0,
      "y": 0
     },
-    "n39": {
+    "n46": {
      "x": 0,
      "y": 0
     }
    },
    "frames": {},
    "detail": {
-    "n36": "expanded",
-    "n38": "expanded"
+    "n43": "expanded",
+    "n45": "expanded"
    }
   }
  },
  "expected": {
   "nodes": {
-   "n33": {
+   "n40": {
     "load": 12000,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n34": {
+   "n41": {
     "load": 12000,
     "cap": 1000000,
     "util": 0.012,
     "status": "ok",
     "lat": 15.182186234817815,
     "cum": 15.182186234817815,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n35": {
+   "n42": {
     "load": 3000,
     "cap": 5000,
     "util": 0.6,
     "status": "ok",
     "lat": 20,
     "cum": 35.18218623481781,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n36": {
+   "n43": {
     "load": 15000,
     "cap": 3600,
     "util": 4.166666666666667,
     "status": "crit",
     "lat": 200,
     "cum": 235.1821862348178,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n37": {
+   "n44": {
     "load": 30000,
     "cap": 7500,
     "util": 4,
     "status": "crit",
     "lat": 50,
     "cum": 285.1821862348178,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n38": {
+   "n45": {
     "load": 15000,
     "cap": 3000,
     "util": 5,
     "status": "crit",
     "lat": 200,
     "cum": 435.1821862348178,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n39": {
+   "n46": {
     "load": 15000,
     "cap": 600,
     "util": 25,
-    "status": "crit",
-    "lat": 200,
-    "cum": 635.1821862348178,
-    "idle": 0
+    "status": "warn",
+    "lat": 20,
+    "cum": 220,
+    "idle": 0,
+    "pull": true,
+    "lag": 14400,
+    "lossAfter": 100,
+    "async": true
    }
   },
   "edges": {
@@ -269,36 +298,37 @@
   },
   "verdict": {
    "status": "crit",
-   "node": "n36",
-   "lat": 635.1821862348178,
+   "node": "n43",
+   "lat": 435.1821862348178,
+   "asyncLat": 220,
    "converged": true
   },
   "layout": {
-   "n33": {
+   "n40": {
     "x": 40,
     "y": 152
    },
-   "n34": {
+   "n41": {
     "x": 352,
     "y": 152
    },
-   "n35": {
+   "n42": {
     "x": 648,
     "y": 152
    },
-   "n36": {
+   "n43": {
     "x": 960,
     "y": 80
    },
-   "n37": {
+   "n44": {
     "x": 1360,
     "y": 40
    },
-   "n38": {
+   "n45": {
     "x": 1360,
     "y": 216
    },
-   "n39": {
+   "n46": {
     "x": 1760,
     "y": 152
    }

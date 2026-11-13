@@ -130,6 +130,9 @@ function Platforms({ n }: { n: Node }) {
   );
 }
 
+/** Hours as days or hours, for how long a backlog can grow. */
+const dur = (h: number) => !Number.isFinite(h) ? 'never' : h >= 48 ? `${(h / 24).toFixed(h >= 240 ? 0 : 1)} days` : h >= 1 ? `${h.toFixed(h >= 10 ? 0 : 1)} hours` : `${Math.max(1, Math.round(h * 60))} minutes`;
+
 /** Load / capacity / utilisation / latency tiles; they follow the fields as you type. */
 function Stats({ doc, id }: { doc: Doc; id: string }) {
   const r = resultsOf(doc).nodes[id]; if (!r) return null;
@@ -141,12 +144,19 @@ function Stats({ doc, id }: { doc: Doc; id: string }) {
         <div className="stat-tile"><div className="l">Load</div><div className="v">{fmt(r.load)} <small>rps</small></div></div>
         <div className="stat-tile"><div className="l">Capacity</div><div className="v">{fmt(r.cap)} <small>rps</small></div></div>
         <div className={'stat-tile ' + r.status}><div className="l">Utilisation</div><div className="v">{Number.isFinite(r.util) ? pct + '%' : '∞'}</div></div>
-        <div className="stat-tile"><div className="l">Effective latency</div><div className="v">{r.lat >= 1e4 ? fmtMs(r.lat) : <>{r.lat.toFixed(1)} <small>ms</small></>}</div></div>
+        <div className="stat-tile"><div className="l">{r.async ? 'Latency · after publish' : 'Effective latency'}</div><div className="v">{r.lat >= 1e4 ? fmtMs(r.lat) : <>{r.lat.toFixed(1)} <small>ms</small></>}</div></div>
         <div className={'meter ' + r.status}><i style={{ width: Math.min(100, pct) + '%' }} /></div>
       </div>
       {n && n.msgPerPartition !== undefined && isAsync(n) && (
         <p className="note" id="partitionCap">Capacity is <b>{fmt(qty(n.partitions))} partitions × {fmt(qty(n.msgPerPartition))} msg/s</b>. Add partitions to scale the topic (Topic tab).</p>
       )}
+      {r.lag ? (
+        <p className="note warn-note" id="consumerLag"><b>Falling behind: the backlog grows {fmt(r.lag)} msg/s</b> ({fmt(r.lag * 3600)} an hour). It pulls at its own pace, so it doesn’t fail; messages just wait longer in the topic.{' '}
+          {r.lossAfter !== undefined ? <>If this rate lasts, unread messages start expiring after <b>{dur(r.lossAfter)}</b> (the topic’s retention).</> : 'Set the topic’s retention to see when messages would start expiring.'}
+          {' '}Add instances{r.idle ? '' : ' or partitions'} to catch up.</p>
+      ) : r.pull ? (
+        <p className="note" id="consumerPull">Pulls from the topic at its own pace: if it can’t keep up, messages wait in the topic as lag instead of failing.</p>
+      ) : null}
       {r.idle ? (
         <p className="note warn-note" id="idleConsumers"><b>{fmt(r.idle)} of {fmt(qty(n?.instances))} instances sit idle:</b> it reads {fmt(qty(n?.instances) - r.idle)} partition{qty(n?.instances) - r.idle === 1 ? '' : 's'}, and a consumer group uses one instance per partition. Add partitions to the topic to scale this consumer.</p>
       ) : null}

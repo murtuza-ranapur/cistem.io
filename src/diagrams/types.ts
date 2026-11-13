@@ -7,7 +7,7 @@ import type { DiagramKind, DiagramFile, SequenceFile, ClassFile } from '../domai
 import type { DocOf, Meta, Selection } from '../store/editor';
 import type { Box, Point } from '../store/viewport';
 
-export interface Verdict { status: 'ok' | 'warn' | 'crit' | 'none'; text: string; detail?: string; /** extra classes for the badge */ className?: string }
+export interface Verdict { status: 'ok' | 'warn' | 'crit' | 'none'; text: string; detail?: string; /** a tooltip with more */ title?: string; /** extra classes for the badge */ className?: string }
 
 export interface DiagramModule<K extends DiagramKind = DiagramKind> {
   kind: K;

@@ -168,6 +168,7 @@
      "msgPerPartition": 3000,
      "latency": 5,
      "partitions": 12,
+     "retentionHours": 168,
      "schema": "{\n  \"type\": \"record\",\n  \"name\": \"PaymentAuthorised\",\n  \"namespace\": \"com.example.payments\",\n  \"fields\": [\n    {\"name\": \"paymentId\", \"type\": \"string\"},\n    {\"name\": \"amountMinor\", \"type\": \"long\"},\n    {\"name\": \"currency\", \"type\": \"string\"}\n  ]\n}",
      "cluster": "events",
      "key": "paymentId",
@@ -331,7 +332,11 @@
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n2": {
     "load": 7000,
@@ -340,7 +345,11 @@
     "status": "ok",
     "lat": 1.1627906976744187,
     "cum": 2.162790697674419,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n3": {
     "load": 7000,
@@ -349,7 +358,11 @@
     "status": "crit",
     "lat": 250,
     "cum": 252.1627906976744,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n4": {
     "load": 14000,
@@ -358,7 +371,11 @@
     "status": "ok",
     "lat": 1.1627906976744187,
     "cum": 255.32558139534882,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n5": {
     "load": 9100,
@@ -367,7 +384,11 @@
     "status": "warn",
     "lat": 60,
     "cum": 315.3255813953488,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n6": {
     "load": 7000,
@@ -376,16 +397,24 @@
     "status": "ok",
     "lat": 6.206896551724138,
     "cum": 260.36968724939857,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n7": {
     "load": 7000,
     "cap": 3200,
     "util": 2.1875,
-    "status": "crit",
-    "lat": 400,
-    "cum": 660.3696872493986,
-    "idle": 0
+    "status": "warn",
+    "lat": 40,
+    "cum": 46.206896551724135,
+    "idle": 0,
+    "pull": true,
+    "lag": 3800,
+    "lossAfter": 309.4736842105263,
+    "async": true
    },
    "n20": {
     "load": 2500,
@@ -394,7 +423,11 @@
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    }
   },
   "edges": {
@@ -420,7 +453,8 @@
   "verdict": {
    "status": "crit",
    "node": "n3",
-   "lat": 660.3696872493986,
+   "lat": 315.3255813953488,
+   "asyncLat": 46.206896551724135,
    "converged": true
   },
   "layout": {

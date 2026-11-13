@@ -1,0 +1,312 @@
+{
+ "file": {
+  "version": 4,
+  "kind": "system",
+  "meta": {
+   "title": "Async",
+   "created": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "model": {
+   "nodes": [
+    {
+     "id": "n29",
+     "kind": "entry",
+     "name": "Clients",
+     "platforms": [
+      "web",
+      "app"
+     ],
+     "rps": 2000
+    },
+    {
+     "id": "n30",
+     "kind": "service",
+     "name": "api",
+     "rpsPerInstance": 1000,
+     "instances": 4,
+     "latency": 30,
+     "endpoints": []
+    },
+    {
+     "id": "n31",
+     "kind": "db",
+     "name": "db",
+     "maxQps": 5000,
+     "readShare": 0.8,
+     "replicas": 1,
+     "latency": 8,
+     "tables": []
+    },
+    {
+     "id": "n32",
+     "kind": "queue",
+     "name": "events",
+     "msgPerPartition": 1000,
+     "latency": 5,
+     "partitions": 6,
+     "retentionHours": 24,
+     "schema": ""
+    },
+    {
+     "id": "n33",
+     "kind": "service",
+     "name": "worker",
+     "rpsPerInstance": 500,
+     "instances": 2,
+     "latency": 80,
+     "endpoints": []
+    },
+    {
+     "id": "n34",
+     "kind": "sqs",
+     "name": "notify",
+     "maxThroughput": 5000,
+     "latency": 20,
+     "retentionHours": 96,
+     "schema": "",
+     "fifo": false
+    },
+    {
+     "id": "n35",
+     "kind": "service",
+     "name": "notifier",
+     "rpsPerInstance": 1000,
+     "instances": 2,
+     "latency": 15,
+     "endpoints": []
+    }
+   ],
+   "edges": [
+    {
+     "id": "a1",
+     "from": "n29",
+     "to": "n30",
+     "calls": 1
+    },
+    {
+     "id": "a2",
+     "from": "n30",
+     "to": "n31",
+     "calls": 1
+    },
+    {
+     "id": "a3",
+     "from": "n30",
+     "to": "n32",
+     "calls": 1
+    },
+    {
+     "id": "a4",
+     "from": "n32",
+     "to": "n33",
+     "calls": 1
+    },
+    {
+     "id": "a5",
+     "from": "n33",
+     "to": "n31",
+     "calls": 2
+    },
+    {
+     "id": "a6",
+     "from": "n33",
+     "to": "n34",
+     "calls": 1
+    },
+    {
+     "id": "a7",
+     "from": "n34",
+     "to": "n35",
+     "calls": 1
+    }
+   ],
+   "containers": [],
+   "links": []
+  },
+  "layout": {
+   "positions": {
+    "n29": {
+     "x": 0,
+     "y": 0
+    },
+    "n30": {
+     "x": 0,
+     "y": 0
+    },
+    "n31": {
+     "x": 0,
+     "y": 0
+    },
+    "n32": {
+     "x": 0,
+     "y": 0
+    },
+    "n33": {
+     "x": 0,
+     "y": 0
+    },
+    "n34": {
+     "x": 0,
+     "y": 0
+    },
+    "n35": {
+     "x": 0,
+     "y": 0
+    }
+   },
+   "frames": {}
+  }
+ },
+ "expected": {
+  "nodes": {
+   "n29": {
+    "load": 2000,
+    "cap": null,
+    "util": 0,
+    "status": "ok",
+    "lat": 0,
+    "cum": 0,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
+   },
+   "n30": {
+    "load": 2000,
+    "cap": 4000,
+    "util": 0.5,
+    "status": "ok",
+    "lat": 60,
+    "cum": 60,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
+   },
+   "n31": {
+    "load": 4000,
+    "cap": 8333.333333333334,
+    "util": 0.48,
+    "status": "ok",
+    "lat": 15.384615384615383,
+    "cum": 75.38461538461539,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
+   },
+   "n32": {
+    "load": 2000,
+    "cap": 6000,
+    "util": 0.3333333333333333,
+    "status": "ok",
+    "lat": 7.499999999999999,
+    "cum": 67.5,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
+   },
+   "n33": {
+    "load": 2000,
+    "cap": 1000,
+    "util": 2,
+    "status": "warn",
+    "lat": 80,
+    "cum": 87.5,
+    "idle": 0,
+    "pull": true,
+    "lag": 1000,
+    "lossAfter": 48,
+    "async": true
+   },
+   "n34": {
+    "load": 1000,
+    "cap": 5000,
+    "util": 0.2,
+    "status": "ok",
+    "lat": 25,
+    "cum": 112.5,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": true
+   },
+   "n35": {
+    "load": 1000,
+    "cap": 2000,
+    "util": 0.5,
+    "status": "ok",
+    "lat": 15,
+    "cum": 127.5,
+    "idle": 0,
+    "pull": true,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": true
+   }
+  },
+  "edges": {
+   "a1": 2000,
+   "a2": 2000,
+   "a3": 2000,
+   "a4": 2000,
+   "a5": 2000,
+   "a6": 1000,
+   "a7": 1000
+  },
+  "crossings": {
+   "a1": 0,
+   "a2": 0,
+   "a3": 0,
+   "a4": 0,
+   "a5": 0,
+   "a6": 0,
+   "a7": 0
+  },
+  "verdict": {
+   "status": "warn",
+   "node": "n33",
+   "lat": 75.38461538461539,
+   "asyncLat": 127.5,
+   "converged": true
+  },
+  "layout": {
+   "n29": {
+    "x": 40,
+    "y": 128
+   },
+   "n30": {
+    "x": 352,
+    "y": 128
+   },
+   "n31": {
+    "x": 1312,
+    "y": 40
+   },
+   "n32": {
+    "x": 672,
+    "y": 128
+   },
+   "n33": {
+    "x": 992,
+    "y": 128
+   },
+   "n34": {
+    "x": 1312,
+    "y": 216
+   },
+   "n35": {
+    "x": 1632,
+    "y": 128
+   }
+  },
+  "frames": {}
+ }
+}

@@ -118,7 +118,7 @@ function VerdictBadge() {
   const v = diagram(open.kind).verdict(open.doc as never);
   if (!v) return null;
   return (
-    <div className={'verdict ' + v.status + (v.className ? ' ' + v.className : '')} id="verdictWrap">
+    <div className={'verdict ' + v.status + (v.className ? ' ' + v.className : '')} id="verdictWrap" title={v.title}>
       <span className="dot" /><span id="verdict">{v.text}</span><span id="lat" className="lat">{v.detail ?? ''}</span>
     </div>
   );

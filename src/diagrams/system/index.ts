@@ -19,6 +19,7 @@ import { fmtMs } from '../../lib/format';
 import { editor } from '../../store/editor';
 
 const VERDICT = { ok: 'Handles it', warn: 'Near limit', crit: 'Breaks' } as const;
+const ms = (v: number) => v >= 1e4 ? fmtMs(v) : v.toFixed(0) + ' ms';
 
 function keydown(ev: KeyboardEvent): boolean {
   const mod = hasMod(ev), key = ev.key.toLowerCase();
@@ -51,8 +52,10 @@ export const system: DiagramModule<'system'> = {
     const v = resultsOf(doc).verdict;
     return {
       status: v.status,
-      text: VERDICT[v.status] + (v.node ? ` at ${v.node.name}` : ''),
-      detail: `~${v.lat >= 1e4 ? fmtMs(v.lat) : v.lat.toFixed(0) + ' ms'}` + (v.converged ? '' : ' · not converging'),
+      text: (v.node && resultsOf(doc).nodes[v.node.id]?.lag ? 'Falls behind' : VERDICT[v.status]) + (v.node ? ` at ${v.node.name}` : ''),
+      detail: `~${ms(v.lat)}` + (v.converged ? '' : ' · not converging'),
+      // the time after a publish isn't part of the request: kept out of the badge, in its tooltip
+      title: `Request: ~${ms(v.lat)} end to end` + (v.asyncLat > 0 ? `\nAfter a publish: ~${ms(v.asyncLat)} through the consumers${Object.values(resultsOf(doc).nodes).some(r => r.lag) ? ', plus the lag of any falling behind' : ''}` : ''),
     };
   },
 

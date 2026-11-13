@@ -64,6 +64,10 @@ class ParityTest {
             assertEquals(e.path("lat").asDouble(), got.lat(), 1e-6, en.getKey() + " lat");
             assertEquals(e.path("cum").asDouble(), got.cum(), 1e-6, en.getKey() + " cum");
             assertEquals(e.path("idle").asDouble(0), got.idle(), 1e-9, en.getKey() + " idle");
+            assertEquals(e.path("pull").asBoolean(false), got.pull(), en.getKey() + " pull");
+            assertEquals(e.path("lag").asDouble(0), got.lag(), 1e-6, en.getKey() + " lag");
+            assertEquals(e.path("lossAfter").asDouble(-1), got.lossAfter(), 1e-6, en.getKey() + " lossAfter");
+            assertEquals(e.path("async").asBoolean(false), got.async(), en.getKey() + " async");
         }
         for (var it = exp.path("edges").properties().iterator(); it.hasNext(); ) {
             var en = it.next();
@@ -77,6 +81,7 @@ class ParityTest {
         assertEquals(v.path("status").asText(), r.verdict().status().name());
         assertEquals(v.path("node").isNull() ? null : v.path("node").asText(), r.verdict().nodeId());
         assertEquals(v.path("lat").asDouble(), r.verdict().lat(), 1e-6);
+        assertEquals(v.path("asyncLat").asDouble(), r.verdict().asyncLat(), 1e-6);
         assertEquals(v.path("converged").asBoolean(), r.verdict().converged());
     }
 
@@ -92,6 +97,9 @@ class ParityTest {
     }
 
     /** Kafka partitions: topic capacity, consumers capped at one instance per partition, legacy topics. */
+    @Test
+    void asyncMatchesTypeScript() throws Exception { engineMatches(fixture("/parity-async.json")); }
+
     @Test
     void partitionsMatchTypeScript() throws Exception { engineMatches(fixture("/parity-partitions.json")); }
 

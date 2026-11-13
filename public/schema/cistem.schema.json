@@ -194,6 +194,11 @@
           "minimum": 0,
           "description": "async: messages per second."
         },
+        "retentionHours": {
+          "type": "number",
+          "minimum": 0,
+          "description": "async: how long messages are kept, in hours. With a consumer falling behind, the model says when its backlog starts expiring."
+        },
         "msgPerPartition": {
           "type": "number",
           "minimum": 0,

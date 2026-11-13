@@ -195,3 +195,19 @@ import { partitionsIn } from '../src/domain/engine';
   assert.equal(partitionsIn(doc)[w.id], 0);
   console.log('partitions ok');
 }
+
+// ---- pull consumers fall behind instead of breaking ----
+{
+  const src = makeNode('entry', 0, 0, { rps: 2000 }), api = makeNode('service', 0, 0, { instances: 4, rpsPerInstance: 1000, latency: 30 });
+  const t = makeNode('queue', 0, 0, { partitions: 6, msgPerPartition: 1000, retentionHours: 24 }), w = makeNode('service', 0, 0, { instances: 2, rpsPerInstance: 500, latency: 80 });
+  const db = makeNode('db', 0, 0, {});
+  const doc: any = { nodes: [src, api, t, w, db], containers: [], links: [], frames: {}, detail: {}, edges: [
+    { id: 'a', from: src.id, to: api.id, calls: 1 }, { id: 'b', from: api.id, to: t.id, calls: 1 }, { id: 'c', from: t.id, to: w.id, calls: 1 }, { id: 'd', from: w.id, to: db.id, calls: 1 }] };
+  const r = compute(doc), W = r.nodes[w.id];
+  assert.equal(W.status, 'warn', 'falls behind, not red'); assert.equal(W.lag, 1000); assert.equal(W.lossAfter, 48, '24h retention, reading half as fast as published');
+  assert.equal(r.nodes[db.id].load, 1000, 'downstream gets what it gets through'); assert.equal(r.edges.d, 1000);
+  assert.equal(W.lat, 80, 'no queueing inside: the wait is in the topic');
+  assert.ok(W.async && r.verdict.asyncLat > 80 && r.verdict.lat < 80, 'its time is after the publish, not part of the request');
+  assert.equal(r.verdict.status, 'warn');
+  console.log('pull consumers ok');
+}

@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n29",
+     "id": "n36",
      "kind": "entry",
      "name": "Merchants (batch upload)",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": 40
     },
     {
-     "id": "n30",
+     "id": "n37",
      "kind": "service",
      "name": "ecom-transaction-payments",
      "rpsPerInstance": 400,
@@ -29,16 +29,17 @@
      "endpoints": []
     },
     {
-     "id": "n31",
+     "id": "n38",
      "kind": "queue",
      "name": "payments.batch",
      "msgPerPartition": 3000,
      "latency": 5,
      "partitions": 6,
+     "retentionHours": 168,
      "schema": ""
     },
     {
-     "id": "n32",
+     "id": "n39",
      "kind": "service",
      "name": "ecom-legacy-cards",
      "rpsPerInstance": 500,
@@ -50,26 +51,26 @@
    "edges": [
     {
      "id": "e1",
-     "from": "n29",
-     "to": "n30",
+     "from": "n36",
+     "to": "n37",
      "calls": 1
     },
     {
      "id": "e2",
-     "from": "n30",
-     "to": "n31",
+     "from": "n37",
+     "to": "n38",
      "calls": 40
     },
     {
      "id": "e3",
-     "from": "n31",
-     "to": "n30",
+     "from": "n38",
+     "to": "n37",
      "calls": 1
     },
     {
      "id": "e4",
-     "from": "n30",
-     "to": "n32",
+     "from": "n37",
+     "to": "n39",
      "calls": 1
     }
    ],
@@ -78,19 +79,19 @@
   },
   "layout": {
    "positions": {
-    "n29": {
+    "n36": {
      "x": 0,
      "y": 0
     },
-    "n30": {
+    "n37": {
      "x": 0,
      "y": 0
     },
-    "n31": {
+    "n38": {
      "x": 0,
      "y": 0
     },
-    "n32": {
+    "n39": {
      "x": 0,
      "y": 0
     }
@@ -100,41 +101,57 @@
  },
  "expected": {
   "nodes": {
-   "n29": {
+   "n36": {
     "load": 40,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n30": {
+   "n37": {
     "load": 1640,
     "cap": 1600,
     "util": 1.025,
     "status": "crit",
     "lat": 200,
-    "cum": 456.4884302689181,
-    "idle": 0
+    "cum": 200,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n31": {
+   "n38": {
     "load": 1600,
     "cap": 18000,
     "util": 0.08888888888888889,
     "status": "ok",
     "lat": 5.487804878048781,
-    "cum": 261.4884302689181,
-    "idle": 0
+    "cum": 205.4878048780488,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n32": {
+   "n39": {
     "load": 1640,
     "cap": 1500,
     "util": 1.0933333333333333,
     "status": "crit",
     "lat": 200,
-    "cum": 456.0006253908693,
-    "idle": 0
+    "cum": 400,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    }
   },
   "edges": {
@@ -151,24 +168,25 @@
   },
   "verdict": {
    "status": "crit",
-   "node": "n30",
-   "lat": 456.4884302689181,
+   "node": "n37",
+   "lat": 400,
+   "asyncLat": 410.9756097560976,
    "converged": true
   },
   "layout": {
-   "n29": {
+   "n36": {
     "x": 40,
     "y": 128
    },
-   "n30": {
+   "n37": {
     "x": 416,
     "y": 128
    },
-   "n31": {
+   "n38": {
     "x": 800,
     "y": 40
    },
-   "n32": {
+   "n39": {
     "x": 800,
     "y": 216
    }

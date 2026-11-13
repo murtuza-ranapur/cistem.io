@@ -14,8 +14,10 @@ public final class Engine {
     public enum Status { ok, warn, crit }
 
     /** idle: a consumer's instances beyond the partitions it reads (0 when none). */
-    public record NodeResult(double load, double cap, double util, Status status, double lat, double cum, double idle) {}
-    public record Verdict(Status status, String nodeId, double lat, boolean converged) {}
+    public record NodeResult(double load, double cap, double util, Status status, double lat, double cum, double idle,
+                             /* mirror of engine.ts: pull consumer, its lag (msg/s), hours until its backlog expires (-1: unknown), cum is after publish */
+                             boolean pull, double lag, double lossAfter, boolean async) {}
+    public record Verdict(Status status, String nodeId, double lat, double asyncLat, boolean converged) {}
     public record Results(Map<String, NodeResult> nodes, Map<String, Double> edges, Map<String, Double> crossings, Verdict verdict) {}
 
     // ---- containers / crossing latency (port of model.ts crossingLatency) ----
@@ -113,6 +115,20 @@ public final class Engine {
         return Math.min(base * 10, base / (1 - u));
     }
 
+    /** Mirror of engine.ts isConsumer: fed only by topics or queues, so it pulls at its own pace. */
+    static boolean isConsumer(JsonNode model, JsonNode n, Map<String, JsonNode> byId) {
+        if (Types.isSource(n) || Types.isAsync(n)) return false;
+        String id = n.path("id").asText(); boolean any = false;
+        for (JsonNode e : model.path("edges")) {
+            if (!e.path("to").asText().equals(id)) continue;
+            JsonNode s = byId.get(e.path("from").asText());
+            if (s == null) continue;
+            if (!Types.isAsync(s)) return false;
+            any = true;
+        }
+        return any;
+    }
+
     /** A partitioned topic: its consumers can't use more instances than it has partitions. */
     static boolean partitioned(JsonNode n) { return Types.isAsync(n) && n.has("msgPerPartition") && num(n, "partitions") > 0; }
 
@@ -141,57 +157,85 @@ public final class Engine {
         byId.keySet().forEach(id -> outs.put(id, 0));
         for (JsonNode e : edges) outs.computeIfPresent(e.path("from").asText(), (k, v) -> v + 1);
         Map<String, Double> pin = partitionsIn(model, byId), caps = new HashMap<>();
-        byId.forEach((id, n) -> caps.put(id, capacity(n, pin.get(id))));
+        Map<String, Boolean> pull = new HashMap<>();
+        byId.forEach((id, n) -> { caps.put(id, capacity(n, pin.get(id))); pull.put(id, isConsumer(model, n, byId)); });
+        // a consumer passes on only what it gets through, and doesn't queue inside (the backlog is in the topic)
+        java.util.function.BiFunction<String, Double, Double> through = (id, L) -> pull.get(id) && L > caps.get(id) ? (L > 0 ? caps.get(id) / L : 0) : 1.0;
+        java.util.function.BiFunction<JsonNode, Double, Double> latOf = (n, L) -> pull.get(n.path("id").asText()) ? num(n, "latency") : effLatency(n, L, caps.get(n.path("id").asText()));
 
         // Load per node broken down by origin: "sync" or the queue it was consumed from.
         // Load consumed from queue Q is never published back into Q (a service may consume its own topic).
         Map<String, Map<String, Double>> bd = new HashMap<>();
-        Map<String, Double> cum = new HashMap<>();
-        byId.keySet().forEach(id -> { bd.put(id, new HashMap<>()); cum.put(id, 0.0); });
+        // time along the request (cum) and, through a topic, since the publish (acum; -1 = not reached that way)
+        Map<String, Double> cum = new HashMap<>(), acum = new HashMap<>();
+        byId.keySet().forEach(id -> { bd.put(id, new HashMap<>()); cum.put(id, 0.0); acum.put(id, -1.0); });
         java.util.function.Function<String, Double> total = id -> bd.get(id).values().stream().mapToDouble(Double::doubleValue).sum();
+        java.util.function.Function<String, Double> syncOf = id -> bd.get(id).getOrDefault("sync", 0.0);
 
         boolean converged = false;
         for (int iter = 0; iter < 60; iter++) {
-            Map<String, Map<String, Double>> next = new HashMap<>(); Map<String, Double> ncum = new HashMap<>();
+            Map<String, Map<String, Double>> next = new HashMap<>(); Map<String, Double> ncum = new HashMap<>(), nacum = new HashMap<>();
             for (var en : byId.entrySet()) {
                 Map<String, Double> m = new HashMap<>();
                 if (Types.isSource(en.getValue())) m.put("sync", Math.min(MAX_LOAD, en.getValue().has("rps") ? num(en.getValue(), "rps") : legacyTarget));
-                next.put(en.getKey(), m); ncum.put(en.getKey(), 0.0);
+                next.put(en.getKey(), m); ncum.put(en.getKey(), 0.0); nacum.put(en.getKey(), -1.0);
             }
             for (JsonNode e : edges) {
                 String from = e.path("from").asText(), to = e.path("to").asText();
                 JsonNode s = byId.get(from), t = byId.get(to);
                 if (s == null || t == null) continue;
-                double factor = outFactor(s, outs.get(from)) * edgeCalls(e);
+                double srcTotal = total.apply(from);
+                double factor = outFactor(s, outs.get(from)) * edgeCalls(e) * through.apply(from, srcTotal);
                 boolean toQueue = Types.isAsync(t), fromQueue = Types.isAsync(s);
                 for (var o : bd.get(from).entrySet()) {
                     if (toQueue && o.getKey().equals(to)) continue;
                     String tag = fromQueue ? from : o.getKey();
                     next.get(to).merge(tag, Math.min(MAX_LOAD, o.getValue() * factor), (x, y) -> Math.min(MAX_LOAD, x + y));
                 }
-                ncum.merge(to, cum.get(from) + effLatency(s, total.apply(from), caps.get(from)) + crossingLatency(model, containerOf(s), containerOf(t)), Math::max);
+                double step = latOf.apply(s, srcTotal) + crossingLatency(model, containerOf(s), containerOf(t));
+                if (fromQueue) {
+                    if (srcTotal > 0) nacum.merge(to, Math.max(0, acum.get(from)) + step, Math::max);
+                } else {
+                    if (Types.isSource(s) || syncOf.apply(from) > 0) ncum.merge(to, cum.get(from) + step, Math::max);
+                    if (acum.get(from) >= 0 && srcTotal - syncOf.apply(from) > 0) nacum.merge(to, acum.get(from) + step, Math::max);
+                }
             }
             double delta = 0;
             for (String id : byId.keySet()) delta += Math.abs(next.get(id).values().stream().mapToDouble(Double::doubleValue).sum() - total.apply(id));
-            bd.putAll(next); cum.putAll(ncum);
+            bd.putAll(next); cum.putAll(ncum); acum.putAll(nacum);
             if (delta < 0.01) { converged = true; break; }
         }
         Map<String, Double> load = new HashMap<>();
         byId.keySet().forEach(id -> load.put(id, total.apply(id)));
 
         Map<String, NodeResult> results = new LinkedHashMap<>();
-        Status worst = Status.ok; String worstNode = null; double maxLat = 0;
+        Status worst = Status.ok; String worstNode = null; double maxLat = 0, asyncLat = 0;
         for (var en : byId.entrySet()) {
             String id = en.getKey(); JsonNode n = en.getValue();
             double cap = caps.get(id), L = load.get(id);
             double util = Double.isInfinite(cap) ? 0 : cap > 0 ? L / cap : (L > 0 ? Double.POSITIVE_INFINITY : 0);
-            Status status = util >= 1 ? Status.crit : util >= 0.7 ? Status.warn : Status.ok;
-            double lat = effLatency(n, L, cap);
+            boolean p = pull.get(id);
+            // a consumer that can't keep up falls behind (lag); it doesn't fail
+            Status status = util >= 1 ? (p ? Status.warn : Status.crit) : util >= 0.7 ? Status.warn : Status.ok;
+            double lat = latOf.apply(n, L);
             double idle = pin.get(id) > 0 && num(n, "instances") > pin.get(id) ? num(n, "instances") - pin.get(id) : 0;
-            results.put(id, new NodeResult(L, cap, util, status, lat, cum.get(id) + lat, idle));
-            if (!Types.isSource(n) && L > 0 && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;   // only what traffic reaches
+            boolean viaSync = Types.isSource(n) || syncOf.apply(id) > 0, viaAsync = acum.get(id) >= 0 && L - syncOf.apply(id) > 0;
+            double lag = p && L > cap ? L - cap : 0, lossAfter = -1;
+            if (lag > 0) {
+                double r = Double.POSITIVE_INFINITY;
+                for (JsonNode e : edges) {
+                    if (!e.path("to").asText().equals(id)) continue;
+                    JsonNode s = byId.get(e.path("from").asText());
+                    if (s != null && Types.isAsync(s) && num(s, "retentionHours") > 0) r = Math.min(r, num(s, "retentionHours"));
+                }
+                if (!Double.isInfinite(r)) lossAfter = r / (1 - cap / L);
+            }
+            results.put(id, new NodeResult(L, cap, util, status, lat, ((viaSync || !viaAsync) ? cum.get(id) : acum.get(id)) + lat, idle, p, lag, lossAfter, !viaSync && viaAsync));
+            if (!Types.isSource(n) && L > 0 && viaSync && cum.get(id) + lat > maxLat) maxLat = cum.get(id) + lat;   // only what traffic reaches
+            if (viaAsync && acum.get(id) + lat > asyncLat) asyncLat = acum.get(id) + lat;
             if (status == Status.crit && worst != Status.crit) { worst = Status.crit; worstNode = id; }
-            else if (status == Status.warn && worst == Status.ok) { worst = Status.warn; worstNode = id; }
+            // among the amber ones, a consumer falling behind says more than one near its limit
+            else if (status == Status.warn && (worst == Status.ok || (worst == Status.warn && lag > 0 && !(worstNode != null && results.get(worstNode).lag() > 0)))) { worst = Status.warn; worstNode = id; }
         }
         Map<String, Double> edgeLoad = new LinkedHashMap<>(), crossings = new LinkedHashMap<>();
         for (JsonNode e : edges) {
@@ -199,10 +243,10 @@ public final class Engine {
             if (s == null || t == null) continue;
             boolean toQueue = Types.isAsync(t);
             double eligible = bd.get(from).entrySet().stream().filter(o -> !(toQueue && o.getKey().equals(to))).mapToDouble(Map.Entry::getValue).sum();
-            edgeLoad.put(e.path("id").asText(), eligible * outFactor(s, outs.get(from)) * edgeCalls(e));
+            edgeLoad.put(e.path("id").asText(), eligible * outFactor(s, outs.get(from)) * edgeCalls(e) * through.apply(from, total.apply(from)));
             crossings.put(e.path("id").asText(), crossingLatency(model, containerOf(s), containerOf(t)));
         }
-        return new Results(results, edgeLoad, crossings, new Verdict(worst, worstNode, maxLat, converged));
+        return new Results(results, edgeLoad, crossings, new Verdict(worst, worstNode, maxLat, asyncLat, converged));
     }
 
     /** Human-readable report for an agent: compact, every number rounded sensibly. */
@@ -214,9 +258,11 @@ public final class Engine {
         for (JsonNode n : model.path("nodes")) { names.put(n.path("id").asText(), n.path("name").asText()); if (containerOf(n) != null) nodeContainer.put(n.path("id").asText(), cnames.getOrDefault(containerOf(n), containerOf(n))); }
         double total = 0; for (JsonNode n : model.path("nodes")) if (Types.isSource(n)) total += n.has("rps") ? num(n, "rps") : num(model, "targetRps");
         out.put("totalRps", total);
-        out.put("verdict", switch (r.verdict().status()) { case ok -> "handles it"; case warn -> "near limit"; case crit -> "breaks"; });
+        boolean behind = r.verdict().nodeId() != null && r.nodes().get(r.verdict().nodeId()).lag() > 0;
+        out.put("verdict", behind ? "falls behind" : switch (r.verdict().status()) { case ok -> "handles it"; case warn -> "near limit"; case crit -> "breaks"; });
         if (r.verdict().nodeId() != null) { out.put("bottleneck", names.get(r.verdict().nodeId())); out.put("bottleneckId", r.verdict().nodeId()); }
         out.put("p50PathLatencyMs", Math.round(r.verdict().lat()));
+        if (r.verdict().asyncLat() > 0) out.put("asyncPathLatencyMs", Math.round(r.verdict().asyncLat()));   // after a publish, plus any lag
         out.put("converged", r.verdict().converged());
         var arr = out.putArray("components");
         for (var en : r.nodes().entrySet()) {
@@ -229,6 +275,9 @@ public final class Engine {
             c.put("status", nr.status().name());
             c.put("effectiveLatencyMs", Math.round(nr.lat() * 10) / 10.0);
             if (nr.idle() > 0) c.put("idleInstances", Math.round(nr.idle()));
+            if (nr.pull()) c.put("pullsFromTopics", true);
+            if (nr.lag() > 0) c.put("lagGrowsMsgPerSec", Math.round(nr.lag()));
+            if (nr.lossAfter() >= 0) c.put("backlogExpiresAfterHours", Math.round(nr.lossAfter() * 10) / 10.0);
         }
         var cross = out.putArray("boundaryCrossings");
         for (JsonNode e : model.path("edges")) {

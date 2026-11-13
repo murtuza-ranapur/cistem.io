@@ -43,7 +43,7 @@ function NodeViewImpl({ n, expanded, r, load, selected, dragging, target, animat
         {!source && Number.isFinite(r?.cap ?? 0) && <>
           <rect className="bar" x={12} y={78} width={w - 24} height={6} rx={3} />
           <rect className={'fill ' + (r?.status ?? 'ok')} x={12} y={78} width={(w - 24) * util} height={6} rx={3} />
-          <text className="stat pct" x={w - 12} y={71} textAnchor="end">{r ? (Number.isFinite(r.util) ? Math.round(r.util * 100) + '%' : '∞') : ''}</text>
+          <text className={'stat pct' + (r?.lag ? ' lag' : '')} x={w - 12} y={71} textAnchor="end">{r ? (r.lag ? 'lag ↑' : Number.isFinite(r.util) ? Math.round(r.util * 100) + '%' : '∞') : ''}<title>{r?.lag ? `Falling behind: the backlog grows ${fmt(r.lag)} msg/s` : ''}</title></text>
         </>}
       </>}
       <g className="detail">{expanded && <Detail n={n} w={w} calls={calls} />}</g>
@@ -115,7 +115,7 @@ function Detail({ n, w, calls }: { n: Node; w: number; calls?: EndpointCalls }) 
 }
 
 const sameCalls = (a?: EndpointCalls, b?: EndpointCalls) => a === b || (!!a && !!b && a.hot.join() === b.hot.join() && (a.rps ?? []).join() === (b.rps ?? []).join());
-const sameResult = (a?: NodeResult, b?: NodeResult) => a === b || (!!a && !!b && a.load === b.load && a.cap === b.cap && a.lat === b.lat && a.util === b.util && a.status === b.status);
+const sameResult = (a?: NodeResult, b?: NodeResult) => a === b || (!!a && !!b && a.load === b.load && a.cap === b.cap && a.lat === b.lat && a.util === b.util && a.status === b.status && a.lag === b.lag);
 /** Re-render only when this node, its result or its state changed (a drag redraws just the moved nodes). */
 export const NodeView = memo(NodeViewImpl, (a, b) =>
   a.n === b.n && a.load === b.load && sameCalls(a.calls, b.calls) && a.expanded === b.expanded && a.selected === b.selected && a.dragging === b.dragging && a.target === b.target && sameResult(a.r, b.r));

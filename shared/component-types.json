@@ -47,11 +47,12 @@
       ]
     },
     "async": {
-      "about": "A queue/topic: capacity maxThroughput, or partitions × msgPerPartition for a partitioned topic (whose consumers use at most one instance per partition); consumers pull, and what they consumed is never republished into it.",
+      "about": "A queue/topic: capacity maxThroughput, or partitions × msgPerPartition for a partitioned topic (whose consumers use at most one instance per partition); consumers pull at their own pace (one fed only by topics never takes more than its capacity: the rest is lag, and retentionHours says when that backlog starts expiring); what they consumed is never republished into it.",
       "reads": [
         "maxThroughput",
         "msgPerPartition",
         "partitions",
+        "retentionHours",
         "latency"
       ]
     }
@@ -374,12 +375,18 @@
         "msgPerPartition": 3000,
         "latency": 5,
         "partitions": 6,
+        "retentionHours": 168,
         "schema": ""
       },
       "fields": [
         {
           "key": "msgPerPartition",
           "label": "Msg/s per partition",
+          "type": "number"
+        },
+        {
+          "key": "retentionHours",
+          "label": "Retention (hours)",
           "type": "number"
         },
         {
@@ -402,6 +409,7 @@
         "name": "work-queue",
         "maxThroughput": 3000,
         "latency": 20,
+        "retentionHours": 96,
         "schema": "",
         "fifo": false
       },
@@ -409,6 +417,11 @@
         {
           "key": "maxThroughput",
           "label": "Max msg/s",
+          "type": "number"
+        },
+        {
+          "key": "retentionHours",
+          "label": "Retention (hours)",
           "type": "number"
         },
         {

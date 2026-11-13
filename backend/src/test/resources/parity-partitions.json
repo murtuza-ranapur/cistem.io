@@ -35,6 +35,7 @@
      "msgPerPartition": 1000,
      "latency": 5,
      "partitions": 4,
+     "retentionHours": 168,
      "schema": ""
     },
     {
@@ -44,6 +45,7 @@
      "msgPerPartition": 1000,
      "latency": 5,
      "partitions": 2,
+     "retentionHours": 168,
      "schema": ""
     },
     {
@@ -70,6 +72,7 @@
      "name": "legacy",
      "latency": 5,
      "partitions": 3,
+     "retentionHours": 168,
      "schema": "",
      "maxThroughput": 2500
     },
@@ -189,7 +192,11 @@
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n22": {
     "load": 3000,
@@ -198,7 +205,11 @@
     "status": "ok",
     "lat": 28.571428571428573,
     "cum": 28.571428571428573,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n23": {
     "load": 3000,
@@ -207,7 +218,11 @@
     "status": "warn",
     "lat": 20,
     "cum": 48.57142857142857,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n24": {
     "load": 1500,
@@ -216,16 +231,24 @@
     "status": "warn",
     "lat": 20,
     "cum": 48.57142857142857,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n25": {
     "load": 4500,
     "cap": 3600,
     "util": 1.25,
-    "status": "crit",
-    "lat": 200,
-    "cum": 248.57142857142856,
-    "idle": 2
+    "status": "warn",
+    "lat": 20,
+    "cum": 40,
+    "idle": 2,
+    "pull": true,
+    "lag": 900,
+    "lossAfter": 840.0000000000002,
+    "async": true
    },
    "n26": {
     "load": 3300,
@@ -233,8 +256,12 @@
     "util": 0.6875,
     "status": "ok",
     "lat": 64,
-    "cum": 112.57142857142857,
-    "idle": 0
+    "cum": 92.57142857142857,
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n27": {
     "load": 1500,
@@ -243,16 +270,24 @@
     "status": "ok",
     "lat": 12.5,
     "cum": 41.07142857142857,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
    "n28": {
     "load": 1500,
     "cap": 1500,
     "util": 1,
-    "status": "crit",
-    "lat": 200,
-    "cum": 241.07142857142856,
-    "idle": 0
+    "status": "warn",
+    "lat": 20,
+    "cum": 32.5,
+    "idle": 0,
+    "pull": true,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": true
    }
   },
   "edges": {
@@ -278,9 +313,10 @@
    "p9": 0
   },
   "verdict": {
-   "status": "crit",
+   "status": "warn",
    "node": "n25",
-   "lat": 248.57142857142856,
+   "lat": 92.57142857142857,
+   "asyncLat": 84,
    "converged": true
   },
   "layout": {

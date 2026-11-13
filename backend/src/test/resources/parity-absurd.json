@@ -10,7 +10,7 @@
   "model": {
    "nodes": [
     {
-     "id": "n40",
+     "id": "n47",
      "kind": "entry",
      "name": "c",
      "platforms": [
@@ -20,7 +20,7 @@
      "rps": "250"
     },
     {
-     "id": "n41",
+     "id": "n48",
      "kind": "entry",
      "name": "neg",
      "platforms": [
@@ -30,7 +30,7 @@
      "rps": -500
     },
     {
-     "id": "n42",
+     "id": "n49",
      "kind": "service",
      "name": "s",
      "rpsPerInstance": true,
@@ -39,7 +39,7 @@
      "endpoints": []
     },
     {
-     "id": "n43",
+     "id": "n50",
      "kind": "cache",
      "name": "r",
      "maxOps": "lots",
@@ -48,7 +48,7 @@
      "eviction": "allkeys-lru"
     },
     {
-     "id": "n44",
+     "id": "n51",
      "kind": "db",
      "name": "d",
      "maxQps": 5000,
@@ -61,26 +61,26 @@
    "edges": [
     {
      "id": "a",
-     "from": "n40",
-     "to": "n42",
+     "from": "n47",
+     "to": "n49",
      "calls": "3"
     },
     {
      "id": "b",
-     "from": "n41",
-     "to": "n42",
+     "from": "n48",
+     "to": "n49",
      "calls": -1
     },
     {
      "id": "x",
-     "from": "n42",
-     "to": "n43",
+     "from": "n49",
+     "to": "n50",
      "calls": 1
     },
     {
      "id": "y",
-     "from": "n43",
-     "to": "n44",
+     "from": "n50",
+     "to": "n51",
      "calls": "NaN"
     }
    ],
@@ -89,23 +89,23 @@
   },
   "layout": {
    "positions": {
-    "n40": {
+    "n47": {
      "x": 0,
      "y": 0
     },
-    "n41": {
+    "n48": {
      "x": 0,
      "y": 0
     },
-    "n42": {
+    "n49": {
      "x": 0,
      "y": 0
     },
-    "n43": {
+    "n50": {
      "x": 0,
      "y": 0
     },
-    "n44": {
+    "n51": {
      "x": 0,
      "y": 0
     }
@@ -115,50 +115,70 @@
  },
  "expected": {
   "nodes": {
-   "n40": {
+   "n47": {
     "load": 250,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n41": {
+   "n48": {
     "load": 0,
     "cap": null,
     "util": 0,
     "status": "ok",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n42": {
+   "n49": {
     "load": 750,
     "cap": 0,
     "util": null,
     "status": "crit",
     "lat": 0,
     "cum": 0,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n43": {
+   "n50": {
     "load": 750,
     "cap": 0,
     "util": null,
     "status": "crit",
     "lat": 1,
     "cum": 1,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    },
-   "n44": {
+   "n51": {
     "load": 0,
     "cap": 5000,
     "util": 0,
     "status": "ok",
     "lat": 8,
     "cum": 9,
-    "idle": 0
+    "idle": 0,
+    "pull": false,
+    "lag": 0,
+    "lossAfter": -1,
+    "async": false
    }
   },
   "edges": {
@@ -175,28 +195,29 @@
   },
   "verdict": {
    "status": "crit",
-   "node": "n42",
+   "node": "n49",
    "lat": 1,
+   "asyncLat": 0,
    "converged": true
   },
   "layout": {
-   "n40": {
+   "n47": {
     "x": 40,
     "y": 40
    },
-   "n41": {
+   "n48": {
     "x": 40,
     "y": 216
    },
-   "n42": {
+   "n49": {
     "x": 352,
     "y": 128
    },
-   "n43": {
+   "n50": {
     "x": 672,
     "y": 128
    },
-   "n44": {
+   "n51": {
     "x": 984,
     "y": 128
    }
