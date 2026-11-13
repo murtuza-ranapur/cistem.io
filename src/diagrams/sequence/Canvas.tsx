@@ -170,17 +170,23 @@ export function noteBox(r: Extract<Row, { t: 'note' }>, g: SeqGeo): { x1: number
 /** A lifeline's head: drawn last so long lifelines never cover it. Fits its name (two lines if need be). */
 const Head = memo(function Head({ p, x, w, lines, on, sys, offset }: { p: Participant; x: number; w: number; lines: string[]; on: boolean; sys: LinkedSystem | null; offset: number }) {
   const missing = !!p.ref && !!sys && !nodeOf(p, sys);
-  const type = typeLabel(p) + (missing ? ' · link missing' : ''), tw = textW(type) * 0.85;
+  // a plain participant needs no label: only a type (Service, Database…) or a broken link says something
+  const typed = p.type === 'actor' || !!(p.type && TYPES[p.type]);
+  const type = typed || missing ? (typed ? typeLabel(p) : '') + (missing ? (typed ? ' · ' : '') + 'link missing' : '') : '';
   const two = lines.length > 1;
+  const nameY = (k: number) => SEQ.top + (type ? (two ? 28 + k * 13 : 35) : (two ? 21 + k * 13 : 28));
+  // the logo sits before the label, or before the (first line of the) name when there's no label
+  const lead = type ? textW(type) * 0.85 : textW(lines[0]) * 1.05;
+  const logoY = type ? SEQ.top + (two ? 4 : 7) : nameY(0) - 11;
   return (
     <g className={`sq-head ${on ? 'on' : ''} ${offset ? 'dragging' : ''} ${p.border === 'dashed' ? 'dashed' : ''} ${p.color ? 'tinted' : ''}`} data-head={p.id}
       style={{ '--kc': colorOf(p) } as React.CSSProperties} transform={offset ? `translate(${offset} 0)` : undefined}>
       <title>{p.name}</title>
       <rect x={x - w / 2} y={SEQ.top} width={w} height={SEQ.headH} rx={7} />
       <path className="sq-hbar" d={`M${x - w / 2 + 1} ${SEQ.top + 4}a6 6 0 0 1 6 -4h${w - 14}a6 6 0 0 1 6 4z`} />
-      {p.logo && <image className="sq-hlogo" href={p.logo} x={x - tw / 2 - 17} y={SEQ.top + (two ? 4 : 7)} width={13} height={13} preserveAspectRatio="xMidYMid meet" />}
-      <text className="sq-htype" x={x} y={SEQ.top + (two ? 14 : 17)} textAnchor="middle">{type}</text>
-      {lines.map((l, k) => <text key={k} className={'sq-hname' + (two ? ' two' : '')} x={x} y={SEQ.top + (two ? 28 + k * 13 : 35)} textAnchor="middle" data-edit-part={p.id}>{l}</text>)}
+      {p.logo && <image className="sq-hlogo" href={p.logo} x={x - lead / 2 - 17} y={logoY} width={13} height={13} preserveAspectRatio="xMidYMid meet" />}
+      {type && <text className="sq-htype" x={x} y={SEQ.top + (two ? 14 : 17)} textAnchor="middle">{type}</text>}
+      {lines.map((l, k) => <text key={k} className={'sq-hname' + (two ? ' two' : '')} x={x} y={nameY(k)} textAnchor="middle" data-edit-part={p.id}>{l}</text>)}
       <NoteBadge md={p.notes} x={x + w / 2} y={SEQ.top} />
       {/* hovered: a grip and nudges show the head can be moved; selected: a handle to resize it */}
       <g className="sq-nudge">
