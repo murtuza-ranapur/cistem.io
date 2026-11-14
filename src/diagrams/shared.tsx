@@ -35,6 +35,14 @@ export function InlineEdit({ id, value, style, onCommit, onCancel, onKeyDown, li
     const v = input.current?.value.trim() ?? '';
     if (commit && (v || allowEmpty)) onCommit(v); else onCancel();
   };
+  const finishRef = useRef(finish); finishRef.current = finish;
+  useEffect(() => {
+    // a press anywhere else commits first: the canvas closes the box on pointerdown, which unmounts the
+    // input before its blur could save the text
+    const outside = (ev: PointerEvent) => { if (ev.target !== input.current) finishRef.current(true); };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, []);
   return (
     <input id={id} ref={input} type="text" aria-label={ariaLabel} autoComplete="off" spellCheck={false} list={list}
       defaultValue={value} style={{ ...style, ...(mono ? { fontFamily: 'var(--mono)' } : {}) }}

@@ -183,6 +183,15 @@ class T {
     eq((await t.node('n3')).name, 'orders-api', 'renamed');
   });
 
+  await test('regression: a rename on the canvas saves when you click away', async t => {
+    const b = await t.box('[data-node="n3"] rect.body');
+    await t.page.mouse.dblclick(b.x + 60, b.y + 30); await t.page.waitForTimeout(150);
+    await t.page.keyboard.press('Control+a'); await t.page.keyboard.type('payments-api');
+    await t.page.mouse.click(b.x + 60, b.y + 400); await t.page.waitForTimeout(200);
+    eq(await t.page.$('#renameBox'), null, 'box closed');
+    eq((await t.node('n3')).name, 'payments-api', 'kept');
+  });
+
   await test('title edits persist and update the document title', async t => {
     await t.page.fill('#title', 'Renamed system'); await t.page.waitForTimeout(200);
     eq((await t.doc()).meta.title, 'Renamed system', 'meta title');
