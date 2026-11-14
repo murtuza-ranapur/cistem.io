@@ -14,6 +14,7 @@ import { diagram } from '../diagrams';
 import { Icon, IconButton } from './Icon';
 import { useDismiss } from './hooks';
 import { openExample } from './actions';
+import { TimerButton } from '../timer/Timer';
 
 export function Header() {
   const kind = useEditor(s => s.open.kind);
@@ -37,6 +38,7 @@ export function Header() {
         <IconButton id="panelBtn" icon="ic-panel" label="Toggle details panel" title="Details panel (I)" onClick={togglePanel} className={panelOpen ? 'on' : ''} />
         {m.Tools && <m.Tools />}
         <span className="sep" />
+        <TimerButton />
         <ShareButton />
         <IconButton id="copyImageBtn" icon="ic-camera" label="Copy as image" title="Copy as image (⌘⇧C) — paste into Confluence, docs, slides" onClick={() => void copyImage()} />
         <IconButton id="ioBtn" icon="ic-save" label="Export or import" title="Export / import JSON" onClick={() => useUi.setState({ ioOpen: 'export' })} />

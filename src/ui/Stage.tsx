@@ -6,6 +6,7 @@ import { diagram } from '../diagrams';
 import { Hint } from './Banners';
 import { ContextMenu } from './ContextMenu';
 import { NotesLayer } from '../notes/NotesLayer';
+import { TimerPill } from '../timer/Timer';
 
 export function Stage() {
   const kind = useEditor(s => s.open.kind);
@@ -29,6 +30,7 @@ export function Stage() {
         <span id="zoomPct">{Math.round(k * 100)}%</span>
         <button type="button" id="zout" aria-label="Zoom out" onClick={() => zoomBy(1 / 1.2)}>−</button>
       </div>
+      <TimerPill />
       <ContextMenu />
     </main>
   );

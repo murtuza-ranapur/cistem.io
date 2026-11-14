@@ -754,3 +754,28 @@ button.link:hover{text-decoration:underline}
 .sq-logo-thumb{width:20px;height:20px;object-fit:contain;border-radius:4px;margin-right:4px;vertical-align:middle}
 .note.warn-note{color:var(--warn-ink,var(--text));background:color-mix(in srgb,var(--warn,#d9a03f) 14%,transparent);border-left:3px solid var(--warn,#d9a03f);padding:6px 8px;border-radius:4px}
 .node .stat.pct.lag{fill:var(--warn)}
+
+/* the timer: header menu and the floating pill */
+.timer-wrap{position:relative;display:inline-flex}
+.timer-menu{position:absolute;top:calc(100% + 8px);right:0;width:220px;padding:10px;display:flex;flex-direction:column;gap:10px;z-index:40}
+.timer-fields{display:flex;gap:8px}
+.timer-fields label{flex:1;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+#timerMenu .timer-fields input{width:100%;min-width:0;font:600 16px var(--mono);text-align:center;padding:6px 4px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;-moz-appearance:textfield}
+#timerMenu .timer-fields input:focus{outline:none;border-color:var(--sel);box-shadow:0 0 0 3px var(--sel-soft)}
+.timer-fields input::-webkit-inner-spin-button,.timer-fields input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.timer-menu button.primary{width:100%;justify-content:center}
+.timer{position:absolute;z-index:6;display:inline-flex;align-items:center;gap:4px;padding:4px 5px 4px 11px;border-radius:22px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);cursor:grab;user-select:none;touch-action:none}
+.timer:active{cursor:grabbing}
+.timer>svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;color:var(--muted)}
+.timer .t{font:600 16px var(--mono);letter-spacing:.02em;min-width:58px;padding:0 4px;color:var(--fg);font-variant-numeric:tabular-nums}
+.timer .lab{font-size:11px;color:var(--muted);margin-right:2px}
+.timer button{all:unset;box-sizing:border-box;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.timer button:hover,.timer button:focus-visible{background:var(--line-2);color:var(--fg)}
+.timer button svg{width:15px;height:15px;fill:currentColor}
+.timer button.x svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.timer .sep{width:1px;height:18px;background:var(--line);margin:0 1px}
+.timer.paused .t{color:var(--muted)}
+.timer.warn{border-color:color-mix(in srgb,var(--warn) 55%,var(--line))}
+.timer.warn .t,.timer.warn>svg{color:var(--warn)}
+.timer.over{border-color:color-mix(in srgb,var(--crit) 55%,var(--line))}
+.timer.over .t,.timer.over>svg{color:var(--crit)}

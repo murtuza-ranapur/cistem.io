@@ -183,6 +183,21 @@ class T {
     eq((await t.node('n3')).name, 'orders-api', 'renamed');
   });
 
+  await test('timer: set hours and minutes, start, pause, stop, dismiss; it outlives a reload', async t => {
+    await t.page.click('#timerBtn'); await t.page.fill('#timerH', '1'); await t.page.fill('#timerM', '5');
+    eq((await t.page.textContent('#timerStart')).trim(), 'Start 1:05:00');
+    await t.page.click('#timerStart'); await t.page.waitForTimeout(1200);
+    assert(/^1:04:5\d$/.test(await t.page.textContent('#timerTime')), 'counting down');
+    assert((await t.page.title()).startsWith('1:04:'), 'in the tab title');
+    await t.page.click('#timerPause'); const at = await t.page.textContent('#timerTime');
+    await t.page.waitForTimeout(1200); eq(await t.page.textContent('#timerTime'), at, 'paused');
+    await t.page.reload(); await t.page.waitForSelector('#timer.paused');
+    eq(await t.page.textContent('#timerTime'), at, 'still there after a reload');
+    await t.page.click('#timerStop'); eq(await t.page.textContent('#timerTime'), '1:05:00', 'stop goes back to the start');
+    await t.page.click('#timerClose'); eq(await t.page.$('#timer'), null, 'dismissed');
+    assert(!(await t.page.title()).includes('1:05'), 'title back to normal');
+  });
+
   await test('regression: a rename on the canvas saves when you click away', async t => {
     const b = await t.box('[data-node="n3"] rect.body');
     await t.page.mouse.dblclick(b.x + 60, b.y + 30); await t.page.waitForTimeout(150);

@@ -141,6 +141,10 @@ Lifelines take a colour, a dashed border and a logo; messages a colour and bold;
 
 Two kinds of note: **Note over** (the sequence tool, `N`) is part of the flow and the code — over one or more lifelines, or `note left of` / `note right of` one. Drag it up or down to move it in the flow, sideways onto other lifelines, and drag its edges to span more or fewer. **Sticky** (the yellow rail button) is free on the canvas. Convert either way: **Make it a sticky** in a note's panel, **Pin to lifelines** on a selected sticky. Fit to view (`⌘0`) includes stickies on every kind of diagram.
 
+## Timer
+
+The clock button in the header starts a countdown: enter hours and minutes, then Start. A small pill floats at the bottom left of the canvas (drag it anywhere) with pause/resume, stop (back to the start) and × to dismiss. It turns amber in the last 5 minutes, red at zero, and keeps counting over time; the tab title shows it too. It's yours, not the diagram's: it carries on across diagrams and a reload, and never shows in an image or a shared link.
+
 ## Copy as image
 
 The image button in the top bar (or `⌘⇧C`) copies the whole diagram, not just what's on screen, as a PNG at 2×: paste it straight into Confluence, a doc or a slide. Export / import also has **Download PNG** and **Download SVG**. The picture leaves out the grid, selection and app chrome, always uses the light theme, includes canvas notes, and embeds the app's fonts (IBM Plex, OFL, served from `/fonts`).
