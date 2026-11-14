@@ -23,7 +23,7 @@ export function Header() {
   const panelOpen = useUi(s => s.panelOpen);
   return (
     <header id="top">
-      <div className="brand"><span className="logo" />cistem<span className="tld">.dev</span></div>
+      <div className="brand"><span className="logo" /><span className="name">cistem<span className="tld">.dev</span></span></div>
       <ProjectSwitcher />
       <TitleInput />
       {m.HeaderInfo && <m.HeaderInfo />}
@@ -59,7 +59,7 @@ function ProjectSwitcher() {
     <>
       <button type="button" id="drawerBtn" className={'switcher' + (drawer ? ' on' : '')} aria-haspopup="true" aria-expanded={drawer}
         title="Projects" onClick={() => (drawer ? useUi.setState({ drawerOpen: false }) : openDrawer())}>
-        <Icon name="ic-folder" /><span className="sw-title">{p?.title ?? 'Projects'}</span><span className="caret" aria-hidden="true">▾</span>
+        <Icon name="ic-folder" /><span className="sw-title">{p?.title ?? 'Projects'}</span>
       </button>
       {p?.scope === 'view' && (
         <>

@@ -4,10 +4,9 @@
 .switcher{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;font-weight:600;font-size:13px;max-width:240px;border-color:var(--line)}
 .switcher svg{width:16px;height:16px;flex:none;fill:color-mix(in srgb,var(--sel) 22%,transparent);stroke:var(--sel);stroke-width:1.6}
 .switcher .sw-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.switcher .caret{color:var(--muted);font-size:10px}
 .switcher.on,.switcher:hover{background:var(--sel-soft);border-color:color-mix(in srgb,var(--sel) 35%,transparent)}
 #top .switcher{flex:0 0 auto;max-width:200px}
-@media (max-width:900px){ #top .switcher{padding:0 8px} #top .switcher .sw-title,#top .switcher .caret{display:none} }
+@media (max-width:900px){ #top .switcher{padding:0 8px} #top .switcher .sw-title{display:none} }
 .tag.viewonly{margin-left:-6px;color:var(--muted);background:var(--line-2)}
 
 /* drawer */
