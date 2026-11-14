@@ -18,7 +18,9 @@
 .phead{display:flex;align-items:center;gap:4px;padding:2px 4px 2px 0}
 .ptoggle{all:unset;box-sizing:border-box;flex:1;min-width:0;display:flex;align-items:center;gap:7px;padding:8px 8px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px}
 .ptoggle:hover,.ptoggle:focus-visible{background:var(--line-2)}
-.ptoggle .caret{width:10px;color:var(--muted);font-size:10px}
+.ptoggle .caret{width:16px;height:16px;flex:none;fill:none;stroke:var(--muted);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--t) var(--ease)}
+.ptoggle .caret.open{transform:rotate(90deg)}
+.ptoggle:hover .caret{stroke:var(--fg)}
 .pfolder{width:16px;height:16px;flex:none;fill:color-mix(in srgb,var(--sel) 22%,transparent);stroke:var(--sel);stroke-width:1.6}
 .ptitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .pcount{margin-left:auto;color:var(--muted);font-weight:400;font-size:12px}
@@ -27,13 +29,10 @@
 .plist .empty{padding:4px 12px;margin:0}
 .ditem{display:flex;align-items:center;gap:9px;padding:7px 34px 7px 10px}
 .ditem .tk,.dlg-list .tk{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;flex:none}
-.ditem .tk svg,.dlg-list .tk svg,.pnew .tk svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ditem .tk svg,.dlg-list .tk svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ditem .dtext{min-width:0;flex:1}
 .ditem .x{font-size:15px;line-height:1;width:24px;height:24px;padding:0;display:grid;place-items:center}
 .ditem:focus-visible .x{opacity:1}
-.pnew{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px 2px;font-size:12px;color:var(--muted)}
-.pnew .chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 4px}
-.pnew .tk{width:16px;height:16px;border-radius:4px;display:grid;place-items:center}
 .leftovers{margin:10px 10px 0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-soft);border-radius:10px;font-size:12.5px}
 .leftovers p{margin:0 0 8px}
 .leftovers div{display:flex;gap:6px}
@@ -41,7 +40,8 @@
 /* popup menus */
 .popmenu{min-width:200px;max-width:300px}
 .popmenu button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ctx button.danger{color:var(--crit)}
+.ctx button.danger{color:var(--crit);background:transparent;border-color:transparent}
+.ctx button.danger:hover,.ctx button.danger:focus-visible{background:var(--crit-soft);color:var(--crit)}
 .ctx .pm-back{color:var(--muted);font-size:12px}
 
 /* dialogs */

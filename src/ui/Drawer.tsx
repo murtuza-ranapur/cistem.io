@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { useUi } from '../store/ui';
 import { useCloud, signIn } from '../store/cloud';
-import { useTabs, newTab } from '../store/tabs';
+import { useTabs } from '../store/tabs';
 import { useProjectList, closeDrawer, openProjectById, importBrowserProjects, dismissLeftovers } from '../store/projects';
 import type { DiagramInfo, ProjectInfo } from '../store/backends';
 import { timeAgo } from '../lib/format';
@@ -70,7 +70,7 @@ function ProjectRow({ p, isOpen }: { p: ProjectInfo; isOpen: boolean }) {
     <section className={'prow' + (isOpen ? ' on' : '')} data-project={p.id}>
       <div className="phead">
         <button type="button" className="ptoggle" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>
-          <span className="caret" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+          <svg className={'caret' + (expanded ? ' open' : '')} viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>
           <Icon name="ic-folder" className="pfolder" />
           <span className="ptitle">{p.title}</span>
           {p.shared && <span className="tag">shared</span>}
@@ -83,16 +83,6 @@ function ProjectRow({ p, isOpen }: { p: ProjectInfo; isOpen: boolean }) {
         <div className="plist">
           {p.diagrams.map(d => <DiagramRow key={d.id} d={d} p={p} />)}
           {!p.diagrams.length && <p className="empty">No diagrams yet.</p>}
-          {isOpen && (
-            <div className="pnew">
-              <span>New:</span>
-              {(['system', 'sequence', 'class'] as const).map(k => (
-                <button type="button" key={k} className="chip" data-new-in={k} onClick={() => { closeDrawer(); void newTab(k); }}>
-                  <KindIcon kind={k} />{k[0].toUpperCase() + k.slice(1)}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
     </section>

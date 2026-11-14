@@ -45,6 +45,8 @@ const theme = EditorView.theme({
   '&.cm-focused': { outline: 'none', borderColor: 'var(--sel)', boxShadow: '0 0 0 3px var(--sel-soft)' },
   '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.55' },
   '.cm-content': { padding: '6px 0', caretColor: 'var(--fg)' },
+  // CodeMirror draws its own cursor (black by default): follow the theme
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg)', borderLeftWidth: '1.5px' },
   '.cm-line': { padding: '0 8px' },
   '.cm-gutters': { background: 'transparent', border: 'none', color: 'var(--muted)', opacity: '.7' },
   '.cm-activeLine': { background: 'var(--sel-soft)' },
