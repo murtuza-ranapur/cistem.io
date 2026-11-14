@@ -6,6 +6,7 @@ import type { ComponentType } from 'react';
 import type { DiagramKind, DiagramFile, SequenceFile, ClassFile } from '../domain/document';
 import type { DocOf, Meta, Selection } from '../store/editor';
 import type { Box, Point } from '../store/viewport';
+import type { PaletteSection } from '../palette/types';
 
 export interface Verdict { status: 'ok' | 'warn' | 'crit' | 'none'; text: string; detail?: string; /** a tooltip with more */ title?: string; /** extra classes for the badge */ className?: string }
 
@@ -20,8 +21,10 @@ export interface DiagramModule<K extends DiagramKind = DiagramKind> {
 
   /** The drawing surface. */
   Canvas: ComponentType;
-  /** The left rail (tools to add things). */
-  Rail: ComponentType;
+  /** What the floating palette offers: sections of things to add or tools to pick (a hook: it may read state). */
+  usePalette(): PaletteSection[];
+  /** Double-clicking empty canvas opens quick add (search, then it lands where you clicked). */
+  quickAdd?: boolean;
   /** The details panel body. */
   Panel: ComponentType;
   /** Extra header items: beside the title (e.g. the system's load) and among the toolbar buttons. */

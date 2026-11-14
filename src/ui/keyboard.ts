@@ -8,7 +8,8 @@ import { useUi, togglePanel } from '../store/ui';
 import { activate, tabs } from '../store/tabs';
 import { saveNow } from '../store/cloud';
 import { active, duplicateSelection, fitView, removeSelection, selectAll } from '../store/commands';
-import { zoomBy, pointerWorld } from '../store/viewport';
+import { zoomBy, pointerWorld, pointerClient } from '../store/viewport';
+import { slash } from '../palette/Palette';
 import { addNote, noteKeydown } from '../notes/actions';
 import { requestCloseTab } from './TabBar';
 import { copyImage } from '../store/imageExport';
@@ -51,6 +52,7 @@ function onKey(ev: KeyboardEvent) {
   // the diagram's own keys can override the common ones below (e.g. Escape closing its picker first)
   if (active().keydown?.(ev)) return handled(() => {});
   if (!mod && !ev.altKey && key === 'n') return handled(() => addNote(pointerWorld()));
+  if (!mod && !ev.altKey && ev.key === '/') return handled(() => slash(pointerClient()));
   if (mod && key === 'd') return handled(duplicateSelection);
   if (mod && key === 'a') return handled(selectAll);
   if (!mod && !ev.altKey && key === 'i') return handled(togglePanel);

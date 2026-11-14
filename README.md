@@ -141,6 +141,12 @@ Lifelines take a colour, a dashed border and a logo; messages a colour and bold;
 
 Two kinds of note: **Note over** (the sequence tool, `N`) is part of the flow and the code — over one or more lifelines, or `note left of` / `note right of` one. Drag it up or down to move it in the flow, sideways onto other lifelines, and drag its edges to span more or fewer. **Sticky** (the yellow rail button) is free on the canvas. Convert either way: **Make it a sticky** in a note's panel, **Pin to lifelines** on a selected sticky. Fit to view (`⌘0`) includes stickies on every kind of diagram.
 
+## The palette
+
+Components float in a palette at the top left of the canvas, in sections (Traffic, Compute, Data, Messaging, Canvas): click one to add it in the middle of the view, or drag it where you want it. Press **/** to search; it knows other names too ("sql" or "rds" finds Postgres, "stream" finds Kafka), ↑↓ to pick, Enter to add. Collapse it (–) to a pill with search and the four you add most. **Quick add:** double-click empty canvas, type, Enter, and it lands where you clicked. Sequence and class diagrams use the same palette for their own tools, and Sticky is in every one.
+
+**Apache Flink** is a component of its own: a stream-processing job whose capacity is parallelism × records/s per slot. Reading Kafka topics it uses at most one slot per partition, like any consumer.
+
 ## Timer
 
 The clock button in the header starts a countdown: enter hours and minutes, then Start. A small pill floats at the bottom left of the canvas (drag it anywhere) with pause/resume, stop (back to the start) and × to dismiss. It turns amber in the last 5 minutes, red at zero, and keeps counting over time; the tab title shows it too. It's yours, not the diagram's: it carries on across diagrams and a reload, and never shows in an image or a shared link.

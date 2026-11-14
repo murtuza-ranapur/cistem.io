@@ -83,7 +83,15 @@
           "min": 0,
           "step": 100
         }
-      ]
+      ],
+      "aliases": [
+        "users",
+        "web",
+        "mobile",
+        "browser",
+        "client"
+      ],
+      "about": "Users or other systems sending requests"
     },
     "lb": {
       "label": "Load balancer",
@@ -110,7 +118,15 @@
           "label": "Latency (ms)",
           "type": "number"
         }
-      ]
+      ],
+      "aliases": [
+        "nginx",
+        "alb",
+        "elb",
+        "haproxy",
+        "load balancer"
+      ],
+      "about": "Splits traffic evenly"
     },
     "apigw": {
       "label": "API gateway",
@@ -137,7 +153,14 @@
           "label": "Latency (ms)",
           "type": "number"
         }
-      ]
+      ],
+      "aliases": [
+        "kong",
+        "gateway",
+        "api gateway",
+        "rate limit"
+      ],
+      "about": "Rate limits at the edge"
     },
     "cdn": {
       "label": "CDN",
@@ -173,7 +196,14 @@
           "label": "Latency (ms)",
           "type": "number"
         }
-      ]
+      ],
+      "aliases": [
+        "cloudfront",
+        "edge",
+        "akamai",
+        "fastly"
+      ],
+      "about": "Edge cache for static content"
     },
     "service": {
       "label": "Microservice",
@@ -222,6 +252,57 @@
           "label": "Latency (ms)",
           "type": "number"
         }
+      ],
+      "aliases": [
+        "api",
+        "app",
+        "backend",
+        "microservice",
+        "application",
+        "server"
+      ],
+      "about": "An API, app or worker; scales with instances"
+    },
+    "flink": {
+      "label": "Apache Flink",
+      "short": "Flink",
+      "icon": "ic-flink",
+      "color": "#c2185b",
+      "w": 200,
+      "group": "compute",
+      "behaviour": "scaled",
+      "detail": null,
+      "about": "Stream processing; scales with parallelism",
+      "defaults": {
+        "name": "stream-job",
+        "rpsPerInstance": 5000,
+        "instances": 4,
+        "latency": 50
+      },
+      "fields": [
+        {
+          "key": "instances",
+          "label": "Parallelism (slots)",
+          "type": "number",
+          "min": 0
+        },
+        {
+          "key": "rpsPerInstance",
+          "label": "Records/s per slot",
+          "type": "number"
+        },
+        {
+          "key": "latency",
+          "label": "Latency (ms)",
+          "type": "number"
+        }
+      ],
+      "aliases": [
+        "stream processing",
+        "streaming",
+        "job",
+        "spark",
+        "kafka streams"
       ]
     },
     "cache": {
@@ -272,7 +353,14 @@
           ],
           "wide": true
         }
-      ]
+      ],
+      "aliases": [
+        "cache",
+        "memcached",
+        "valkey",
+        "elasticache"
+      ],
+      "about": "In-memory cache"
     },
     "db": {
       "label": "Postgres",
@@ -316,7 +404,16 @@
           "label": "Latency (ms)",
           "type": "number"
         }
-      ]
+      ],
+      "aliases": [
+        "sql",
+        "rds",
+        "aurora",
+        "mysql",
+        "relational",
+        "database"
+      ],
+      "about": "Relational database"
     },
     "mongodb": {
       "label": "MongoDB",
@@ -359,7 +456,14 @@
           "label": "Latency (ms)",
           "type": "number"
         }
-      ]
+      ],
+      "aliases": [
+        "nosql",
+        "documents",
+        "database",
+        "dynamodb"
+      ],
+      "about": "Document database"
     },
     "queue": {
       "label": "Kafka topic",
@@ -394,7 +498,15 @@
           "label": "Latency (ms)",
           "type": "number"
         }
-      ]
+      ],
+      "aliases": [
+        "stream",
+        "events",
+        "msk",
+        "topic",
+        "pubsub"
+      ],
+      "about": "Partitioned topic"
     },
     "sqs": {
       "label": "SQS queue",
@@ -434,7 +546,13 @@
           "label": "FIFO",
           "type": "boolean"
         }
-      ]
+      ],
+      "aliases": [
+        "queue",
+        "sns",
+        "rabbitmq"
+      ],
+      "about": "Managed queue"
     }
   }
 }

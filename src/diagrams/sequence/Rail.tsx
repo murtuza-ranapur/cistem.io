@@ -1,31 +1,32 @@
-/** The sequence tools on the left: add a lifeline, pick the kind of message to draw, add a note, wrap in a block. */
+/** The sequence palette: add a lifeline, pick the kind of message to draw, add a note, wrap in a block. */
 import { BLOCK_KINDS } from '../../domain/seq';
 import { Icon } from '../../ui/Icon';
 import { useSeqUi } from './state';
 import { seqTool } from './actions';
+import type { PaletteItem, PaletteSection } from '../../palette/types';
 
 const MESSAGES = [
-  { tool: 'sync', icon: 'ic-sq-call', label: 'Call', title: 'Call — then drag between lifelines (C)' },
-  { tool: 'async', icon: 'ic-sq-async', label: 'Async', title: 'Async message (A)' },
-  { tool: 'reply', icon: 'ic-sq-reply', label: 'Reply', title: 'Reply (R)' },
-  { tool: 'note', icon: 'ic-sq-note', label: 'Note over', title: 'Note over lifelines (N)' },
+  { tool: 'sync', icon: 'ic-sq-call', label: 'Call', about: 'A request that waits for an answer: drag between lifelines (C)', aliases: ['sync', 'request', 'message'] },
+  { tool: 'async', icon: 'ic-sq-async', label: 'Async', about: 'Fire and forget, e.g. publishing an event (A)', aliases: ['event', 'publish', 'message'] },
+  { tool: 'reply', icon: 'ic-sq-reply', label: 'Reply', about: 'The answer to a call (R)', aliases: ['response', 'return'] },
 ];
-const BLOCK_TITLES: Record<string, string> = { alt: 'Alternatives', opt: 'Optional', loop: 'Loop', par: 'Parallel' };
+const BLOCKS: Record<string, { label: string; about: string }> = {
+  alt: { label: 'If / else', about: 'Alternatives: wraps the selected messages' },
+  opt: { label: 'Optional', about: 'Happens only sometimes: wraps the selected messages' },
+  loop: { label: 'Repeat', about: 'A loop: wraps the selected messages (L)' },
+  par: { label: 'Parallel', about: 'At the same time: wraps the selected messages' },
+};
 
-export function SeqRail() {
+export function usePalette(): PaletteSection[] {
   const tool = useSeqUi(s => s.tool);
-  const button = (name: string, title: string, glyph: React.ReactNode, label: string) => (
-    <button type="button" key={name} className={'comp sq-tool' + (tool === name ? ' active' : '')} data-seqtool={name} title={title} onClick={() => seqTool(name)}>
-      {glyph}<span>{label}</span>
-    </button>
-  );
-  return (
-    <div id="railSeq" className="rail-seq">
-      {button('participant', 'Participant (P)', <Icon name="ic-sq-part" />, 'Participant')}
-      <div className="rail-group-label">Messages</div>
-      {MESSAGES.map(m => button(m.tool, m.title, <Icon name={m.icon} />, m.label))}
-      <div className="rail-group-label">Blocks</div>
-      {BLOCK_KINDS.map(k => button(k, `${BLOCK_TITLES[k]} — wraps the selected messages${k === 'loop' ? ' (L)' : ''}`, <span className="sq-kw">{k}</span>, k[0].toUpperCase() + k.slice(1)))}
-    </div>
-  );
+  const item = (key: string, label: string, icon: React.ReactNode, about: string, aliases: string[] = []): PaletteItem =>
+    ({ key, label, icon, about, aliases, active: tool === key, attrs: { 'data-seqtool': key }, add: () => seqTool(key) });
+  return [
+    { title: 'Lifelines', items: [item('participant', 'Participant', <Icon name="ic-sq-part" />, 'A lifeline: a service, a user, a system (P)', ['lifeline', 'actor', 'service'])] },
+    { title: 'Messages', items: MESSAGES.map(m => item(m.tool, m.label, <Icon name={m.icon} />, m.about, m.aliases)) },
+    { title: 'Notes & blocks', items: [
+      item('note', 'Note over', <Icon name="ic-sq-note" />, 'A note over lifelines, part of the flow (N)', ['comment', 'annotation']),
+      ...BLOCK_KINDS.map(k => item(k, BLOCKS[k].label, <span className="sq-kw">{k}</span>, BLOCKS[k].about, [k, k === 'alt' ? 'else' : k === 'loop' ? 'for each' : ''].filter(Boolean))),
+    ] },
+  ];
 }

@@ -14,7 +14,7 @@ import { classBounds, findClass, rectOf, QUICK } from './model';
 import { clsUi, useClsUi } from './ui';
 import { Canvas } from './Canvas';
 import { Panel } from './Panel';
-import { Rail } from './Rail';
+import { usePalette } from './Rail';
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -37,7 +37,7 @@ export const classes: DiagramModule<'class'> = {
   untitled: 'Untitled classes',
   blank: blankCls,
   toFile: (doc, meta) => clsToFile(doc, meta),
-  Canvas, Rail, Panel,
+  Canvas, usePalette, Panel,
   // the panel always has something: a class, a relation, or the diagram's generators and Code tab
   panelFor: sel => !!sel,
   verdict: (d: ClassDoc) => ({ status: 'none', text: `${plural(d.classes.length, 'class', 'classes')} · ${plural(d.relations.length, 'relation', 'relations')}` }),

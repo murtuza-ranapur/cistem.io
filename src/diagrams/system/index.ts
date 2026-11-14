@@ -5,7 +5,7 @@ import { toFile } from '../../domain/document';
 import { hasMod } from '../../lib/browser';
 import type { DiagramModule } from '../types';
 import { Canvas, requestRename } from './Canvas';
-import { Rail, RAIL_ORDER } from './Rail';
+import { usePalette, RAIL_ORDER } from './Rail';
 import { Panel } from './panel/Panel';
 import { SystemTools, LoadButton } from './HeaderItems';
 import { loadOn, toggleLoadView } from '../../store/loadView';
@@ -43,7 +43,7 @@ export const system: DiagramModule<'system'> = {
   blank: () => adopt({ nodes: [makeNode('entry', 80, 200)], edges: [], containers: [], links: [], frames: {}, detail: {} }),
   toFile: (doc, meta) => toFile(doc, meta),
 
-  Canvas, Rail, Panel,
+  Canvas, usePalette, quickAdd: true, Panel,
   HeaderInfo: LoadButton,
   Tools: SystemTools,
   panelFor: sel => sel?.type === 'node' || sel?.type === 'edge' || sel?.type === 'container',

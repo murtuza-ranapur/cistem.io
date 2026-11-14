@@ -1,28 +1,25 @@
-/** The class tools on the left: one button per kind (also the 1–5 keys). */
+/** The class palette: one tile per kind (also the 1–5 keys). */
 import type { ClassKind } from '../../domain/cls';
 import { addClass } from './actions';
-import { KIND_COLOR, QUICK } from './model';
+import { KIND_COLOR, QUICK, snap } from './model';
+import type { PaletteSection } from '../../palette/types';
 
-const TOOL: Record<ClassKind, { letter: string; label: string; title: string }> = {
-  class: { letter: 'C', label: 'Class', title: 'Class' },
-  interface: { letter: 'I', label: 'Interface', title: 'Interface' },
-  enum: { letter: 'E', label: 'Enum', title: 'Enum' },
-  record: { letter: 'R', label: 'Record', title: 'Record' },
-  abstract: { letter: 'A', label: 'Abstract', title: 'Abstract class' },
+const TOOL: Record<ClassKind, { letter: string; label: string; about: string }> = {
+  class: { letter: 'C', label: 'Class', about: 'A class with fields and methods' },
+  interface: { letter: 'I', label: 'Interface', about: 'A contract classes implement' },
+  enum: { letter: 'E', label: 'Enum', about: 'A fixed set of values' },
+  record: { letter: 'R', label: 'Record', about: 'An immutable data class' },
+  abstract: { letter: 'A', label: 'Abstract', about: 'An abstract class' },
 };
 
-export function Rail() {
-  return (
-    <div id="railCls" className="rail-seq">
-      {QUICK.map((kind, i) => {
-        const t = TOOL[kind];
-        return (
-          <button type="button" key={kind} className="comp sq-tool" data-clstool={kind} title={`${t.title} (${i + 1})`} onClick={() => addClass(kind)}>
-            <span className="cl-kw" style={{ '--kc': KIND_COLOR[kind], ...(kind === 'abstract' ? { fontStyle: 'italic' } : {}) } as React.CSSProperties}>{t.letter}</span>
-            <span>{t.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
+export function usePalette(): PaletteSection[] {
+  return [{ title: 'Types', items: QUICK.map(kind => {
+    const t = TOOL[kind];
+    return {
+      key: kind, label: t.label, about: t.about, aliases: kind === 'record' ? ['data class', 'dto'] : kind === 'interface' ? ['trait', 'protocol'] : [],
+      icon: <span className="cl-kw" style={{ '--kc': KIND_COLOR[kind], ...(kind === 'abstract' ? { fontStyle: 'italic' } : {}) } as React.CSSProperties}>{t.letter}</span>,
+      attrs: { 'data-clstool': kind },
+      add: at => addClass(kind, at ? { x: snap(at.x - 80), y: snap(at.y - 30) } : undefined),
+    };
+  }) }];
 }

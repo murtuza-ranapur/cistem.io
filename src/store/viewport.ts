@@ -22,6 +22,11 @@ export function whenDrawn(fn: () => void) {
 }
 export const getSurface = () => surface;
 const rect = () => surface?.getBoundingClientRect() ?? new DOMRect(0, 0, innerWidth, innerHeight);
+/** How much of the canvas's left edge the floating palette covers: fitting and "the middle" keep clear of it. */
+let inset = 0;
+export const setLeftInset = (px: number) => { inset = Math.max(0, px); };
+/** The part of the canvas you can see past the palette (null: the whole of it). */
+const clear = () => { const r = rect(); const i = Math.min(inset, r.width * 0.5); return new DOMRect(r.left + i, r.top, r.width - i, r.height); };
 
 export function toWorld(clientX: number, clientY: number): Point {
   const r = rect(), v = editor().view;
@@ -32,7 +37,7 @@ export function toScreen(x: number, y: number): Point {
   return { x: r.left + x * v.k + v.x, y: r.top + y * v.k + v.y };
 }
 /** The world point at the middle of the canvas (where new things go). */
-export function centre(): Point { const r = rect(); return toWorld(r.left + r.width / 2, r.top + r.height / 2); }
+export function centre(): Point { const r = clear(); return toWorld(r.left + r.width / 2, r.top + r.height / 2); }
 
 const clampK = (k: number) => Math.min(ZOOM.max, Math.max(ZOOM.min, k));
 
@@ -58,9 +63,9 @@ function moveViewTo(target: View, ms: number) {
 /** Frame `box` in the canvas, with padding. */
 export function fitTo(box: Box | null, opts: { animated?: boolean; maxK?: number; pad?: number } = {}) {
   if (!box || !surface) return;
-  const r = rect(), pad = opts.pad ?? 48;
-  const k = Math.min(opts.maxK ?? 1.5, Math.max(ZOOM.min, Math.min((r.width - pad * 2) / Math.max(1, box.w), (r.height - pad * 2) / Math.max(1, box.h))));
-  const target = { k, x: (r.width - box.w * k) / 2 - box.x * k, y: (r.height - box.h * k) / 2 - box.y * k };
+  const r = rect(), c = clear(), off = c.left - r.left, pad = opts.pad ?? 48;
+  const k = Math.min(opts.maxK ?? 1.5, Math.max(ZOOM.min, Math.min((c.width - pad * 2) / Math.max(1, box.w), (c.height - pad * 2) / Math.max(1, box.h))));
+  const target = { k, x: off + (c.width - box.w * k) / 2 - box.x * k, y: (c.height - box.h * k) / 2 - box.y * k };
   if (opts.animated === false) setView(target); else moveViewTo(target, 240);
 }
 
@@ -86,3 +91,5 @@ export function bounds(boxes: Iterable<Box>): Box | null {
 let hover: Point | null = null;
 export const setHover = (p: Point | null) => { hover = p; };
 export const pointerWorld = (): Point | null => (hover ? toWorld(hover.x, hover.y) : null);
+/** …in window coordinates. */
+export const pointerClient = (): Point | null => (hover ? { x: hover.x, y: hover.y } : null);

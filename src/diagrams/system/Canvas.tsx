@@ -3,6 +3,7 @@
  * drag to move (into or out of environments), drag a port to connect, drag a frame to move what's inside,
  * shift/alt-drag to select several, drag the background to pan, double-click to rename, drop from the rail.
  */
+import { openQuickAdd } from '../../palette/store';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ancestry, typeDef, TYPES, NODE_H, ICON, qty, paletteCss, WIDTH_MIN, WIDTH_MAX, edgeCalls, CONTAINER_COLORS, type ContainerColor, type Doc, type Frame, type Kind } from '../../domain/model';
 import { hasNotes, notePreview } from '../../domain/notes';
@@ -307,7 +308,12 @@ export function Canvas() {
     <>
       <Surface id="svg" worldId="world" gridId="grid" ref={svg} defs={DEFS}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPinchStart={onPinchStart}
-        onDoubleClick={ev => { const id = (ev.target as Element).closest<SVGGElement>('[data-node]')?.dataset.node; if (id) setRenaming(id); }}>
+        onDoubleClick={ev => {
+          const t = ev.target as Element, id = t.closest<SVGGElement>('[data-node]')?.dataset.node;
+          if (id) setRenaming(id);
+          // empty canvas: quick add, landing where you double-clicked
+          else if (!t.closest('.fhead, [data-edge], .edge-label')) openQuickAdd(ev.clientX, ev.clientY);
+        }}>
         <g id="frames">
           {ordered.map(c => frames[c.id] && (
             <FrameView key={c.id} c={c} f={frames[c.id]} depth={ancestry(doc, c.id).length - 1}

@@ -7,7 +7,8 @@ export type Behaviour = 'source' | 'balancer' | 'limit' | 'scaled' | 'cache' | '
 /** What a node expands to show on the canvas, and its second panel tab. */
 export type DetailKind = 'endpoints' | 'tables' | 'topic' | 'message' | null;
 export interface FieldDef { key: string; label: string; type: 'number' | 'text' | 'select' | 'boolean'; options?: string[]; min?: number; max?: number; step?: number; wide?: boolean }
-export interface TypeDef { label: string; short: string; icon: string; color: string; w: number; group: string; behaviour: Behaviour; detail: DetailKind; defaults: Record<string, unknown>; fields: FieldDef[] }
+export interface TypeDef { label: string; short: string; icon: string; color: string; w: number; group: string; behaviour: Behaviour; detail: DetailKind; defaults: Record<string, unknown>; fields: FieldDef[];
+  /** other words people search for it by */ aliases?: string[]; /** one line on what it is */ about?: string }
 export const TYPES = (TYPES_FILE as unknown as { types: Record<string, TypeDef> }).types;
 /** Fields the load model reads (capacity, rps, latency…): hidden with the load view off. */
 export const LOAD_FIELDS = new Set(Object.values((TYPES_FILE as unknown as { behaviours: Record<string, { reads: string[] }> }).behaviours).flatMap(b => b.reads));

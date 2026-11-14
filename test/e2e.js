@@ -150,7 +150,7 @@ class T {
   // ---------- core interactions ----------
   await test('add from rail by click, then undo removes it', async t => {
     const before = (await t.doc()).model.nodes.length;
-    await t.page.click('#rail [data-add="cache"]'); await t.page.waitForTimeout(200);
+    await t.page.click('#palette [data-add="cache"]'); await t.page.waitForTimeout(200);
     eq((await t.doc()).model.nodes.length, before + 1, 'one more node');
     await t.page.keyboard.press('Escape');
     await t.page.keyboard.press('Control+z'); await t.page.waitForTimeout(200);
@@ -159,9 +159,43 @@ class T {
     eq((await t.doc()).model.nodes.length, before + 1, 'redo restored it');
   });
 
+  await test('palette: / searches names and aliases, Enter adds; it collapses to a pill of the most used', async t => {
+    const before = (await t.doc()).model.nodes.length;
+    await t.page.mouse.click(900, 860); await t.page.keyboard.press('/');
+    eq(await t.page.evaluate(() => document.activeElement?.id), 'palSearch', '/ focuses the search');
+    await t.page.keyboard.type('rds');
+    eq(await t.page.getAttribute('.pal-row.on', 'data-pal-result'), 'db', 'an alias finds Postgres');
+    await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(200);
+    const d = await t.doc();
+    eq(d.model.nodes.length, before + 1); eq(d.model.nodes.at(-1).kind, 'db', 'added');
+    eq(await t.page.inputValue('#palSearch'), '', 'search clears');
+    await t.page.click('#palClose');
+    assert(await t.page.$('#palette.pal-pill [data-pal-quick="db"]'), 'what you add most is on the pill');
+    await t.page.reload(); await t.page.waitForTimeout(600);
+    assert(await t.page.$('#palette.pal-pill'), 'stays collapsed after a reload');
+    await t.page.click('#palOpen');
+    assert(await t.page.$('#palette [data-add="flink"]'), 'open again, with Apache Flink');
+  });
+
+  await test('quick add: double-click empty canvas, type, Enter: it lands where you clicked', async t => {
+    const sv = await t.box('#svg'), p = { x: sv.x + 330, y: sv.y + sv.height - 50 };   // right of the palette, below the diagram
+    const ref0 = await t.box('[data-node="n2"] rect.body');
+    await t.page.mouse.dblclick(p.x, p.y); await t.page.waitForSelector('#quickAdd');
+    await t.page.keyboard.press('Escape'); eq(await t.page.$('#quickAdd'), null, 'Escape closes it');
+    await t.page.mouse.dblclick(p.x, p.y); await t.page.waitForSelector('#quickAdd');
+    await t.page.keyboard.type('flink'); await t.page.keyboard.press('Enter'); await t.page.waitForTimeout(200);
+    eq(await t.page.$('#quickAdd'), null, 'closes');
+    const n = (await t.doc()).model.nodes.at(-1);
+    eq(n.kind, 'flink'); eq(n.rpsPerInstance * n.instances, 20000, 'parallelism × records/s per slot');
+    // the view may pan to keep the new card clear of the panel: measure against another card
+    const b = await t.box(`[data-node="${n.id}"] rect.body`), ref1 = await t.box('[data-node="n2"] rect.body');
+    const dx = ref1.x - ref0.x, dy = ref1.y - ref0.y;
+    assert(Math.abs(b.x + b.width / 2 - (p.x + dx)) < 40 && Math.abs(b.y + b.height / 2 - (p.y + dy)) < 50, 'at the double-click: ' + JSON.stringify([b, p, dx, dy]));
+  });
+
   await test('drag from rail drops a node where released', async t => {
     const p = await t.emptyCanvasPoint();
-    await t.page.dragAndDrop('#rail [data-add="service"]', '#svg', { targetPosition: { x: 60, y: 800 } }); await t.page.waitForTimeout(200);
+    await t.page.dragAndDrop('#palette [data-add="service"]', '#svg', { targetPosition: { x: 60, y: 800 } }); await t.page.waitForTimeout(200);
     const d = await t.doc(); const added = d.model.nodes[d.model.nodes.length - 1];
     eq(added.kind, 'service', 'service added'); eq(added.container, null, 'unplaced when dropped on empty canvas');
     void p;
@@ -266,7 +300,7 @@ class T {
   });
 
   await test('adding an environment and deleting it from the inspector', async t => {
-    await t.page.click('#rail [data-add-container]'); await t.page.waitForTimeout(200);
+    await t.page.click('#palette [data-add-container]'); await t.page.waitForTimeout(200);
     const d = await t.doc(); const c = d.model.containers[d.model.containers.length - 1];
     eq(await t.sel(), c.name, 'new container selected');
     await t.page.click('#sheetBody [data-action="delete-container"]'); await t.page.waitForTimeout(200);
@@ -1617,7 +1651,8 @@ abstract class Entity { protected long version; }`;
     const lines = await t.page.$$eval(`[data-node="${svc.id}"] .eprow:last-of-type text.path`, e => e.map(x => x.textContent));
     assert(lines.length >= 2, 'wrapped: ' + JSON.stringify(lines));
     assert(lines.join('').endsWith('/history'), 'nothing lost: ' + lines.join(''));
-    // resize by its handle, then double-click to reset
+    // resize by its handle, then double-click to reset (palette shut, so the card has room beside the panel)
+    await t.page.click('#palClose'); await t.page.click('#zfit'); await t.page.waitForTimeout(400);
     const h = await t.page.$(`[data-node="${svc.id}"] rect.resize`); assert(h, 'handle on the selected card');
     const b = await h.boundingBox();
     await t.page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await t.page.mouse.down();

@@ -7,7 +7,7 @@ import { editor, setView } from '../../store/editor';
 import { getSurface } from '../../store/viewport';
 import type { DiagramModule, Verdict } from '../types';
 import { SeqCanvas } from './Canvas';
-import { SeqRail } from './Rail';
+import { usePalette } from './Rail';
 import { SeqPanel } from './Panel';
 import { seqBounds } from './geometry';
 import { linkedSystem, nodeOf } from './linked';
@@ -46,7 +46,7 @@ export const sequence: DiagramModule<'sequence'> = {
   blank: blankSeq,
   toFile: (doc, meta) => seqToFile(doc, meta),
   Canvas: SeqCanvas,
-  Rail: SeqRail,
+  usePalette,
   Panel: SeqPanel,
   panelFor: sel => !!sel,
   verdict,
