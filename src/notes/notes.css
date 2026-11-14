@@ -7,21 +7,23 @@
   --note-grey: #f1f3f5; --note-grey-line: #b4bac1;
   --note-none: var(--panel); --note-none-line: var(--line);
   --note-ink: #1b1f24;
+  /* text on a sticky: the notes are paper-coloured in both themes, so it's always dark */
+  --sticky-ink: #1f232a;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --note-yellow: #3d3417; --note-yellow-line: #8a6d1f;
-  --note-blue: #18283d; --note-blue-line: #33598a;
-  --note-green: #16301f; --note-green-line: #2f6b45;
-  --note-pink: #3a1d2c; --note-pink-line: #84476a;
-  --note-grey: #262b31; --note-grey-line: #4a525b;
+  --note-yellow: #e9d98f; --note-yellow-line: #c9b25a;
+  --note-blue: #b9cfee; --note-blue-line: #7fa3d6;
+  --note-green: #b7e2c4; --note-green-line: #74b78b;
+  --note-pink: #efc2d9; --note-pink-line: #c98aab;
+  --note-grey: #cfd4da; --note-grey-line: #9aa2ab;
   --note-ink: #e6e9ec;
 } }
 :root[data-theme="dark"] {
-  --note-yellow: #3d3417; --note-yellow-line: #8a6d1f;
-  --note-blue: #18283d; --note-blue-line: #33598a;
-  --note-green: #16301f; --note-green-line: #2f6b45;
-  --note-pink: #3a1d2c; --note-pink-line: #84476a;
-  --note-grey: #262b31; --note-grey-line: #4a525b;
+  --note-yellow: #e9d98f; --note-yellow-line: #c9b25a;
+  --note-blue: #b9cfee; --note-blue-line: #7fa3d6;
+  --note-green: #b7e2c4; --note-green-line: #74b78b;
+  --note-pink: #efc2d9; --note-pink-line: #c98aab;
+  --note-grey: #cfd4da; --note-grey-line: #9aa2ab;
   --note-ink: #e6e9ec;
 }
 
@@ -111,6 +113,9 @@
   background: var(--note-yellow); border: 1px solid var(--note-yellow-line); box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.08);
   display: flex; flex-direction: column; }
 /* the text scrolls inside a note that's been sized by hand; the colour row and corner handle stay outside it */
+.cnote:not([data-color="none"]) { --note-ink: var(--sticky-ink); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.16); }
+.cnote:not([data-color="none"]) .note-prose a { color: #1d5fae; }
+.cnote:not([data-color="none"]) .note-prose a[href^="#cistem:"] { background: rgba(29,95,174,.12); }
 .cnote > .note-editor { flex: 1; min-height: 0; overflow: hidden; }
 .cnote.editing > .note-editor { overflow: auto; }
 .cnote[data-color="blue"] { background: var(--note-blue); border-color: var(--note-blue-line); }
@@ -136,7 +141,7 @@
 
 /* the rail's Note button */
 #rail .rail-note { width: 52px; height: 52px; margin-top: 6px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 9px; cursor: pointer;
-  background: var(--note-yellow); border: 1.5px solid var(--note-yellow-line); color: var(--fg); }
+  background: var(--note-yellow); border: 1.5px solid var(--note-yellow-line); color: var(--sticky-ink); }
 #rail .rail-note:hover { filter: brightness(.97); transform: none; }
 #rail .rail-note svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 #rail .rail-note span { font-size: 10px; font-weight: 600; }
@@ -144,10 +149,10 @@
 
 /* ---------- badges on items with notes ---------- */
 .note-badge rect { fill: var(--note-yellow); stroke: var(--note-yellow-line); stroke-width: 1.2; }
-.note-badge path { fill: none; stroke: color-mix(in srgb, var(--note-ink) 70%, transparent); stroke-width: 1.3; stroke-linejoin: round; }
-.note-badge text { font: 600 10px var(--font); fill: var(--note-ink); }
+.note-badge path { fill: none; stroke: color-mix(in srgb, var(--sticky-ink) 70%, transparent); stroke-width: 1.3; stroke-linejoin: round; }
+.note-badge text { font: 600 10px var(--font); fill: var(--sticky-ink); }
 .note-badge.done rect { fill: var(--ok-soft); stroke: var(--ok); }
-.notes-count { margin-left: 5px; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--note-yellow); color: var(--note-ink); border: 1px solid var(--note-yellow-line); }
+.notes-count { margin-left: 5px; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--note-yellow); color: var(--sticky-ink); border: 1px solid var(--note-yellow-line); }
 
 /* ---------- notes in the details panel ---------- */
 .item-notes { border: 1px solid var(--line); border-radius: 10px; margin: 12px 0; overflow: hidden; background: var(--panel); }

@@ -145,7 +145,7 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 .edge-label text.t-label{font-family:var(--font);font-size:11.5px;font-weight:500;fill:var(--fg)}
 .edge-label text.t-ep{fill:var(--sel);font-weight:500}
 .edge-label .enote rect{fill:var(--note-bg);stroke:var(--note-line);stroke-width:1}
-.edge-label .enote text{font-family:var(--font);font-size:11px;fill:var(--fg);opacity:.85}
+.edge-label .enote text{font-family:var(--font);font-size:11px;fill:var(--sticky-ink,#1f232a);opacity:.9}
 .edge.enter path.line{animation:draw 360ms var(--ease) both}
 @keyframes draw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
 .edge.exit{animation:fadeOut 160ms var(--ease) both}
@@ -501,8 +501,8 @@ section.list h3 .spacer{flex:1}
 
 /* ---- sequence diagrams ---- */
 :root{--seq-line:#4b5563;--note-bg:#fff8db;--note-line:#e6d58a;--block-bg:rgba(255,255,255,.55)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--seq-line:#aab2bd;--note-bg:#3a3520;--note-line:#6b5e2a;--block-bg:rgba(26,29,33,.55)}}
-:root[data-theme="dark"]{--seq-line:#aab2bd;--note-bg:#3a3520;--note-line:#6b5e2a;--block-bg:rgba(26,29,33,.55)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--seq-line:#aab2bd;--note-bg:#e9d98f;--note-line:#c9b25a;--block-bg:rgba(26,29,33,.55)}}
+:root[data-theme="dark"]{--seq-line:#aab2bd;--note-bg:#e9d98f;--note-line:#c9b25a;--block-bg:rgba(26,29,33,.55)}
 #seqSvg{font-family:var(--font);position:absolute;inset:0;width:100%;height:100%;display:block;background:var(--bg);touch-action:none;outline:none;user-select:none}
 #seqSvg[hidden]{display:none}
 #app[data-kind="sequence"] #svg{visibility:hidden}
@@ -547,7 +547,7 @@ section.list h3 .spacer{flex:1}
 .sq-time{font:10.5px var(--mono);fill:var(--muted)}
 .sq-note{cursor:grab}
 .sq-note path{fill:var(--note-bg);stroke:var(--note-line)}
-.sq-note text{font-size:11.5px;fill:var(--fg)}
+.sq-note text{font-size:11.5px;fill:var(--sticky-ink,#1f232a)}
 .sq-note.on path{stroke:var(--sel);stroke-width:1.6}
 .sq-block .sq-bbox{fill:var(--block-bg);stroke:var(--muted);stroke-width:1;pointer-events:none}
 .sq-block .sq-btab{fill:var(--panel);stroke:var(--muted);stroke-width:1;cursor:grab}
