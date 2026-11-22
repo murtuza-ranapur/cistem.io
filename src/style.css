@@ -827,3 +827,22 @@ button.link:hover{text-decoration:underline}
 .pal-sticky{width:19px;height:19px;fill:var(--note-yellow);stroke:var(--note-yellow-line);stroke-width:1.5;flex:none}
 .pal-tile.sticky .pal-sticky{fill:none;stroke:var(--sticky-ink)}
 @media (max-width:900px){.pal{width:216px;max-height:calc(100% - 24px)}}
+
+/* ---- dragging from the palette ---- */
+.pal-tile.placeable,.pal-pbtn{touch-action:none}
+.pal-tile.lifted{opacity:.45;border-style:dashed}
+body.pal-dragging,body.pal-dragging *{cursor:grabbing!important;user-select:none}
+.drag-layer{position:absolute;inset:0;z-index:7;pointer-events:none;overflow:hidden}
+.drag-ghost{position:absolute;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:8px;background:var(--panel);border:1.5px dashed var(--sel);color:var(--fg);font:600 12.5px var(--font);transition:transform .12s var(--ease),opacity .12s,box-shadow .12s;will-change:left,top}
+.drag-ghost.lift{opacity:.55;transform:rotate(-2deg);box-shadow:0 18px 40px rgba(0,0,0,.35)}
+.drag-ghost.fit{opacity:.92;border-style:solid;box-shadow:0 0 0 4px var(--sel-soft),0 12px 28px rgba(0,0,0,.25)}
+.drag-ghost.sticky{background:var(--note-yellow);border-color:var(--note-yellow-line);color:var(--sticky-ink);border-radius:4px 4px 4px 14px}
+.drag-ghost .dg-ic svg{width:18px;height:18px;fill:none;stroke:var(--kc,currentColor);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;display:block}
+.drag-ghost .dg-ic .pal-ic svg{stroke:var(--kc)}
+.drag-ghost .dg-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drop-hl{position:absolute;box-sizing:border-box;border:1.5px solid var(--sel);border-radius:12px;background:color-mix(in srgb,var(--sel) 9%,transparent);box-shadow:0 0 0 4px var(--sel-soft)}
+.drop-hl span{position:absolute;right:10px;top:5px;font:600 11px var(--font);color:var(--sel)}
+.drop-guide{position:absolute;border:0 dashed #e06fb0}
+.drop-guide.h{left:0;right:0;border-top-width:1px}
+.drop-guide.v{top:0;bottom:0;border-left-width:1px}
+.drop-slot{position:absolute;width:2px;background:var(--sel);border-radius:1px;box-shadow:0 0 0 3px var(--sel-soft)}

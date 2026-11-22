@@ -10,12 +10,14 @@ import { addNote } from '../notes/actions';
 import { setLeftInset, toWorld } from '../store/viewport';
 import { closeQuickAdd, countUse, mostUsed, openQuickAdd, setPaletteOpen, usePalette } from './store';
 import { matchedAlias, searchItems, type PaletteItem, type PaletteSection } from './types';
+import { consumeDragClick, DragLayer, pressTile, useDrag } from './drag';
 
 const STICKY: PaletteItem = {
   key: 'sticky', label: 'Sticky', about: 'A free note with rich text, anywhere on the canvas (N)', aliases: ['note', 'comment', 'text', 'post-it'],
   icon: <svg className="pal-sticky" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v11l-5 5H4z" /><path d="M15 20v-5h5" /><path d="M8 9h8M8 13h5" /></svg>,
   attrs: { id: 'addNote', 'data-add-note': '' }, sticky: true,
-  add: at => { addNote(at ?? null); },
+  place: { w: 200, h: 96, drop: at => { addNote(at); } },
+  add: at => { addNote(at ? { x: at.x - 100, y: at.y - 48 } : null); },
 };
 
 /** The open diagram's sections, with the sticky added to its Canvas section (made if it has none). */
@@ -28,7 +30,7 @@ function useSections(): PaletteSection[] {
   }, [own]);
 }
 
-const use = (it: PaletteItem, at?: { x: number; y: number }) => { it.add(at); countUse(it.key); };
+export const use = (it: PaletteItem, at?: { x: number; y: number }) => { it.add(at); countUse(it.key); };
 const search = (): HTMLInputElement | null => document.querySelector('#palSearch');
 
 /** `/`: search in the palette, or quick add at the pointer when it's shut. */
@@ -39,11 +41,12 @@ export function slash(pointer: { x: number; y: number } | null) {
 }
 
 function Tile({ it }: { it: PaletteItem }) {
+  const dragging = useDrag(s => s.item?.key === it.key);
   return (
-    <button type="button" className={'pal-tile' + (it.active ? ' active' : '') + (it.sticky ? ' sticky' : '')} title={it.about ? `${it.label}: ${it.about}` : it.label}
-      {...it.attrs} draggable={!!it.drag}
-      onDragStart={it.drag ? e => { e.dataTransfer.setData(it.drag![0], it.drag![1]); e.dataTransfer.effectAllowed = 'copy'; } : undefined}
-      onClick={() => use(it)}>
+    <button type="button" className={'pal-tile' + (it.active ? ' active' : '') + (it.sticky ? ' sticky' : '') + (it.place ? ' placeable' : '') + (dragging ? ' lifted' : '')}
+      title={it.about ? `${it.label}: ${it.about}` : it.label}
+      {...it.attrs} onPointerDown={it.place ? e => pressTile(e, it) : undefined}
+      onClick={() => { if (!consumeDragClick()) use(it); }}>
       {it.icon}<span>{it.label}</span>
     </button>
   );
@@ -106,8 +109,8 @@ export function Palette() {
         <span className="pal-psep" />
         {mostUsed(all, use_).map(it => (
           <button type="button" key={it.key} className={'pal-pbtn' + (it.active ? ' active' : '')} title={it.label} aria-label={it.label} data-pal-quick={it.key}
-            draggable={!!it.drag} onDragStart={it.drag ? e => { e.dataTransfer.setData(it.drag![0], it.drag![1]); } : undefined}
-            onClick={() => use(it)}>{it.icon}</button>
+            onPointerDown={it.place ? e => pressTile(e, it) : undefined}
+            onClick={() => { if (!consumeDragClick()) use(it); }}>{it.icon}</button>
         ))}
         <span className="pal-psep" />
         <button type="button" className="pal-pbtn" id="palOpen" title="Open the palette" aria-label="Open the palette" onClick={() => setPaletteOpen(true)}>
@@ -185,5 +188,5 @@ export function QuickAdd() {
 /** Remounted per kind of diagram: each kind's palette hook reads its own state. */
 export function PaletteHost() {
   const kind = useEditor(s => s.open.kind);
-  return <><Palette key={'p' + kind} /><QuickAdd key={'q' + kind} /></>;
+  return <><Palette key={'p' + kind} /><QuickAdd key={'q' + kind} /><DragLayer /></>;
 }

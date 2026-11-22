@@ -1,6 +1,6 @@
 /** What a diagram puts in the floating palette: sections of things to add (or tools to pick). */
 import type { ReactNode } from 'react';
-import type { Point } from '../store/viewport';
+import type { Box, Point } from '../store/viewport';
 
 export interface PaletteItem {
   /** unique in the palette; also what "most used" counts */
@@ -17,13 +17,33 @@ export interface PaletteItem {
   active?: boolean;
   /** add it: in the middle of the view, or at a point (quick add) */
   add(at?: Point): void;
-  /** drag it onto the canvas: [mime type, data] */
-  drag?: [string, string];
+  /** drag it onto the canvas: its size there (world units). Without it the tile only clicks. */
+  place?: {
+    w: number; h: number;
+    /** feedback while it's over the canvas, given where its top-left would land (on the grid) */
+    preview?(at: Point): DropPreview;
+    /** put it there (default: add at its middle) */
+    drop?(at: Point): void;
+  };
   /** draw the tile as a sticky note */
   sticky?: boolean;
 }
 
 export interface PaletteSection { title: string; items: PaletteItem[] }
+
+/** What dropping here would do, drawn under the dragged copy (world units). */
+export interface DropPreview {
+  /** a moved top-left, e.g. lined up with a card nearby */
+  at?: Point;
+  /** an area that lights up, e.g. the environment it would go into */
+  highlight?: { box: Box; label: string };
+  /** lines across the canvas where it lines up with something */
+  guides?: { x?: number; y?: number }[];
+  /** a vertical slot marker, e.g. where a lifeline would go */
+  slot?: { x: number; y1: number; y2: number };
+  /** hide the copy itself (the slot says it all) */
+  noGhost?: boolean;
+}
 
 /** Items matching a search, best first: label starts with it, then a word of it, then aliases, then anywhere. */
 export function searchItems(sections: PaletteSection[], q: string): PaletteItem[] {

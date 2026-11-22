@@ -29,13 +29,13 @@ export function revealX(x: number | undefined) {
 
 // ---------- lifelines ----------
 
-/** Add a lifeline after the selected one (else at the end) and start naming it. */
-export function addParticipant(name?: string): Participant {
+/** Add a lifeline after the selected one (else at the end, or at `index`) and start naming it. */
+export function addParticipant(name?: string, index?: number): Participant {
   const ps = seq().participants;
   const nm = name ?? `Participant ${ps.length + 1}`;
   const p: Participant = { id: slugId(nm, ps.map(x => x.id)), name: nm };
-  const s = sel(), at = s?.type === 'part' ? ps.findIndex(x => x.id === s.ids[0]) + 1 : ps.length;
-  change('sequence', d => { d.participants.splice(at || d.participants.length, 0, p); });
+  const s = sel(), at = index ?? (s?.type === 'part' ? ps.findIndex(x => x.id === s.ids[0]) + 1 : ps.length);
+  change('sequence', d => { d.participants.splice(index !== undefined ? Math.min(index, d.participants.length) : at || d.participants.length, 0, p); });
   selectOne('part', p.id);
   requestAnimationFrame(() => { revealX(geometry(seq()).colX[p.id]); startEditPart(p.id); });
   return p;

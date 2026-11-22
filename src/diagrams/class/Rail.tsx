@@ -19,7 +19,8 @@ export function usePalette(): PaletteSection[] {
       key: kind, label: t.label, about: t.about, aliases: kind === 'record' ? ['data class', 'dto'] : kind === 'interface' ? ['trait', 'protocol'] : [],
       icon: <span className="cl-kw" style={{ '--kc': KIND_COLOR[kind], ...(kind === 'abstract' ? { fontStyle: 'italic' } : {}) } as React.CSSProperties}>{t.letter}</span>,
       attrs: { 'data-clstool': kind },
-      add: at => addClass(kind, at ? { x: snap(at.x - 80), y: snap(at.y - 30) } : undefined),
+      place: { w: 180, h: 72, drop: (at: { x: number; y: number }) => addClass(kind, { x: snap(at.x), y: snap(at.y) }) },
+      add: (at?: { x: number; y: number }) => addClass(kind, at ? { x: snap(at.x - 80), y: snap(at.y - 30) } : undefined),
     };
   }) }];
 }

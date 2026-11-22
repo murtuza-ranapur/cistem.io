@@ -193,12 +193,31 @@ class T {
     assert(Math.abs(b.x + b.width / 2 - (p.x + dx)) < 40 && Math.abs(b.y + b.height / 2 - (p.y + dy)) < 50, 'at the double-click: ' + JSON.stringify([b, p, dx, dy]));
   });
 
-  await test('drag from rail drops a node where released', async t => {
-    const p = await t.emptyCanvasPoint();
-    await t.page.dragAndDrop('#palette [data-add="service"]', '#svg', { targetPosition: { x: 60, y: 800 } }); await t.page.waitForTimeout(200);
-    const d = await t.doc(); const added = d.model.nodes[d.model.nodes.length - 1];
-    eq(added.kind, 'service', 'service added'); eq(added.container, null, 'unplaced when dropped on empty canvas');
-    void p;
+  await test('drag from the palette: a see-through copy, snapped where it will land; drop places it, Esc cancels', async t => {
+    const tile = await t.box('#palette [data-add="service"]'), sv = await t.box('#svg');
+    const drop = { x: sv.x + 420, y: sv.y + sv.height - 70 };   // empty canvas, right of the palette
+    const before = (await t.doc()).model.nodes.length;
+    await t.page.mouse.move(tile.x + 30, tile.y + 15); await t.page.mouse.down();
+    await t.page.mouse.move(tile.x + 120, tile.y + 40, { steps: 4 });
+    assert(await t.page.$('#dragGhost.lift'), 'picked up: see-through over the palette');
+    assert(await t.page.$('#palette [data-add="service"].lifted'), 'the tile dims');
+    await t.page.mouse.move(drop.x, drop.y, { steps: 8 });
+    assert(await t.page.$('#dragGhost.fit'), 'over the canvas: firm, where it will land');
+    await t.page.keyboard.press('Escape'); await t.page.mouse.up(); await t.page.waitForTimeout(150);
+    eq(await t.page.$('#dragGhost'), null, 'Esc cancels'); eq((await t.doc()).model.nodes.length, before, 'nothing added');
+    await t.page.mouse.move(tile.x + 30, tile.y + 15); await t.page.mouse.down();
+    await t.page.mouse.move(drop.x, drop.y, { steps: 10 }); await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    const d = await t.doc(), added = d.model.nodes.at(-1);
+    eq(d.model.nodes.length, before + 1); eq(added.kind, 'service'); eq(added.container, null, 'unplaced when dropped on empty canvas');
+  });
+
+  await test('drag from the palette into an environment: it lights up, and the card lands inside', async t => {
+    const r = await t.box('[data-node="n4"] rect.body'), tile = await t.box('#palette [data-add="cache"]');
+    await t.page.mouse.move(tile.x + 30, tile.y + 15); await t.page.mouse.down();
+    await t.page.mouse.move(r.x + r.width + 160, r.y + r.height / 2, { steps: 10 });
+    assert((await t.page.textContent('.drop-hl')).includes('Drop into acq-core'), 'the environment lights up');
+    await t.page.mouse.up(); await t.page.waitForTimeout(200);
+    const dd = await t.doc(); eq(dd.model.nodes.at(-1).container, dd.model.nodes.find(n => n.id === 'n4').container, 'inside acq-core, with session-cache');
   });
 
   await test('connect by dragging a port onto another node', async t => {
@@ -565,6 +584,18 @@ class T {
   const heads = t => t.page.$$eval('[data-head]', els => Object.fromEntries(els.map(e => { const r = e.getBoundingClientRect(); return [e.dataset.head, { x: r.x + r.width / 2, y: r.y + r.height }]; })));
   const dragLife = async (t, a, b, y) => { await t.page.mouse.move(a.x, y); await t.page.mouse.down(); await t.page.mouse.move((a.x + b.x) / 2, y + 2, { steps: 4 }); await t.page.mouse.move(b.x, y + 2, { steps: 3 }); await t.page.mouse.up(); await t.page.waitForTimeout(200); };
   const msgs = async t => (await t.doc()).model.rows.filter(r => r.t === 'msg').map(r => `${r.from}>${r.to}:${r.label}`);
+
+  await test('sequence: drag a Participant from the palette between two lifelines: a slot shows, and it goes there', async t => {
+    await newSeq(t); await t.page.mouse.click(700, 500);
+    await t.page.evaluate(x => { const dt = new DataTransfer(); dt.setData('text/plain', x); document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); }, 'participant a\nparticipant b\nparticipant c\n');
+    await t.page.waitForTimeout(400); await t.page.keyboard.press('Escape');
+    const h = await heads(t), tile = await t.box('#palette [data-seqtool="participant"]');
+    await t.page.mouse.move(tile.x + 30, tile.y + 15); await t.page.mouse.down();
+    await t.page.mouse.move((h.b.x + h.c.x) / 2 + 8, h.b.y + 80, { steps: 10 });
+    assert(await t.page.$('.drop-slot'), 'a slot between b and c');
+    await t.page.mouse.up(); await t.page.waitForTimeout(250); await t.page.keyboard.press('Escape');
+    eq((await t.doc()).model.participants.map(p => p.id).join(',').replace(/participant-\d+/, 'new'), 'a,b,new,c', 'between b and c');
+  });
 
   await test('sequence: drag between lifelines adds a message where you let go, then type its label', async t => {
     await newSeq(t);
