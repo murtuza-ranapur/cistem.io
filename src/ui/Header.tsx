@@ -1,4 +1,5 @@
 /** The top bar: title, save status, verdict and the toolbar. */
+import { goHome, useRoute } from '../home/route';
 import { useLoadView } from '../store/loadView';
 import { copyImage } from '../store/imageExport';
 import { useEffect, useRef, useState } from 'react';
@@ -23,7 +24,7 @@ export function Header() {
   const panelOpen = useUi(s => s.panelOpen);
   return (
     <header id="top">
-      <div className="brand"><span className="logo" /><span className="name">cistem<span className="tld">.dev</span></span></div>
+      <button type="button" id="homeBtn" className="brand" title="Home page" aria-label="cistem.dev home page" onClick={goHome}><span className="logo" /><span className="name">cistem<span className="tld">.dev</span></span></button>
       <ProjectSwitcher />
       <TitleInput />
       {m.HeaderInfo && <m.HeaderInfo />}
@@ -78,7 +79,8 @@ function TitleInput() {
   const readonly = useCloud(s => s.status === 'readonly');
   const [draft, setDraft] = useState<{ value: string; before: string } | null>(null);
   const untitled = diagram(kind).untitled;
-  useEffect(() => { document.title = `${title} · cistem.dev`; }, [title]);
+  const home = useRoute(s => s.view === 'home');
+  useEffect(() => { document.title = home ? 'cistem.dev · System design that shows where it breaks' : `${title} · cistem.dev`; }, [title, home]);
   const set = (t: string) => changeMeta(m => { m.title = t.trim() || untitled; });
   return (
     <input id="title" className="title" type="text" aria-label="Diagram title" placeholder={untitled} readOnly={readonly}

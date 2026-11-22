@@ -9,6 +9,7 @@ import * as history from './history';
 import { currentFile, readFile, signature } from './files';
 import { fitWhenDrawn } from './commands';
 import { toast } from './ui';
+import { atHome } from '../home/route';
 
 export type SyncStatus = 'local' | 'saved' | 'saving' | 'dirty' | 'conflict' | 'error' | 'readonly';
 
@@ -162,7 +163,7 @@ let addressLocked = false;
 export const lockAddress = (on: boolean) => { addressLocked = on; };
 /** Keep ?d= in the address bar pointing at the open diagram. */
 export function syncUrl(id?: string) {
-  if (addressLocked) return;
+  if (addressLocked || atHome()) return;
   const u = new URL(location.href);
   u.searchParams.delete('s'); u.searchParams.delete('p'); u.searchParams.delete('login');
   const d = id ?? cloud().id;

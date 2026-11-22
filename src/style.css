@@ -56,7 +56,7 @@ button.icon.active{background:var(--sel-soft);color:var(--sel)}
 /* ---- shell ---- */
 #app{height:100%;display:grid;grid-template-rows:48px 36px 1fr;grid-template-columns:1fr auto;grid-template-areas:"top top" "tabs tabs" "stage inspector"}
 #top{grid-area:top;display:flex;align-items:center;gap:14px;padding:0 14px 0 16px;background:var(--panel);border-bottom:1px solid var(--line);position:relative;z-index:5}
-.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;letter-spacing:.01em;margin-right:6px}
+.brand{background:none;border:0;padding:0;color:inherit;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;letter-spacing:.01em;margin-right:6px}
 .brand .tld{color:var(--muted);font-weight:400}
 .logo{width:14px;height:14px;border-radius:4px;background:linear-gradient(135deg,var(--c-service),var(--c-entry))}
 .title{border:1px solid transparent;background:transparent;border-radius:6px;padding:4px 8px;font-weight:500;font-size:13px;width:200px;min-width:0;transition:border-color var(--t) var(--ease),background var(--t) var(--ease)}

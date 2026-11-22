@@ -10,18 +10,20 @@ import { ConflictBanner, Toast } from './Banners';
 import { Dialogs } from './Dialogs';
 import { MenuHost } from './Menu';
 import { ShareDialog } from './ShareDialog';
+import { useRoute } from '../home/route';
 
 export function App() {
   const kind = useEditor(s => s.open.kind);
+  const home = useRoute(s => s.view === 'home');   // covered by the home page: out of reach, not unmounted
   return (
-    <div id="app" data-kind={kind}>
+    <div id="app" data-kind={kind} inert={home} aria-hidden={home || undefined}>
       <Header />
       <TabBar />
       <Stage />
       <Inspector />
       <Drawer />
       <ConflictBanner />
-      <Toast />
+      {!home && <Toast />}
       <IoDialog />
       <ShareDialog />
       <Dialogs />

@@ -9,7 +9,8 @@ import { download, fileName } from '../lib/browser';
 import { toProjectFile, readProjectFile, inDependencyOrder, isProjectFile, relink, type ProjectEntry } from '../domain/project';
 import type { AnyFile } from '../diagrams/types';
 import { diagram } from '../diagrams';
-import { useCloud, setStatus, signedIn, signOut, saveNow, whenSaved } from './cloud';
+import { useCloud, cloud, setStatus, signedIn, signOut, saveNow, whenSaved } from './cloud';
+import { leaveToHome } from '../home/route';
 import { currentFile, readFile, stable } from './files';
 import * as local from './local';
 import { backendFor, type Added, type ProjectInfo } from './backends';
@@ -231,8 +232,10 @@ async function openBrowserProject(example?: () => unknown) {
 }
 
 /** Before the account answers: show the project this device had open last, from what's kept here. */
-export async function bootWorkspace(example: () => unknown) {
+export async function bootWorkspace(example: () => unknown): Promise<boolean> {
   await local.bootLocal();
+  // has this browser been used before (so the home page needn't introduce itself)?
+  const beenHere = local.localProjects().length > 0 || local.getState('scope') !== undefined;
   if (!local.isPersistent()) toast('This browser isn\'t keeping anything between visits (private window?) — sign in or export to keep your work', 7000);
   // the open browser project was deleted in another window: open another
   local.onRemote(m => {
@@ -241,8 +244,9 @@ export async function bootWorkspace(example: () => unknown) {
   });
   startTabs();
   const lastCloud = local.getState<{ id: string; title: string }>('open:cloud');
-  if (local.getState('scope') === 'cloud' && lastCloud && await restoreProject({ scope: 'cloud', ...lastCloud })) return;
+  if (local.getState('scope') === 'cloud' && lastCloud && await restoreProject({ scope: 'cloud', ...lastCloud })) return beenHere;
   await openBrowserProject(example);
+  return beenHere;
 }
 
 /**
@@ -262,7 +266,7 @@ export async function bootAccount(href: string): Promise<void> {
     const back = sessionStorage.getItem('cistem.returnTo');
     if (back !== null) {
       sessionStorage.removeItem('cistem.returnTo');
-      const bu = new URL(location.origin + '/' + back);
+      const bu = new URL(location.origin + '/app' + back);
       if (!d && (bu.searchParams.get('d') || bu.searchParams.get('p') || bu.searchParams.get('s'))) {
         window.history.replaceState(null, '', bu.toString());
         return bootAccount(bu.toString());
@@ -286,9 +290,15 @@ async function enterAccount(focus?: string | null) {
   if (n) toast(`${n} diagram${n === 1 ? ' is' : 's are'} only in this browser — open Projects to add ${n === 1 ? 'it' : 'them'} to your account`, 6000);
 }
 
-/** Sign out, and carry on with this browser's projects. */
+/**
+ * Sign out: back to the home page, with this browser's own projects underneath. The copies of account diagrams
+ * kept here go too (the next person at this browser shouldn't see them), unless a change never reached the account.
+ */
 export async function signOutHere() {
   await saveNow();
+  const unsaved = ['dirty', 'error', 'conflict'].includes(cloud().status);
   await signOut();
   await openBrowserProject();
+  if (!unsaved) local.dropAccountCopies();
+  leaveToHome();
 }

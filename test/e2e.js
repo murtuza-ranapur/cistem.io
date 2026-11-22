@@ -15,7 +15,7 @@ async function test(name, fn) {
   page.on('console', m => { if (m.type() === 'error' && !/401|Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
   const t = new T(page);
   try {
-    await page.goto(BASE); await page.waitForTimeout(300);
+    await page.goto(BASE + '/app'); await page.waitForTimeout(300);
     await page.evaluate(() => { localStorage.clear(); localStorage.setItem('cistem.loadView', 'on'); indexedDB.deleteDatabase('cistem'); }); await page.reload(); await page.waitForTimeout(600);
     await page.click('#resetBtn'); await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
@@ -965,7 +965,7 @@ abstract class Entity { protected long version; }`;
   await test('regression: phone header and toolbar fit the screen', async t => {
     const { devices } = require('playwright');
     const ctx = await t.page.context().browser().newContext({ ...devices['iPhone 13'] });
-    const p = await ctx.newPage(); await p.goto(BASE); await p.waitForTimeout(700);
+    const p = await ctx.newPage(); await p.goto(BASE + '/app'); await p.waitForTimeout(700);
     const w = await p.evaluate(() => ({ inner: innerWidth, scroll: document.documentElement.scrollWidth, top: document.getElementById('top').getBoundingClientRect().height, stage: document.getElementById('stage').getBoundingClientRect().height }));
     await ctx.close();
     eq(w.inner, 390, 'no zoom-out'); assert(w.scroll <= 390, 'no sideways scroll: ' + w.scroll);
@@ -1971,6 +1971,72 @@ abstract class Entity { protected long version; }`;
     assert(db.diagrams.some(d => d.title === 'Made offline'), 'copied to the account: ' + db.diagrams.map(d => d.title));
     eq(await t.page.textContent('#drawerBtn .sw-title'), 'My diagrams (from this browser)', 'in its own project');
     assert(!(await t.page.$('#leftovers')), 'nothing left to offer');
+  });
+
+  // ---------- the home page ----------
+  const homeState = p => p.evaluate(() => ({ path: location.pathname, home: !!document.getElementById('home'), version: document.querySelector('.hm-cta')?.dataset.version ?? null, inert: document.getElementById('app').hasAttribute('inert'), entered: localStorage.getItem('cistem.entered') }));
+
+  await test('home: a first visit sees the home page; trying it opens the app and is remembered', async t => {
+    const ctx = await t.page.context().browser().newContext({ viewport: { width: 1300, height: 850 } });
+    const p = await ctx.newPage(); await p.goto(BASE); await p.waitForTimeout(900);
+    let s = await homeState(p);
+    eq(s.path, '/', 'at the root'); assert(s.home && s.inert, 'home page over the app'); eq(s.version, 'first', 'the first-visit version');
+    assert((await p.title()).startsWith('cistem.dev'), 'its own title');
+    // the editor underneath hears nothing
+    await p.keyboard.press('Control+a'); await p.keyboard.press('Delete'); await p.keyboard.press('n');
+    await p.click('#homeTry'); await p.waitForTimeout(500);
+    s = await homeState(p);
+    eq(s.path, '/app', 'the app address'); assert(!s.home && !s.inert, 'home page gone'); eq(s.entered, '1', 'remembered');
+    assert(await p.locator('#stage .node').count() > 3, 'the example is untouched');
+    eq(await p.locator('.cnote').count(), 0, 'no note was added from the home page');
+    await p.goto(BASE); await p.waitForTimeout(700);
+    s = await homeState(p);
+    eq(s.path, '/app', 'next visit skips the home page'); assert(!s.home, 'straight into the app');
+    // the logo goes back to it, now offering to continue
+    await p.click('#homeBtn'); await p.waitForTimeout(400);
+    s = await homeState(p);
+    eq(s.path, '/', 'home address'); eq(s.version, 'browser', 'the version for diagrams kept here');
+    assert((await p.textContent('#homeOpen')).includes('Continue with 1 diagram'), await p.textContent('#homeOpen'));
+    await p.goBack(); await p.waitForTimeout(300);
+    s = await homeState(p); eq(s.path, '/app', 'back returns to the app'); assert(!s.home, 'app showing');
+    await p.click('#homeBtn'); await p.click('#homeOpen'); await p.waitForTimeout(300);
+    assert(!(await homeState(p)).home, 'continue opens the app');
+    await ctx.close();
+  });
+
+  await test('home: links to a diagram and browsers that were here before skip it', async t => {
+    const ctx = await t.page.context().browser().newContext();
+    const p = await ctx.newPage(); await p.goto(BASE + '/?s=nope'); await p.waitForTimeout(900);
+    let s = await homeState(p);
+    assert(!s.home, 'a shared link opens the app'); eq(s.path, '/app', 'at the app address'); eq(s.entered, null, 'a visitor by link is not remembered');
+    await ctx.close();
+    // this browser has diagrams from before the home page existed
+    await t.page.evaluate(() => localStorage.removeItem('cistem.entered'));
+    await t.page.goto(BASE); await t.page.waitForTimeout(900);
+    s = await homeState(t.page);
+    assert(!s.home, 'no home page for someone with diagrams here'); eq(s.path, '/app', 'moved to the app'); eq(s.entered, '1', 'remembered from now on');
+  });
+
+  await test('home: signed in it offers to open your diagrams; signing out returns to the first-visit page', async t => {
+    const db = await fakeAccount(t.page);
+    await t.page.reload(); await t.page.waitForTimeout(1200);
+    await t.page.click('#homeBtn'); await t.page.waitForTimeout(300);
+    let s = await homeState(t.page);
+    eq(s.version, 'account', 'the signed-in version'); assert((await t.page.textContent('.hm-who')).includes('murtu'), 'says who');
+    await t.page.click('#homeOpen'); await t.page.waitForTimeout(300);
+    assert(!(await homeState(t.page)).home, 'opens the app');
+    assert(db.diagrams.length > 0 || db.projects.length > 0, 'the account is in use');
+    // sign out from the app's account menu
+    await t.page.click('#accountBtn'); await t.page.click('#signOutBtn'); await t.page.waitForTimeout(900);
+    s = await homeState(t.page);
+    assert(s.home, 'signing out shows the home page'); eq(s.path, '/', 'at the root'); eq(s.version, 'first', 'as a first visit'); eq(s.entered, null, 'no longer remembered');
+    const kept = await t.page.evaluate(() => new Promise((ok, fail) => {
+      const r = indexedDB.open('cistem'); r.onerror = fail;
+      r.onsuccess = () => { const g = r.result.transaction('docs').objectStore('docs').getAll(); g.onsuccess = () => ok(g.result.filter(d => d.project === null).length); g.onerror = fail; };
+    }));
+    eq(kept, 0, 'no copies of account diagrams left in this browser');
+    await t.page.click('#homeTry'); await t.page.waitForTimeout(400);
+    eq(await t.page.textContent('#syncText'), 'in this browser', 'carrying on without an account');
   });
 
   const failed = results.filter(r => !r.ok);

@@ -6,6 +6,15 @@ The first diagram kind is **system**: draw clients → load balancer → service
 
 There are also **sequence** and **class** diagrams; a sequence can draw on a system diagram for its timings.
 
+
+## Home page and app
+
+`/` is the home page (`src/home/`): what cistem.dev is, sign up with GitHub, or try it without an account. The editor is at `/app`.
+Once someone has gone in, this browser remembers (`cistem.entered` in localStorage) and `/` opens the app directly; the logo in the
+header goes back to the home page, which then offers "Open my diagrams" (signed in) or "Continue with N diagrams" (kept in this
+browser). Links to a diagram or project (`?d=`, `?s=`, `?p=`) always open the app. Signing out returns to the home page and removes
+the copies of account diagrams kept in the browser; diagrams made without an account stay.
+
 ## Running it
 
 One deployable: Spring Boot serves the API and the built frontend from the same origin, so there is nothing to configure in the browser.

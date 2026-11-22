@@ -76,6 +76,13 @@ export function dropProject(id: string) {
 }
 export const touchProject = (id: string) => { const p = projects.get(id); if (p) putProject({ ...p, updated: new Date().toISOString() }); };
 
+/** Forget the copies of account diagrams kept here (on sign out); this browser's own projects stay. */
+export function dropAccountCopies() {
+  for (const [key, d] of [...docs]) if (d.project === null) dropDoc(key);
+  for (const key of [...state.keys()]) if (key.startsWith('tabs:') && !projects.has(key.slice(5))) write('state', key, null);
+  write('state', 'open:cloud', null);
+}
+
 // ---------- small state ----------
 export const getState = <T>(key: string): T | undefined => state.get(key) as T | undefined;
 export const setState = (key: string, value: unknown) => write('state', key, value ?? null);
