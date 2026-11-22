@@ -262,6 +262,24 @@ class T {
     const d = await t.doc(); assert(!d.model.nodes.some(n => n.id === 'n4' || n.id === 'n6'), 'both removed');
   });
 
+  await test('press, hold still and drag draws a selection box (inside an environment too); a quick drag still pans', async t => {
+    const a = await t.box('[data-node="n4"] rect.body'), b = await t.box('[data-node="n6"] rect.body');
+    // starts on the acq-core environment's empty space, which a quick drag would move
+    const x0 = Math.min(a.x, b.x) - 12, y0 = Math.min(a.y, b.y) - 12, x1 = Math.max(a.x + a.width, b.x + b.width) + 12, y1 = Math.max(a.y + a.height, b.y + b.height) + 12;
+    const before = await t.node('n4');
+    await t.page.mouse.move(x0, y0); await t.page.mouse.down(); await t.page.waitForTimeout(450);
+    assert(await t.page.$('.hold-ring'), 'a ring says the box is ready');
+    await t.page.mouse.move(x1, y1, { steps: 8 }); await t.page.mouse.up(); await t.page.waitForTimeout(150);
+    const sel = await t.page.$$eval('[data-node].sel', e => e.map(x => x.dataset.node));
+    assert(sel.includes('n4') && sel.includes('n6'), 'both selected: ' + sel);
+    eq((await t.node('n4')).x, before.x, 'nothing moved');
+    // a quick drag on empty canvas pans as before
+    const sv = await t.box('#svg'), n0 = await t.box('[data-node="n4"] rect.body');
+    await t.page.mouse.move(sv.x + 330, sv.y + sv.height - 40); await t.page.mouse.down();
+    await t.page.mouse.move(sv.x + 410, sv.y + sv.height - 40, { steps: 4 }); await t.page.mouse.up();
+    assert(Math.abs((await t.box('[data-node="n4"] rect.body')).x - n0.x - 80) < 2, 'panned');
+  });
+
   await test('duplicate (Ctrl+D) copies the selected node', async t => {
     const before = (await t.doc()).model.nodes.length;
     await t.clickNode('n3'); await t.page.keyboard.press('Control+d'); await t.page.waitForTimeout(200);

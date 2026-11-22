@@ -1,7 +1,7 @@
 /**
  * The system canvas: environments, connections and components, with the gestures that edit them —
  * drag to move (into or out of environments), drag a port to connect, drag a frame to move what's inside,
- * shift/alt-drag to select several, drag the background to pan, double-click to rename, drop from the rail.
+ * shift/alt-drag (or press, hold still and drag) to select several, drag the background to pan, double-click to rename, drop from the rail.
  */
 import { openQuickAdd } from '../../palette/store';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -42,6 +42,8 @@ interface Overlay {
   targetFrame?: string | null;
   connect?: { d: string; target: string | null };
   marquee?: { x: number; y: number; w: number; h: number };
+  /** a press held still on empty canvas: it's about to become a selection box */
+  hold?: Point;
 }
 
 const DEFS = <>
@@ -57,6 +59,8 @@ const DEFS = <>
 
 /** Rename requests from outside the canvas (Enter on a selected component). */
 let lastGrip = { id: '', t: 0 };
+/** How long a press must stay still before a drag draws a selection box instead of panning. */
+const HOLD_MS = 350;
 let renameRequest: ((id: string) => void) | null = null;
 export const requestRename = (id: string) => renameRequest?.(id);
 
@@ -70,6 +74,7 @@ export function Canvas() {
   const [overlay, setOverlay] = useState<Overlay>({});
   const [renaming, setRenaming] = useState<string | null>(null);
   const gesture = useRef<Gesture | null>(null);
+  const holdTimer = useRef<number>(undefined);
   const svg = useRef<SVGSVGElement>(null);
   const doubleTap = useDoubleTap();
   const mounted = useRef(false);
@@ -122,6 +127,7 @@ export function Canvas() {
     if (edgeEl) { selectOne('edge', edgeEl.dataset.edge!); return; }
     const frameEl = target.closest<SVGGElement>('[data-container]');
     if (frameEl && !additive && !ev.altKey) {
+      holdToSelect(w);
       const id = frameEl.dataset.container!, fr = framesNow();
       selectOne('container', id); holdPanel();
       const inside = (cid: string | null | undefined) => ancestry(d, cid).includes(id);
@@ -140,6 +146,23 @@ export function Canvas() {
     }
     const v = editor().view;
     gesture.current = { t: 'pan', sx: ev.clientX, sy: ev.clientY, vx: v.x, vy: v.y, moved: false };
+    holdToSelect(w);
+  };
+
+  /**
+   * Press and hold still on empty canvas (or an environment's empty space), then drag: a selection box, as
+   * shift-drag does. A quick drag still pans (or moves the environment).
+   */
+  const holdToSelect = (origin: Point) => {
+    clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => {
+      const g = gesture.current;
+      if (!g || (g.t !== 'pan' && g.t !== 'frame') || g.moved) return;
+      if (g.t === 'frame') releasePanel(true, selKey());
+      select(null);
+      gesture.current = { t: 'marquee', origin, additive: false, base: [] };
+      setOverlay({ hold: origin });
+    }, HOLD_MS);
   };
 
   const onPointerMove = (ev: React.PointerEvent<SVGSVGElement>) => {
@@ -208,6 +231,7 @@ export function Canvas() {
   };
 
   const onPointerUp = (ev: React.PointerEvent<SVGSVGElement>) => {
+    clearTimeout(holdTimer.current);
     const g = gesture.current; gesture.current = null;
     if (!g) return;
     if (g.t === 'node' || g.t === 'frame') releasePanel(!g.moved, selKey());
@@ -332,6 +356,7 @@ export function Canvas() {
         <EdgeLabels doc={doc} items={edges} selected={selectedEdge} load={load} />
         <g id="overlay">
           {overlay.connect && <path d={overlay.connect.d} />}
+          {overlay.hold && !overlay.marquee && <circle className="hold-ring" cx={overlay.hold.x} cy={overlay.hold.y} r={10 / editor().view.k} />}
           {overlay.marquee && <rect className="marquee" x={overlay.marquee.x} y={overlay.marquee.y} width={overlay.marquee.w} height={overlay.marquee.h} />}
         </g>
       </Surface>
