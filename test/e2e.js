@@ -1,8 +1,12 @@
 // Browser tests for the editor. Drives the real UI (mouse, keys, buttons) against a built app.
-// Run: node test/e2e.js [baseUrl]   (default http://localhost:4173)
+// Run: bun test/e2e.js [baseUrl]   (default http://localhost:4173)
+// The app starts with a blank diagram; every test begins with the checkout fixture (test/example.ts) imported as a second diagram.
 const { chromium } = require('playwright');
 const BASE = process.argv[2] || 'http://localhost:4173';
 const OUT = process.env.E2E_OUT || '/tmp/e2e';
+const EXAMPLE = JSON.stringify(require('./example.ts').exampleFile());
+/** Import the checkout fixture as a new diagram (through the import dialog). */
+async function openExample(page) { await page.click('#ioBtn'); await page.fill('#json', EXAMPLE); await page.click('#loadJson'); await page.waitForTimeout(300); }
 require('fs').mkdirSync(OUT, { recursive: true });
 
 const results = [];
@@ -17,7 +21,7 @@ async function test(name, fn) {
   try {
     await page.goto(BASE + '/app'); await page.waitForTimeout(300);
     await page.evaluate(() => { localStorage.clear(); localStorage.setItem('cistem.loadView', 'on'); indexedDB.deleteDatabase('cistem'); }); await page.reload(); await page.waitForTimeout(600);
-    await page.click('#resetBtn'); await page.waitForTimeout(300);
+    await openExample(page);
     await page.keyboard.press('Escape');
     await fn(t);
     if (errors.length) throw new Error(errors.join('\n'));
@@ -518,11 +522,11 @@ class T {
   });
 
   // ---- example / import ----
-  await test('the example opens in a new tab; the diagram you had stays in its tab', async t => {
+  await test('an imported diagram opens in a new tab; the diagram you had stays in its tab', async t => {
     await t.page.fill('#title', 'My payments'); await t.page.keyboard.press('Enter');
     await t.clickNode('n2'); await t.page.keyboard.press('Delete'); await t.page.waitForTimeout(150);
     const before = await t.page.$$eval('.dtab', els => els.length);
-    await t.page.click('#resetBtn'); await t.page.waitForTimeout(400);
+    await openExample(t.page); await t.page.waitForTimeout(100);
     eq(await t.page.$$eval('.dtab', els => els.length), before + 1, 'one more tab');
     eq((await t.doc()).meta.title, 'Checkout example'); assert(await t.node('n2'), 'example loaded');
     await t.page.click('.dtab:has-text("My payments")'); await t.page.waitForTimeout(300);
@@ -1987,7 +1991,8 @@ abstract class Entity { protected long version; }`;
     await p.click('#homeTry'); await p.waitForTimeout(500);
     s = await homeState(p);
     eq(s.path, '/app', 'the app address'); assert(!s.home && !s.inert, 'home page gone'); eq(s.entered, '1', 'remembered');
-    assert(await p.locator('#stage .node').count() > 3, 'the example is untouched');
+    eq(await p.locator('#stage .node').count(), 1, 'the blank diagram is untouched');
+    eq(await p.locator('#resetBtn, [data-nm="example"]').count(), 0, 'no example to open');
     eq(await p.locator('.cnote').count(), 0, 'no note was added from the home page');
     await p.goto(BASE); await p.waitForTimeout(700);
     s = await homeState(p);

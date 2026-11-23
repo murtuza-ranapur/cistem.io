@@ -9,7 +9,6 @@ import { diagram } from '../diagrams';
 import type { DiagramKind } from '../domain/document';
 import { Icon } from './Icon';
 import { useDismiss, moveFocus } from './hooks';
-import { openExample } from './actions';
 import { openMenu } from './Menu';
 import { tabMenu } from './projectActions';
 
@@ -137,7 +136,6 @@ function NewMenu({ anchor }: { anchor: React.RefObject<HTMLButtonElement | null>
       <div className="nm-foot">
         <button type="button" className="chip" data-nm="open" onClick={run(openDrawer)}>Projects…</button>
         <button type="button" className="chip" data-nm="import" onClick={run(() => useUi.setState({ ioOpen: 'import' }))}>Import…</button>
-        <button type="button" className="chip" data-nm="example" onClick={run(openExample)}>Example</button>
       </div>
     </div>
   );

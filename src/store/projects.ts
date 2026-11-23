@@ -183,7 +183,7 @@ export async function copyView() {
 
 // ---------- this browser's projects, after signing in ----------
 
-/** The browser's diagrams worth offering to the account (not the untouched first-visit example). */
+/** The browser's diagrams worth offering to the account (not the first visit's diagram while it's untouched). */
 function browserLeftovers(): [string, local.LocalDoc][] {
   const ex = local.getState<{ key: string; sig: string }>('example');
   return local.localProjects().flatMap(p => local.docsOf(p.id)).filter(([key, d]) => !(ex && key === ex.key && sig(d.file) === ex.sig));
@@ -215,24 +215,21 @@ export const dismissLeftovers = () => { leftoversDismissed = true; useProjectLis
 
 // ---------- starting up ----------
 
-/** Open this browser's last project (first visit: "My diagrams" with the example in it). */
-async function openBrowserProject(example?: () => unknown) {
+/** Open this browser's last project (first visit: "My diagrams" with one blank diagram). */
+async function openBrowserProject() {
   const b = backendFor('local');
   const firstVisit = !local.localProjects().length;
-  let list = await b.list();
+  const list = await b.list();
   const last = local.getState<{ id: string }>('open:local');
-  let p = list.find(x => x.id === last?.id) ?? list[0];
-  if (firstVisit && example && !p.diagrams.length) {
-    const file = example() as AnyFile;
-    const a = await b.addDiagram(p.id, file);
-    local.setState('example', { key: a.key, sig: sig(file) });
-    list = await b.list(); p = list.find(x => x.id === p.id)!;
-  }
-  await switchProject(asOpen(p, 'local'), p.diagrams);
+  const p = list.find(x => x.id === last?.id) ?? list[0];
+  await switchProject(asOpen(p, 'local'), p.diagrams);   // nothing in it yet: opens a blank diagram
+  // remember the first visit's blank diagram, so it isn't offered to an account while nobody has touched it
+  const first = firstVisit && !p.diagrams.length ? activeTab() : undefined, made = first && local.doc(first.key);
+  if (first && made) local.setState('example', { key: first.key, sig: sig(made.file) });
 }
 
 /** Before the account answers: show the project this device had open last, from what's kept here. */
-export async function bootWorkspace(example: () => unknown): Promise<boolean> {
+export async function bootWorkspace(): Promise<boolean> {
   await local.bootLocal();
   // has this browser been used before (so the home page needn't introduce itself)?
   const beenHere = local.localProjects().length > 0 || local.getState('scope') !== undefined;
@@ -245,7 +242,7 @@ export async function bootWorkspace(example: () => unknown): Promise<boolean> {
   startTabs();
   const lastCloud = local.getState<{ id: string; title: string }>('open:cloud');
   if (local.getState('scope') === 'cloud' && lastCloud && await restoreProject({ scope: 'cloud', ...lastCloud })) return beenHere;
-  await openBrowserProject(example);
+  await openBrowserProject();
   return beenHere;
 }
 

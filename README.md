@@ -183,7 +183,7 @@ This is a back-of-envelope calculator with a UI, not a load test. It won't see G
 
 ```
 schema/cistem.schema.json   JSON Schema for diagram files
-src/model.ts       component kinds, defaults, editor document, example
+src/model.ts       component kinds, defaults, editor document
 src/document.ts    file envelope, versioning and migrations
 src/engine.ts      capacity, propagation, latency
 src/history.ts     undo/redo

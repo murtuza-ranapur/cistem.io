@@ -12,7 +12,6 @@ import { startPersisting } from './store/persist';
 import { listenForClipboard } from './store/clipboard';
 import { listenForKeys } from './ui/keyboard';
 import { initTooltips } from './lib/tooltip';
-import { exampleFile } from './ui/actions';
 import { toast } from './store/ui';
 
 // the address the page was opened with: restoring tabs rewrites the URL before the account is checked
@@ -30,7 +29,7 @@ initTooltips();
 if (new URL(openedWith).searchParams.get('login') === 'failed') toast('GitHub sign-in didn\'t complete. Try again.', 5000);
 
 (async () => {
-  const beenHere = await bootWorkspace(exampleFile);   // the project this device had open, from what this browser keeps
+  const beenHere = await bootWorkspace();   // the project this device had open, from what this browser keeps
   markReady();
   if (beenHere) enterIfAuto();       // diagrams from before the home page existed: no need to show it
   startPersisting();

@@ -4,7 +4,8 @@
  */
 import { parseCistem, printSeq } from '../src/domain/seq';
 import { writeFileSync } from 'node:fs';
-import { exampleDoc, makeNode, perPartition } from '../src/domain/model';
+import { makeNode, perPartition } from '../src/domain/model';
+import { exampleDoc } from './example';
 import { compute } from '../src/domain/engine';
 import { layeredLayout } from '../src/domain/layout';
 import { toFile, v3to4 } from '../src/domain/document';

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseCls, parseClsAny, printCls, parseJavaKotlin, parseMermaidCls, fromTables, fromAvro, layoutCls, boxSize, mergeCls, renameClass, parseMember, typeRefs, blankCls, type ClassDoc } from '../src/domain/cls';
-import { exampleDoc } from '../src/domain/model';
+import { exampleDoc } from './example';
 
 const noIds = (d: ClassDoc) => ({ classes: d.classes, relations: d.relations.map(({ id: _i, ...r }) => r) });
 

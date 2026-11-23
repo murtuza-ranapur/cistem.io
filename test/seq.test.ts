@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseSeq, printSeq, layoutSeq, activations, timing, sequenceFromPath, balanced, keepIds, slugId, type SeqDoc } from '../src/domain/seq';
-import { exampleDoc } from '../src/domain/model';
+import { exampleDoc } from './example';
 import { compute } from '../src/domain/engine';
 
 const strip = (d: SeqDoc) => JSON.parse(JSON.stringify(d, (k, v) => (k === 'id' && typeof v === 'string' && /^r/.test(v) ? undefined : v)));

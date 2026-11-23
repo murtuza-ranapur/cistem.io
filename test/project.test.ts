@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { toProjectFile, readProjectFile, isProjectFile, inDependencyOrder, relink } from '../src/domain/project';
 import { toFile, seqToFile, readAny } from '../src/domain/document';
-import { exampleDoc } from '../src/domain/model';
+import { exampleDoc } from './example';
 import { blankSeq } from '../src/domain/seq';
 
 const sys = toFile(exampleDoc(), { title: 'Checkout' });

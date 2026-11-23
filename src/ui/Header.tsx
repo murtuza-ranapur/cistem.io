@@ -14,7 +14,6 @@ import { fitView, organise } from '../store/commands';
 import { diagram } from '../diagrams';
 import { Icon, IconButton } from './Icon';
 import { useDismiss } from './hooks';
-import { openExample } from './actions';
 import { TimerButton } from '../timer/Timer';
 
 export function Header() {
@@ -45,7 +44,6 @@ export function Header() {
         <IconButton id="ioBtn" icon="ic-save" label="Export or import" title="Export / import JSON" onClick={() => useUi.setState({ ioOpen: 'export' })} />
         <span className="sep" />
         <Account />
-        <IconButton id="resetBtn" icon="ic-example" label="Open example" title="Open the example (as a new diagram)" onClick={openExample} />
       </div>
     </header>
   );

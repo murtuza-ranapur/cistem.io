@@ -4,7 +4,7 @@ import Ajv from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { sanitizeNotes, taskProgress, notePreview, cleanNoteText, NOTE_MAX_CHARS, type CanvasNote } from '../src/domain/notes';
 import { toFile, seqToFile, clsToFile, readAny } from '../src/domain/document';
-import { exampleDoc } from '../src/domain/model';
+import { exampleDoc } from './example';
 import { blankSeq } from '../src/domain/seq';
 import { blankCls } from '../src/domain/cls';
 
